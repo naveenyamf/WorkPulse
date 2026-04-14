@@ -1,0 +1,9 @@
+node_modules/
+.env
+screenshots/
+*.log
+dist/
+*.zip
+*.exe
+wp-extension/
+browser-extension/

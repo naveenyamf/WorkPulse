@@ -1,0 +1,18 @@
+{
+  "name": "workpulse-agent",
+  "version": "1.0.0",
+  "main": "agent.js",
+  "bin": "agent.js",
+  "pkg": {
+    "targets": [
+      "node20-win-x64"
+    ],
+    "outputPath": "dist",
+    "assets": []
+  },
+  "dependencies": {
+    "axios": "*",
+    "form-data": "*",
+    "node-schedule": "*"
+  }
+}
