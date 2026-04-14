@@ -56,6 +56,15 @@ function getAllowedEmployees(req) {
   return null; // null means all employees (admin)
 }
 
+async function auditLog(req, action, details) {
+  try {
+    await pool.query(
+      'INSERT INTO audit_log (admin_id, admin_name, action, details) VALUES ($1,$2,$3,$4)',
+      [req.session.adminId||null, req.session.adminName||'Unknown', action, details||null]
+    );
+  } catch(e) {}
+}
+
 function requireAgent(req, res, next) {
   const token = req.headers['x-agent-token'];
   if (!token) return res.status(401).json({ error: 'No token' });
@@ -125,10 +134,11 @@ app.post('/api/employees', requireLogin, async (req, res) => {
       return res.json(result.rows[0]);
     }
     // New employee
-    const result = await pool.query(
+	const result = await pool.query(
       'INSERT INTO employees (name, email, department, agent_token) VALUES ($1,$2,$3,$4) RETURNING *',
       [name, email, department, token]
     );
+    await auditLog(req, 'Employee Added', name + ' (' + email + ')');
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -138,9 +148,12 @@ app.post('/api/employees', requireLogin, async (req, res) => {
 
 
 app.delete('/api/employees/:id', requireLogin, async (req, res) => {
+  const emp = await pool.query('SELECT name,email FROM employees WHERE id=$1', [req.params.id]);
   await pool.query("UPDATE employees SET active=false, deleted_at=NOW() WHERE id=$1", [req.params.id]);
+  await auditLog(req, 'Employee Deleted', emp.rows[0]?.name + ' (' + emp.rows[0]?.email + ')');
   res.json({ success: true });
 });
+
 
 // ---- AGENT ROUTES (called by agent on employee PC) ----
 app.post('/api/agent/heartbeat', requireAgent, async (req, res) => {
@@ -238,49 +251,106 @@ app.get("/api/dashboard/web-activity", requireLogin, async (req, res) => {
   try {
     // Get employees with their roster
     const allowed = getAllowedEmployees(req);
-    let empQuery = `SELECT e.id, e.name, e.department,
+	let empQuery = `SELECT DISTINCT e.id, e.name, e.department,
       r.start_time as shift_start, r.end_time as shift_end, r.name as roster_name
       FROM employees e
       LEFT JOIN duty_rosters r ON e.roster_id = r.id
-      WHERE e.active=true`;
+      WHERE e.active=true
+      AND EXISTS (
+        SELECT 1 FROM web_activity w 
+        WHERE w.employee_id = e.id
+        AND w.url NOT LIKE '[Incognito]%'
+        AND w.url != 'Desktop' AND w.url != 'Unknown'
+        AND w.url != 'New Tab' AND w.url != 'New tab'
+        AND w.url != 'Speed Dial' AND length(w.url) < 150
+      )`;
+
+
     const empParams = [];
     if (employee_id) { empParams.push(employee_id); empQuery += ` AND e.id=$${empParams.length}`; }
     if (allowed) { empParams.push(allowed); empQuery += ` AND e.id = ANY($${empParams.length}::int[])`; }
     empQuery += ' ORDER BY e.name';
     const empResult = await pool.query(empQuery, empParams);
     const allEmps = empResult.rows;
-    const total = allEmps.length;
-    const pages = Math.ceil(total / perPage);
-    const emps = allEmps.slice((page-1)*perPage, page*perPage);
+    // Pack employees into pages of max 50 sites, never split employee across pages
+    const siteLimit = 50;
+    const pages_arr = [[]];
+    for (const emp of allEmps) {
+      const siteCount = await pool.query(
+        `SELECT COUNT(DISTINCT url) as cnt FROM web_activity WHERE employee_id=$1`, [emp.id]
+      );
+      const cnt = parseInt(siteCount.rows[0].cnt) || 0;
+      const curPage = pages_arr[pages_arr.length - 1];
+      const curCount = curPage.reduce((a,e) => a + (e._cnt||0), 0);
+      if (curPage.length > 0 && curCount + cnt > siteLimit) {
+        pages_arr.push([Object.assign({}, emp, {_cnt: cnt})]);
+      } else {
+        curPage.push(Object.assign({}, emp, {_cnt: cnt}));
+      }
+    }
+    const total = pages_arr.length;
+    const pages = total;
+    const emps = pages_arr[(page-1)] || [];
     if (!emps.length) return res.json({ rows: [], total, page, pages });
-
     const empIds = emps.map(e => e.id);
-    let query = `SELECT w.url, w.browser, e.name as employee_name, e.id as employee_id,
-      SUM(w.duration_seconds) as total_seconds,
-      SUM(w.duration_seconds) as active_seconds,
-      COUNT(*) as visits,
-      -- duty hours flag: count seconds recorded within shift window
-      SUM(CASE WHEN r.start_time IS NOT NULL THEN
-        CASE WHEN r.end_time > r.start_time THEN
-          CASE WHEN w.recorded_at::time >= r.start_time AND w.recorded_at::time < r.end_time
-            THEN w.duration_seconds ELSE 0 END
-        ELSE -- overnight shift
-          CASE WHEN w.recorded_at::time >= r.start_time OR w.recorded_at::time < r.end_time
-            THEN w.duration_seconds ELSE 0 END
-        END
-      ELSE w.duration_seconds END) as duty_seconds
+    let query = `WITH url_mins AS (
+      SELECT w.employee_id, w.url, w.browser,
+        COUNT(DISTINCT date_trunc('minute', w.recorded_at)) * 60 AS url_seconds,
+        COUNT(*) AS visits
       FROM web_activity w
-      JOIN employees e ON w.employee_id=e.id
-      LEFT JOIN duty_rosters r ON e.roster_id=r.id
-      WHERE e.active=true
+      JOIN employees e ON w.employee_id = e.id
+      WHERE e.active = true
       AND w.url NOT LIKE '[Incognito]%'
       AND w.url != 'Desktop' AND w.url != 'Unknown'
       AND w.url != 'New Tab' AND w.url != 'New tab'
       AND w.url != 'Speed Dial' AND length(w.url) < 150
-      AND w.employee_id = ANY($1::int[])`;
-    const params = [empIds];
-    if (date) { params.push(date); query += ` AND w.recorded_at::date=$${params.length}`; }
-    query += " GROUP BY w.url, w.browser, e.name, e.id ORDER BY total_seconds DESC LIMIT 500";
+      AND w.employee_id = ANY($1::int[])
+      ${date ? "AND w.recorded_at::date=$2" : ""}
+      GROUP BY w.employee_id, w.url, w.browser
+    ),
+    emp_duty AS (
+      -- Unique minutes per employee within shift (no double counting)
+      SELECT w.employee_id,
+        COUNT(DISTINCT CASE
+          WHEN r.start_time IS NULL THEN date_trunc('minute', w.recorded_at)
+          WHEN r.end_time > r.start_time THEN
+            CASE WHEN w.recorded_at::time >= r.start_time AND w.recorded_at::time < r.end_time
+              THEN date_trunc('minute', w.recorded_at) END
+          ELSE
+            CASE WHEN w.recorded_at::time >= r.start_time OR w.recorded_at::time < r.end_time
+              THEN date_trunc('minute', w.recorded_at) END
+        END) * 60 AS emp_duty_seconds,
+        COUNT(DISTINCT date_trunc('minute', w.recorded_at)) * 60 AS emp_total_seconds
+      FROM web_activity w
+      JOIN employees e ON w.employee_id = e.id
+      LEFT JOIN duty_rosters r ON e.roster_id = r.id
+      WHERE e.active = true
+      AND w.url NOT LIKE '[Incognito]%'
+      AND w.url != 'Desktop' AND w.url != 'Unknown'
+      AND w.url != 'New Tab' AND w.url != 'New tab'
+      AND w.url != 'Speed Dial' AND length(w.url) < 150
+      AND w.employee_id = ANY($1::int[])
+      ${date ? "AND w.recorded_at::date=$2" : ""}
+      GROUP BY w.employee_id
+    )
+    SELECT u.url, u.browser, e.name as employee_name, e.id as employee_id,
+      u.url_seconds as total_seconds,
+      u.url_seconds as active_seconds,
+      u.visits,
+      -- Per-URL duty seconds = proportional share of employee total duty
+      ROUND(
+        COALESCE(d.emp_duty_seconds, 0)::numeric
+        * u.url_seconds::numeric
+        / NULLIF(d.emp_total_seconds, 0)
+      ) AS duty_seconds,
+      d.emp_duty_seconds,
+      d.emp_total_seconds
+    FROM url_mins u
+    JOIN employees e ON u.employee_id = e.id
+    LEFT JOIN emp_duty d ON d.employee_id = u.employee_id
+    WHERE e.active = true
+    ORDER BY total_seconds DESC LIMIT 500`;
+    const params = date ? [empIds, date] : [empIds];
     const result = await pool.query(query, params);
 
     // Attach roster info to each row
@@ -309,7 +379,8 @@ app.get('/api/dashboard/app-usage', requireLogin, async (req, res) => {
     let empQuery = `SELECT e.id, e.name, e.department,
       r.start_time as shift_start, r.end_time as shift_end, r.name as roster_name
       FROM employees e LEFT JOIN duty_rosters r ON e.roster_id=r.id
-      WHERE e.active=true`;
+      WHERE e.active=true
+      AND EXISTS (SELECT 1 FROM app_usage a WHERE a.employee_id=e.id ${date ? "AND a.recorded_at::date='" + date + "'" : ''})`;
     const empParams = [];
     if (employee_id) { empParams.push(employee_id); empQuery += ` AND e.id=$${empParams.length}`; }
     if (allowed) { empParams.push(allowed); empQuery += ` AND e.id = ANY($${empParams.length}::int[])`; }
@@ -553,22 +624,59 @@ app.get("/api/employees/deleted", requireLogin, async (req, res) => {
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
+// Permanently delete employee and all their data
+app.delete("/api/employees/:id/permanent", requireLogin, requireAdmin, async (req, res) => {
+  const id = req.params.id;
+const empInfo = await pool.query('SELECT name, email FROM employees WHERE id=$1', [id]);
+    const empName = empInfo.rows[0] ? empInfo.rows[0].name + ' (' + empInfo.rows[0].email + ')' : 'ID: ' + id;
+
+  try {
+    // Delete screenshot files
+    const shots = await pool.query('SELECT filename FROM screenshots WHERE employee_id=$1', [id]);
+    const fs = require('fs');
+    const path = require('path');
+    shots.rows.forEach(function(s){
+      const f = path.join('/home/workpulse/workpulse-app/screenshots', s.filename);
+      if(fs.existsSync(f)) fs.unlinkSync(f);
+    });
+// Delete all DB data
+    await pool.query('DELETE FROM screenshots WHERE employee_id=$1', [id]);
+    await pool.query('DELETE FROM web_activity WHERE employee_id=$1', [id]);
+    await pool.query('DELETE FROM app_usage WHERE employee_id=$1', [id]);
+    await pool.query('DELETE FROM heartbeats WHERE employee_id=$1', [id]);
+    await pool.query('DELETE FROM system_events WHERE employee_id=$1', [id]);
+    await pool.query('DELETE FROM alerts WHERE employee_id=$1', [id]);
+    await pool.query('DELETE FROM user_employee_access WHERE employee_id=$1', [id]);
+await pool.query('DELETE FROM employees WHERE id=$1', [id]);
+    await auditLog(req, 'Employee Permanently Deleted', empName + ' (ID: ' + id + ')');
+
+    res.json({ success: true });
+
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
 // Restore deleted employee
 app.post("/api/employees/:id/restore", requireLogin, async (req, res) => {
   try {
+    const emp = await pool.query('SELECT name,email FROM employees WHERE id=$1', [req.params.id]);
     await pool.query("UPDATE employees SET active=true, deleted_at=NULL WHERE id=$1", [req.params.id]);
+    await auditLog(req, 'Employee Restored', emp.rows[0]?.name + ' (' + emp.rows[0]?.email + ')');
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
+
 
 // Update screenshot interval
 app.post("/api/employees/:id/settings", requireLogin, async (req, res) => {
   try {
     const { screenshot_interval } = req.body;
+    const emp = await pool.query('SELECT name FROM employees WHERE id=$1', [req.params.id]);
     await pool.query("UPDATE employees SET screenshot_interval=$1 WHERE id=$2", [screenshot_interval, req.params.id]);
+    await auditLog(req, 'Screenshot Interval Changed', emp.rows[0]?.name + ' → ' + screenshot_interval + ' mins');
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
+
 
 // Agent gets its settings
 app.get("/api/agent/settings", requireAgent, async (req, res) => {
@@ -620,14 +728,20 @@ app.post('/api/dashboard-users', requireLogin, requireAdmin, async (req, res) =>
       'INSERT INTO dashboard_users (name, email, password_hash, role, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING id, name, email, role',
       [name, email, hash, role || 'user', req.session.adminId]
     );
+    await auditLog(req, 'Monitoring User Created', name + ' (' + email + ') - Role: ' + (role||'user'));
     res.json(result.rows[0]);
+
+
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 app.delete('/api/dashboard-users/:id', requireLogin, requireAdmin, async (req, res) => {
+  const u = await pool.query('SELECT name,email FROM dashboard_users WHERE id=$1', [req.params.id]);
   await pool.query('UPDATE dashboard_users SET active=false WHERE id=$1', [req.params.id]);
+  await auditLog(req, 'Monitoring User Removed', u.rows[0]?.name + ' (' + u.rows[0]?.email + ')');
   res.json({ success: true });
 });
+
 
 app.post('/api/dashboard-users/:id/employees', requireLogin, requireAdmin, async (req, res) => {
   const { employee_ids } = req.body;
@@ -662,14 +776,21 @@ app.post('/api/dashboard-users/:id/reset-password', requireLogin, requireAdmin, 
     const hash = await bcrypt.hash(password, 10);
     if (type === 'admin') {
       const adminRes = await pool.query('UPDATE admins SET password_hash=$1 WHERE id=$2 RETURNING id', [hash, req.params.id]);
-      if (adminRes.rows.length) return res.json({ success: true });
+      if (adminRes.rows.length) {
+        await auditLog(req, 'Admin Password Reset', 'ID: ' + req.params.id);
+        return res.json({ success: true });
+      }
     } else {
       const userRes = await pool.query('UPDATE dashboard_users SET password_hash=$1 WHERE id=$2 RETURNING id', [hash, req.params.id]);
-      if (userRes.rows.length) return res.json({ success: true });
+      if (userRes.rows.length) {
+        await auditLog(req, 'User Password Reset', 'ID: ' + req.params.id);
+        return res.json({ success: true });
+      }
     }
     res.status(404).json({ error: 'User not found' });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
+
 
 
 // ---- USER LOGIN ----
@@ -707,10 +828,13 @@ app.post('/api/user-login', async (req, res) => {
 app.post('/api/employees/:id/retention', requireLogin, requireAdmin, async (req, res) => {
   const { days } = req.body;
   try {
+    const emp = await pool.query('SELECT name FROM employees WHERE id=$1', [req.params.id]);
     await pool.query('UPDATE employees SET data_retention_days=$1 WHERE id=$2', [days, req.params.id]);
+    await auditLog(req, 'Data Retention Changed', emp.rows[0]?.name + ' → ' + days + ' days');
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
+
 
 async function runDataRetention() {
   try {
@@ -728,6 +852,36 @@ async function runDataRetention() {
 
 setInterval(runDataRetention, 24 * 60 * 60 * 1000);
 runDataRetention();
+
+// Auto permanently delete expired deleted employees
+async function runDeletedCleanup() {
+  try {
+    const expired = await pool.query(
+      `SELECT id FROM employees WHERE active=false AND deleted_at < NOW() - INTERVAL '10 days'`
+    );
+    for (const emp of expired.rows) {
+      const shots = await pool.query('SELECT filename FROM screenshots WHERE employee_id=$1', [emp.id]);
+      const fs = require('fs');
+      const path = require('path');
+      shots.rows.forEach(function(s){
+        const f = path.join('/home/workpulse/workpulse-app/screenshots', s.filename);
+        if(fs.existsSync(f)) fs.unlinkSync(f);
+      });
+      await pool.query('DELETE FROM screenshots WHERE employee_id=$1', [emp.id]);
+      await pool.query('DELETE FROM web_activity WHERE employee_id=$1', [emp.id]);
+      await pool.query('DELETE FROM app_usage WHERE employee_id=$1', [emp.id]);
+      await pool.query('DELETE FROM heartbeats WHERE employee_id=$1', [emp.id]);
+      await pool.query('DELETE FROM system_events WHERE employee_id=$1', [emp.id]);
+	await pool.query('DELETE FROM alerts WHERE employee_id=$1', [emp.id]);
+      await pool.query('DELETE FROM user_employee_access WHERE employee_id=$1', [emp.id]);
+      await pool.query('DELETE FROM employees WHERE id=$1', [emp.id]);
+      console.log('[Cleanup] Permanently deleted expired employee id:', emp.id);
+    }
+  } catch(err) { console.error('[Cleanup] Error:', err.message); }
+}
+setInterval(runDeletedCleanup, 24 * 60 * 60 * 1000);
+runDeletedCleanup();
+
 // Extension web activity endpoint
 app.post("/api/agent/web-activity", requireAgent, async (req, res) => {
   const { urls } = req.body;
@@ -798,6 +952,7 @@ app.post('/api/rosters', requireLogin, requireAdmin, async (req, res) => {
       'INSERT INTO duty_rosters (name, start_time, end_time, description, color) VALUES ($1,$2,$3,$4,$5) RETURNING *',
       [name, start_time, end_time, description || '', color || '#00e5ff']
     );
+    await auditLog(req, 'Roster Created', name + ' (' + start_time + ' - ' + end_time + ')');
     res.json(result.rows[0]);
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -810,6 +965,7 @@ app.put('/api/rosters/:id', requireLogin, requireAdmin, async (req, res) => {
       'UPDATE duty_rosters SET name=$1, start_time=$2, end_time=$3, description=$4, color=$5 WHERE id=$6 RETURNING *',
       [name, start_time, end_time, description || '', color || '#00e5ff', req.params.id]
     );
+    await auditLog(req, 'Roster Updated', name + ' (' + start_time + ' - ' + end_time + ')');
     res.json(result.rows[0]);
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -818,6 +974,7 @@ app.put('/api/rosters/:id', requireLogin, requireAdmin, async (req, res) => {
 app.delete('/api/rosters/:id', requireLogin, requireAdmin, async (req, res) => {
   try {
     await pool.query('UPDATE duty_rosters SET active=false WHERE id=$1', [req.params.id]);
+    await auditLog(req, 'Roster Deleted', 'ID: ' + req.params.id);
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -827,9 +984,22 @@ app.post('/api/employees/:id/roster', requireLogin, async (req, res) => {
   const { roster_id } = req.body;
   try {
     await pool.query('UPDATE employees SET roster_id=$1 WHERE id=$2', [roster_id || null, req.params.id]);
+    await auditLog(req, 'Roster Assigned', 'Employee ID: ' + req.params.id + ' Roster: ' + (roster_id||'None'));
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
+
+// Update employee department
+app.post("/api/employees/:id/department", requireLogin, requireAdmin, async (req, res) => {
+  const { department } = req.body;
+  try {
+    const emp = await pool.query("SELECT name FROM employees WHERE id=$1", [req.params.id]);
+    await pool.query("UPDATE employees SET department=$1 WHERE id=$2", [department, req.params.id]);
+    await auditLog(req, "Department Changed", emp.rows[0]?.name + " -> " + department);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
 
 
 app.post('/api/agent/system-event', requireAgent, async (req, res) => {
@@ -893,6 +1063,52 @@ app.get('/download/agent-js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript');
   res.sendFile(file);
 });
+
+app.get('/api/audit-log', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = 20;
+    const offset = (page - 1) * limit;
+    const countRes = await pool.query('SELECT COUNT(*) FROM audit_log');
+    const total = parseInt(countRes.rows[0].count);
+    const result = await pool.query(
+      'SELECT * FROM audit_log ORDER BY created_at DESC LIMIT $1 OFFSET $2',
+      [limit, offset]
+    );
+    res.json({ rows: result.rows, total, page, pages: Math.ceil(total/limit) });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Departments
+app.get('/api/departments', requireLogin, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM departments ORDER BY name');
+    res.json(result.rows);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/departments', requireLogin, requireAdmin, async (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: 'Name required' });
+  try {
+    const result = await pool.query('INSERT INTO departments (name) VALUES ($1) RETURNING *', [name]);
+    await auditLog(req, 'Department Created', name);
+    res.json(result.rows[0]);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/departments/:id', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const d = await pool.query('SELECT name FROM departments WHERE id=$1', [req.params.id]);
+    const name = d.rows[0]?.name;
+    const empCount = await pool.query('SELECT COUNT(*) FROM employees WHERE department=$1 AND active=true', [name]);
+    if (parseInt(empCount.rows[0].count) > 0) return res.status(400).json({ error: 'Department has active employees. Reassign them first.' });
+    await pool.query('DELETE FROM departments WHERE id=$1', [req.params.id]);
+    await auditLog(req, 'Department Deleted', name);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
 
 app.listen(PORT, () => {
   console.log(`WorkPulse server running on port ${PORT}`);
