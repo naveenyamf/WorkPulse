@@ -179,16 +179,32 @@ if ($apps) {
 function takeScreenshot(callback) {
   try {
     const tmpFile = path.join(os.tmpdir(), 'wp_screenshot.png').replace(/\\/g, '/');
-    const script = `
+const script = `
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-$screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-$bitmap = New-Object System.Drawing.Bitmap($screen.Width, $screen.Height)
+$screens = [System.Windows.Forms.Screen]::AllScreens
+$left = [int]::MaxValue; $top = [int]::MaxValue; $right = [int]::MinValue; $bottom = [int]::MinValue
+foreach ($s in $screens) {
+  if ($s.Bounds.Left -lt $left) { $left = $s.Bounds.Left }
+  if ($s.Bounds.Top -lt $top) { $top = $s.Bounds.Top }
+  if ($s.Bounds.Right -gt $right) { $right = $s.Bounds.Right }
+  if ($s.Bounds.Bottom -gt $bottom) { $bottom = $s.Bounds.Bottom }
+}
+$width = $right - $left
+$height = $bottom - $top
+$bitmap = New-Object System.Drawing.Bitmap($width, $height)
 $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-$graphics.CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size)
+foreach ($screen in $screens) {
+  $destX = $screen.Bounds.Left - $left
+  $destY = $screen.Bounds.Top - $top
+  $graphics.CopyFromScreen($screen.Bounds.Location, (New-Object System.Drawing.Point($destX, $destY)), $screen.Bounds.Size)
+}
 $bitmap.Save("${tmpFile}")
 $graphics.Dispose()
 $bitmap.Dispose()`;
+
+
+
     const encoded = Buffer.from(script, 'utf16le').toString('base64');
     exec(
       'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ' + encoded,
@@ -269,6 +285,7 @@ function scheduleScreenshot() {
   setTimeout(async function() {
     if (!AGENT_TOKEN) { scheduleScreenshot(); return; }
     takeScreenshot(async function(err, tmpFile) {
+	console.log('[SS] Taking screenshot...');
       if (!err) {
         try {
           var form = new FormData();
@@ -278,12 +295,12 @@ function scheduleScreenshot() {
             timeout: 30000
           });
           fs.unlinkSync(tmpFile);
-          console.log('[' + new Date().toLocaleTimeString() + '] Screenshot sent');
+		console.log('[SS] Screenshot sent OK - ' + new Date().toLocaleTimeString());
         } catch(e) {
           console.error('Screenshot upload error:', e.message);
         }
       } else {
-        console.error('Screenshot error:', err.message);
+		console.error('Screenshot error:', err.message, err.stack||'');
       }
       await fetchSettings();
       scheduleScreenshot();

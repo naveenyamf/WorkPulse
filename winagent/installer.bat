@@ -1,12 +1,12 @@
 @echo off
 setlocal enabledelayedexpansion
-title WorkPulse Agent Installer
+title WorkPulse Agent Installer v1.1
 color 0B
 cls
 
 echo.
 echo  ================================================
-echo   WorkPulse Agent Installer
+echo   WorkPulse Agent Installer v1.1
 echo  ================================================
 echo.
 
