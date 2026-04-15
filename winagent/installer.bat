@@ -17,6 +17,13 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+if not exist "%~dp0WorkPulse-Agent.exe" (
+    echo  ERROR: WorkPulse-Agent.exe not found in this folder.
+    echo  Make sure you extracted the full ZIP before running.
+    pause
+    exit /b 1
+)
+
 echo.
 echo  Examples:
 echo    Local IP  : http://192.168.1.100
@@ -29,14 +36,12 @@ if "!SERVER_URL!"=="" (
     exit /b 1
 )
 
-:: Remove trailing slash
 if "!SERVER_URL:~-1!"=="/" set SERVER_URL=!SERVER_URL:~0,-1!
 
-:: If no protocol given, try https first then fall back to http
 echo !SERVER_URL! | findstr /i "^http" >nul 2>&1
 if errorlevel 1 (
     echo  No protocol specified, detecting...
-    powershell -NoProfile -Command "try { $r = Invoke-WebRequest -Uri 'https://!SERVER_URL!' -UseBasicParsing -TimeoutSec 5; exit 0 } catch { exit 1 }" >nul 2>&1
+    powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'https://!SERVER_URL!' -UseBasicParsing -TimeoutSec 5 | Out-Null; exit 0 } catch { exit 1 }" >nul 2>&1
     if !errorlevel!==0 (
         set SERVER_URL=https://!SERVER_URL!
         echo  Using HTTPS
@@ -48,14 +53,11 @@ if errorlevel 1 (
 
 echo  Server URL: !SERVER_URL!
 
-:: Validate server is reachable
 echo  Checking server connection...
 powershell -NoProfile -Command "try { $r = Invoke-WebRequest -Uri '!SERVER_URL!' -UseBasicParsing -TimeoutSec 8; if($r.StatusCode -lt 500){exit 0}else{exit 1} } catch { exit 1 }" >nul 2>&1
 if %errorlevel% neq 0 (
     echo.
     echo  ERROR: Cannot reach server at !SERVER_URL!
-    echo  Please check the URL and try again.
-    echo.
     pause
     exit /b 1
 )
@@ -89,25 +91,33 @@ echo  Employee found! Token retrieved.
 echo  Installing to C:\WorkPulse...
 mkdir "C:\WorkPulse" >nul 2>&1
 
-echo  Downloading agent...
-powershell -NoProfile -Command "Invoke-WebRequest -Uri '!SERVER_URL!/download/agent-exe' -OutFile 'C:\WorkPulse\WorkPulse-Agent.exe' -UseBasicParsing" >nul 2>&1
+echo  Copying agent...
+copy /Y "%~dp0WorkPulse-Agent.exe" "C:\WorkPulse\WorkPulse-Agent.exe" >nul
 if not exist "C:\WorkPulse\WorkPulse-Agent.exe" (
-    echo  ERROR: Failed to download agent from server.
+    echo  ERROR: Failed to copy agent executable.
     pause
     exit /b 1
 )
 
 echo {"email":"!EMPLOYEE_EMAIL!","token":"!TOKEN!","server_url":"!SERVER_URL!"} > "C:\WorkPulse\config.json"
 
-echo  Downloading launcher...
-powershell -NoProfile -Command "Invoke-WebRequest -Uri '!SERVER_URL!/download/launch-vbs' -OutFile 'C:\WorkPulse\launch.vbs' -UseBasicParsing" >nul 2>&1
-if not exist "C:\WorkPulse\launch.vbs" (
-    echo  ERROR: Failed to download launcher.
-    pause
-    exit /b 1
-)
+echo  Creating launcher...
+(
+echo Set oShell = CreateObject^("WScript.Shell"^)
+echo Set oFSO = CreateObject^("Scripting.FileSystemObject"^)
+echo strDir = "C:\WorkPulse"
+echo strExe = strDir ^& "\WorkPulse-Agent.exe"
+echo If oFSO.FileExists^(strExe^) Then
+echo     oShell.Run Chr^(34^) ^& strExe ^& Chr^(34^), 0, False
+echo End If
+) > "C:\WorkPulse\launch.vbs"
+
+if exist "%~dp0updater.bat"   copy /Y "%~dp0updater.bat"   "C:\WorkPulse\updater.bat"   >nul
+if exist "%~dp0uninstall.bat" copy /Y "%~dp0uninstall.bat" "C:\WorkPulse\uninstall.bat" >nul
 
 reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\Run" /v "WorkPulse" /t REG_SZ /d "wscript.exe \"C:\WorkPulse\launch.vbs\"" /f >nul
+
+echo  Starting agent...
 start "" wscript.exe "C:\WorkPulse\launch.vbs"
 
 echo.
@@ -118,10 +128,7 @@ echo.
 echo   Employee : !EMPLOYEE_EMAIL!
 echo   Server   : !SERVER_URL!
 echo   Location : C:\WorkPulse\
-echo   Startup  : Enabled (auto-starts on Windows login)
-echo   Status   : Agent running in background
-echo.
-echo   You can close this window.
-echo  ================================================
+echo   Startup  : Enabled
+echo   Status   : Agent running
 echo.
 pause
