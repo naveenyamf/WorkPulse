@@ -1,9 +1,12 @@
 node_modules/
 .env
 screenshots/
+backups/
 *.log
 dist/
 *.zip
 *.exe
+*.tar.gz
+*.wpbackup
 wp-extension/
 browser-extension/

@@ -246,6 +246,9 @@ tr.emp-row:hover{background:var(--card-hover)}
     <div class="nav-item admin-only" onclick="showPage('auditlog',this)" id="nav-auditlog">
       <span class="nav-icon">📋</span><span>Audit Log</span>
     </div>
+    <div class="nav-item admin-only" onclick="showPage('syssettings',this)" id="nav-syssettings">
+      <span class="nav-icon">⚙️</span><span>System Settings</span>
+    </div>
     <div class="nav-item" onclick="downloadAgent()">
       <span class="nav-icon">⤓</span><span>Download Agent</span>
     </div>
@@ -629,6 +632,57 @@ tr.emp-row:hover{background:var(--card-hover)}
     </div>
   </div>
 
+  <!-- SCREENSHOT BACKUP & RESTORE -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+    <div class="panel">
+      <div class="panel-header"><div class="panel-title">📷 Backup Screenshots</div></div>
+      <div style="padding:20px 22px">
+        <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:16px">
+          Downloads all screenshot image files as a <code style="color:var(--accent)">.tar.gz</code> archive. Use together with the DB backup for a complete system backup.
+        </div>
+        <button class="btn btn-accent" id="ssBackupBtn" onclick="doScreenshotBackup()" style="width:100%">
+          <span id="ssBackupBtnText">📷 Download Screenshots Backup</span>
+        </button>
+        <div id="ssBackupStatus" style="display:none;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:12px;align-items:center;gap:8px"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><div class="panel-title">📷 Restore Screenshots</div></div>
+      <div style="padding:20px 22px">
+        <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:16px">
+          Upload a <code style="color:var(--accent)">.tar.gz</code> screenshots archive to restore all image files.
+        </div>
+        <div id="ssRestoreDropZone" onclick="document.getElementById('ssRestoreInput').click()"
+             ondragover="ssDragOver(event)" ondragleave="ssDragLeave(event)" ondrop="ssDrop(event)"
+             style="border:2px dashed var(--border2);border-radius:10px;padding:20px 16px;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:12px">
+          <div style="font-size:22px;margin-bottom:6px">📂</div>
+          <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:3px">Click or drag & drop</div>
+          <div style="font-size:11px;color:var(--text3)">.tar.gz screenshots archive</div>
+        </div>
+        <input type="file" id="ssRestoreInput" accept=".gz,.tar.gz" style="display:none" onchange="ssFileChosen(this)">
+        <div id="ssRestoreFileInfo" style="display:none;padding:7px 11px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);border-radius:6px;font-size:11px;color:#10b981;font-family:monospace;margin-bottom:12px"></div>
+        <button class="btn" id="ssRestoreBtn" onclick="doScreenshotRestore()" disabled
+                style="width:100%;border-color:rgba(16,185,129,0.4);color:#10b981;background:rgba(16,185,129,0.05)">
+          <span id="ssRestoreBtnText">📷 Restore Screenshots</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREENSHOT RESTORE LOG -->
+  <div class="panel" id="ssRestoreLogPanel" style="display:none;margin-bottom:18px">
+    <div class="panel-header"><div class="panel-title">📷 Screenshot Restore Progress</div></div>
+    <div style="padding:16px 22px">
+      <div style="display:flex;justify-content:space-between;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">
+        <span id="ssRestoreLabel">Starting…</span><span id="ssRestorePct">0%</span>
+      </div>
+      <div style="height:4px;background:var(--border2);border-radius:2px;overflow:hidden;margin-bottom:14px">
+        <div id="ssRestoreFill" style="height:100%;width:0%;background:linear-gradient(90deg,#10b981,#34d399);border-radius:2px;transition:width 0.4s ease;box-shadow:0 0 8px #10b981"></div>
+      </div>
+      <div id="ssRestoreLog" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;font-family:monospace;font-size:11px;line-height:1.8;height:160px;overflow-y:auto"></div>
+    </div>
+  </div>
+
   <!-- BACKUP HISTORY -->
   <div class="panel">
     <div class="panel-header">
@@ -661,8 +715,8 @@ tr.emp-row:hover{background:var(--card-hover)}
           <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Date To</label>
           <input type="date" id="report-to" class="filter-select" style="width:100%;padding:9px 12px">
         </div>
-        <button class="btn btn-accent" onclick="downloadReport()" id="reportBtn" style="padding:9px 20px;margin-top:0;white-space:nowrap">
-          <span id="reportBtnText">⤓ Export Excel</span>
+        <button class="btn btn-accent" onclick="exportReport()" id="exportReportBtn" style="padding:9px 20px;margin-top:0;white-space:nowrap">
+          <span id="exportReportText">⤓ Export Excel</span>
         </button>
       </div>
       <div id="reportStatus" style="display:none;margin-top:14px;padding:10px 14px;border-radius:8px;font-size:12px"></div>
@@ -785,6 +839,107 @@ tr.emp-row:hover{background:var(--card-hover)}
   </div>
 </div>
 
+<!-- SYSTEM SETTINGS PAGE -->
+<div class="page" id="page-syssettings">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+
+    <!-- TIMEZONE PANEL -->
+    <div class="panel">
+      <div class="panel-header"><div class="panel-title">🌐 Timezone Settings</div></div>
+      <div style="padding:20px 22px">
+        <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:16px">
+          Set the timezone for all date displays — calendars, activity logs, reports and exports will all use this timezone.
+        </div>
+        <div style="margin-bottom:16px">
+          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Select Timezone</label>
+          <select id="sys-timezone" class="filter-select" style="width:100%;padding:10px 12px;font-size:13px">
+            <optgroup label="Asia">
+              <option value="Asia/Kolkata">Asia/Kolkata (IST, UTC+5:30)</option>
+              <option value="Asia/Dubai">Asia/Dubai (GST, UTC+4)</option>
+              <option value="Asia/Singapore">Asia/Singapore (SGT, UTC+8)</option>
+              <option value="Asia/Tokyo">Asia/Tokyo (JST, UTC+9)</option>
+              <option value="Asia/Shanghai">Asia/Shanghai (CST, UTC+8)</option>
+              <option value="Asia/Karachi">Asia/Karachi (PKT, UTC+5)</option>
+              <option value="Asia/Dhaka">Asia/Dhaka (BST, UTC+6)</option>
+              <option value="Asia/Riyadh">Asia/Riyadh (AST, UTC+3)</option>
+              <option value="Asia/Bangkok">Asia/Bangkok (ICT, UTC+7)</option>
+            </optgroup>
+            <optgroup label="Europe">
+              <option value="Europe/London">Europe/London (GMT/BST)</option>
+              <option value="Europe/Paris">Europe/Paris (CET, UTC+1)</option>
+              <option value="Europe/Berlin">Europe/Berlin (CET, UTC+1)</option>
+              <option value="Europe/Moscow">Europe/Moscow (MSK, UTC+3)</option>
+              <option value="Europe/Istanbul">Europe/Istanbul (TRT, UTC+3)</option>
+            </optgroup>
+            <optgroup label="Americas">
+              <option value="America/New_York">America/New_York (EST, UTC-5)</option>
+              <option value="America/Chicago">America/Chicago (CST, UTC-6)</option>
+              <option value="America/Denver">America/Denver (MST, UTC-7)</option>
+              <option value="America/Los_Angeles">America/Los_Angeles (PST, UTC-8)</option>
+              <option value="America/Sao_Paulo">America/Sao_Paulo (BRT, UTC-3)</option>
+              <option value="America/Toronto">America/Toronto (EST, UTC-5)</option>
+            </optgroup>
+            <optgroup label="Pacific / Other">
+              <option value="Australia/Sydney">Australia/Sydney (AEST, UTC+10)</option>
+              <option value="Pacific/Auckland">Pacific/Auckland (NZST, UTC+12)</option>
+              <option value="Africa/Cairo">Africa/Cairo (EET, UTC+2)</option>
+              <option value="Africa/Nairobi">Africa/Nairobi (EAT, UTC+3)</option>
+              <option value="UTC">UTC (Universal Time)</option>
+            </optgroup>
+          </select>
+        </div>
+        <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:12px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <span style="color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:1px;font-size:10px">Current Setting</span>
+            <span id="current-tz-display" style="color:var(--accent);font-family:monospace">—</span>
+          </div>
+          <div style="display:flex;justify-content:space-between">
+            <span style="color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:1px;font-size:10px">Local Time Now</span>
+            <span id="local-time-display" style="color:var(--text2);font-family:monospace">—</span>
+          </div>
+        </div>
+        <button class="btn btn-accent" onclick="saveSysSettings()" style="width:100%">💾 Save Settings</button>
+        <div id="sysSettingsStatus" style="display:none;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:12px"></div>
+      </div>
+    </div>
+
+    <!-- COMPANY / DISPLAY PANEL -->
+    <div class="panel">
+      <div class="panel-header"><div class="panel-title">🏢 Company Settings</div></div>
+      <div style="padding:20px 22px">
+        <div style="margin-bottom:16px">
+          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Company Name</label>
+          <input type="text" id="sys-company-name" placeholder="e.g. Acme Corp" class="filter-select" style="width:100%;padding:10px 12px;font-size:13px">
+          <div style="font-size:10px;color:var(--text3);margin-top:4px">Shown in reports and email headers</div>
+        </div>
+        <div style="margin-bottom:16px">
+          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Date Format</label>
+          <select id="sys-date-format" class="filter-select" style="width:100%;padding:10px 12px">
+            <option value="DD/MM/YYYY">DD/MM/YYYY (15/04/2026)</option>
+            <option value="MM/DD/YYYY">MM/DD/YYYY (04/15/2026)</option>
+            <option value="YYYY-MM-DD">YYYY-MM-DD (2026-04-15)</option>
+          </select>
+        </div>
+        <div style="margin-bottom:20px">
+          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Default Theme</label>
+          <select id="sys-default-theme" class="filter-select" style="width:100%;padding:10px 12px">
+            <option value="system">System Default</option>
+            <option value="dark">Always Dark</option>
+            <option value="light">Always Light</option>
+          </select>
+        </div>
+        <button class="btn btn-accent" onclick="saveSysSettings()" style="width:100%">💾 Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CURRENT SETTINGS SUMMARY -->
+  <div class="panel">
+    <div class="panel-header"><div class="panel-title">📋 Active Configuration</div></div>
+    <div id="sysSettingsSummary" style="padding:20px 22px;display:grid;grid-template-columns:repeat(4,1fr);gap:14px"></div>
+  </div>
+</div>
+
 <!-- DEPARTMENTS PAGE -->
 <div class="page" id="page-departments">
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
@@ -801,143 +956,6 @@ tr.emp-row:hover{background:var(--card-hover)}
     <div class="panel">
       <div class="panel-header"><div class="panel-title">All Departments</div><button class="btn" onclick="loadDepartments()">↻ Refresh</button></div>
       <div id="deptList"></div>
-    </div>
-  </div>
-</div>
-
-<!-- REPORTS PAGE -->
-<div class="page" id="page-reports">
-  <div class="panel" style="margin-bottom:18px">
-    <div class="panel-header">
-      <div class="panel-title">📊 Export Employee Report</div>
-    </div>
-    <div style="padding:20px 22px">
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px">
-        <div>
-          <label style="display:block;font-size:10px;color:var(--text3);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;font-weight:700">Employee</label>
-          <select id="report-emp" class="filter-select" style="width:100%;padding:9px 12px">
-            <option value="">All Employees</option>
-          </select>
-        </div>
-        <div>
-          <label style="display:block;font-size:10px;color:var(--text3);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;font-weight:700">From Date</label>
-          <input type="date" id="report-from" class="filter-select" style="width:100%;padding:9px 12px">
-        </div>
-        <div>
-          <label style="display:block;font-size:10px;color:var(--text3);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;font-weight:700">To Date</label>
-          <input type="date" id="report-to" class="filter-select" style="width:100%;padding:9px 12px">
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px">
-          <input type="checkbox" id="rpt-summary" checked style="accent-color:var(--accent)"> Summary
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px">
-          <input type="checkbox" id="rpt-web" checked style="accent-color:var(--accent)"> Web Activity
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px">
-          <input type="checkbox" id="rpt-apps" checked style="accent-color:var(--accent)"> App Usage
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px">
-          <input type="checkbox" id="rpt-daily" checked style="accent-color:var(--accent)"> Daily Breakdown
-        </label>
-      </div>
-      <button class="btn btn-accent" id="exportReportBtn" onclick="exportReport()" style="width:200px">
-        <span id="exportReportText">⤓ Export Excel Report</span>
-      </button>
-      <div id="reportStatus" style="display:none;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:12px"></div>
-    </div>
-  </div>
-
-  <!-- Preview summary cards -->
-  <div id="reportPreview" style="display:none">
-    <div class="panel">
-      <div class="panel-header"><div class="panel-title">📋 Report Preview</div></div>
-      <div id="reportPreviewContent" style="padding:20px 22px"></div>
-    </div>
-  </div>
-</div>
-
-<!-- EMAIL CONFIG PAGE -->
-<div class="page" id="page-emailconfig">
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
-    <div class="panel">
-      <div class="panel-header"><div class="panel-title">✉️ SMTP Configuration</div></div>
-      <div style="padding:20px 22px">
-        <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:18px">
-          Configure email settings for forgot password and login OTP. Supports Gmail, Outlook, and any SMTP server.
-        </div>
-        <div style="margin-bottom:14px">
-          <label style="display:block;font-size:10px;color:var(--text3);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;font-weight:700">SMTP Host</label>
-          <input type="text" id="smtp-host" placeholder="smtp.gmail.com" class="filter-select" style="width:100%;padding:9px 12px;font-family:monospace">
-        </div>
-        <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:14px">
-          <div>
-            <label style="display:block;font-size:10px;color:var(--text3);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;font-weight:700">SMTP Username</label>
-            <input type="text" id="smtp-user" placeholder="you@gmail.com" class="filter-select" style="width:100%;padding:9px 12px">
-          </div>
-          <div>
-            <label style="display:block;font-size:10px;color:var(--text3);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;font-weight:700">Port</label>
-            <input type="text" id="smtp-port" placeholder="587" class="filter-select" style="width:100%;padding:9px 12px;font-family:monospace">
-          </div>
-        </div>
-        <div style="margin-bottom:14px">
-          <label style="display:block;font-size:10px;color:var(--text3);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;font-weight:700">SMTP Password / App Password</label>
-          <input type="password" id="smtp-pass" placeholder="••••••••••••" class="filter-select" style="width:100%;padding:9px 12px">
-          <div style="font-size:10px;color:var(--text3);margin-top:4px">💡 For Gmail: use an <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color:var(--accent)">App Password</a>, not your regular password</div>
-        </div>
-        <div style="margin-bottom:14px">
-          <label style="display:block;font-size:10px;color:var(--text3);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;font-weight:700">From Name</label>
-          <input type="text" id="smtp-from-name" placeholder="WorkPulse" class="filter-select" style="width:100%;padding:9px 12px">
-        </div>
-        <div style="margin-bottom:18px">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2)">
-            <input type="checkbox" id="smtp-tls" checked style="accent-color:var(--accent)"> Use TLS/STARTTLS
-          </label>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <button class="btn btn-accent" onclick="saveEmailConfig()" style="margin-top:0">💾 Save Config</button>
-          <button class="btn" onclick="testEmailConfig()" style="margin-top:0" id="testEmailBtn">📨 Send Test Email</button>
-        </div>
-        <div id="emailConfigStatus" style="display:none;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:12px"></div>
-      </div>
-    </div>
-
-    <div>
-      <div class="panel" style="margin-bottom:18px">
-        <div class="panel-header"><div class="panel-title">🔐 MFA Settings</div></div>
-        <div style="padding:20px 22px">
-          <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:16px">
-            When enabled, all admin logins will require a 6-digit OTP sent to their email address.
-          </div>
-          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px">
-            <input type="checkbox" id="mfa-enabled" style="accent-color:var(--accent);width:16px;height:16px">
-            <div>
-              <div style="font-size:13px;font-weight:600;color:var(--text)">Enable Email OTP (MFA)</div>
-              <div style="font-size:11px;color:var(--text3);margin-top:2px">Require email verification on every login</div>
-            </div>
-          </label>
-          <div style="font-size:11px;color:var(--text3);background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:10px 12px;margin-bottom:14px">
-            ⚠️ Make sure SMTP is configured and tested before enabling MFA, otherwise you may be locked out.
-          </div>
-          <button class="btn btn-accent" onclick="saveMfaSettings()" style="margin-top:0">💾 Save MFA Settings</button>
-        </div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-header"><div class="panel-title">📧 Quick Presets</div></div>
-        <div style="padding:16px 18px;display:flex;flex-direction:column;gap:8px">
-          <button class="btn" style="margin-top:0;justify-content:flex-start;gap:12px" onclick="applyPreset('gmail')">
-            <span style="font-size:16px">📧</span><div style="text-align:left"><div style="font-size:12px;font-weight:600">Gmail</div><div style="font-size:10px;color:var(--text3)">smtp.gmail.com · Port 587</div></div>
-          </button>
-          <button class="btn" style="margin-top:0;justify-content:flex-start;gap:12px" onclick="applyPreset('outlook')">
-            <span style="font-size:16px">📨</span><div style="text-align:left"><div style="font-size:12px;font-weight:600">Outlook / Office 365</div><div style="font-size:10px;color:var(--text3)">smtp.office365.com · Port 587</div></div>
-          </button>
-          <button class="btn" style="margin-top:0;justify-content:flex-start;gap:12px" onclick="applyPreset('yahoo')">
-            <span style="font-size:16px">📮</span><div style="text-align:left"><div style="font-size:12px;font-weight:600">Yahoo Mail</div><div style="font-size:10px;color:var(--text3)">smtp.mail.yahoo.com · Port 587</div></div>
-          </button>
-        </div>
-      </div>
     </div>
   </div>
 </div>
@@ -1135,7 +1153,7 @@ function showPage(name,el){
     var p=document.getElementById('nav-webactivity-parent');
     if(g){g.style.display='block';if(a)a.style.transform='rotate(90deg)';if(p)p.classList.add('open');}
   }
-  var titles={dashboard:'Dashboard',employees:'Employees',addemployee:'Add Agents to Monitor',screenshots:'Screenshots',webactivity:'Web Activity',appusage:'App Usage',alerts:'Alerts',flagged:'Flagged Screenshots',deleted:'Deleted Users',users:'Admin / Monitor Users',roster:'Duty Roster',sysactivity:'System Activity',auditlog:'Audit Log',departments:'Departments',backup:'Backup & Restore',reports:'Reports',emailconfig:'Email Configuration'};
+  var titles={dashboard:'Dashboard',employees:'Employees',addemployee:'Add Agents to Monitor',screenshots:'Screenshots',webactivity:'Web Activity',appusage:'App Usage',alerts:'Alerts',flagged:'Flagged Screenshots',deleted:'Deleted Users',users:'Admin / Monitor Users',roster:'Duty Roster',sysactivity:'System Activity',auditlog:'Audit Log',syssettings:'System Settings',departments:'Departments',backup:'Backup & Restore',reports:'Reports',emailconfig:'Email Configuration'};
   document.getElementById('pageTitle').textContent=titles[name]||name;
   if(name==='dashboard'){loadStats();loadEmployees();}
   if(name==='employees'){loadEmployeesFull();}
@@ -1150,6 +1168,7 @@ function showPage(name,el){
   if(name==='roster'){loadRosters();loadRosterAssign();}
   if(name==='sysactivity'){populateDropdown('sys-emp');initSysCalendar();loadSysActivity();}
   if(name==='auditlog'){loadAuditLog();}
+  if(name==='syssettings'){loadSysSettings();}
   if(name==='departments'){loadDepartments();}
   if(name==='backup'){loadBackupHistory();}
   if(name==='reports'){loadReportsPage();}
@@ -1163,7 +1182,7 @@ function refreshPage(){
 
 function setToday(id){
   var el=document.getElementById(id);
-  if(el) el.value=new Date().toISOString().split('T')[0];
+  if(el) el.value=(function(){var _d=new Date();return _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');})();
 }
 
 async function populateDropdown(id){
@@ -1182,7 +1201,7 @@ async function doLogout(){
   window.location.href='/';
 }
 
-function downloadAgent(){window.location.href='/download/agent-js';}
+function downloadAgent(){window.location.href='/download/agent';}
 
 function toast(msg,color){
   var t=document.getElementById('toast');
@@ -1354,7 +1373,7 @@ function renderCalendar(){
   if(lbl) lbl.textContent=months[calMonth]+' '+calYear;
   var firstDay=new Date(calYear,calMonth,1).getDay();
   var daysInMonth=new Date(calYear,calMonth+1,0).getDate();
-  var today=new Date().toISOString().split('T')[0];
+  var today=(function(){var _d=new Date();return _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');})();
   var html='';
   for(var i=0;i<firstDay;i++) html+='<div></div>';
   for(var d=1;d<=daysInMonth;d++){
@@ -1365,7 +1384,7 @@ function renderCalendar(){
     var bg=isSel?'#00e5ff':isToday?'rgba(0,229,255,0.15)':'transparent';
     var col=isSel?'#0a0c10':isToday?'#00e5ff':'#e2e8f0';
     var bdr=isSel?'1px solid #00e5ff':isToday?'1px solid rgba(0,229,255,0.4)':'1px solid transparent';
-    var dotColor=isSel?'#0a0c10':'#00e5ff';
+    var dotColor=isSel?'#000':'#00e5ff';
     html+='<div onclick="selectDate(\''+ds+'\');event.stopPropagation()" style="padding:3px 1px;border-radius:4px;cursor:pointer;background:'+bg+';color:'+col+';font-size:11px;border:'+bdr+';text-align:center;min-height:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px">'+
       '<span>'+d+'</span>'+
       (hasSS?'<div style="width:5px;height:5px;border-radius:50%;background:'+dotColor+'"></div>':'<div style="width:5px;height:5px"></div>')+
@@ -1628,10 +1647,42 @@ function extractDomain(rawUrl) {
 function getFaviconUrl(rawUrl) {
   var d = extractDomain(rawUrl);
   if (!d) return '';
-  // WorkPulse internal server - use our custom SVG
   if (d === '10.10.11.251') return WP_FAVICON_SVG;
-  // Use Google's reliable favicon service
-  return 'https://www.google.com/s2/favicons?domain=' + d + '&sz=32';
+  // Primary: Google favicon service. Fallback handled by onerror in HTML.
+  return 'https://www.google.com/s2/favicons?domain=' + encodeURIComponent(d) + '&sz=64';
+}
+
+// Friendly display name for a URL
+function getFriendlyName(rawUrl) {
+  var d = extractDomain(rawUrl);
+  if (!d) return rawUrl;
+  var friendlyMap = {
+    'web.whatsapp.com':'WhatsApp Web','whatsapp.com':'WhatsApp',
+    'youtube.com':'YouTube','instagram.com':'Instagram',
+    'facebook.com':'Facebook','twitter.com':'Twitter / X',
+    'x.com':'Twitter / X','gmail.com':'Gmail',
+    'mail.google.com':'Gmail','claude.ai':'Claude AI',
+    'chatgpt.com':'ChatGPT','web.telegram.org':'Telegram',
+    'telegram.org':'Telegram','linkedin.com':'LinkedIn',
+    'outlook.com':'Outlook','outlook.live.com':'Outlook',
+    'teams.microsoft.com':'Microsoft Teams','notion.so':'Notion',
+    'figma.com':'Figma','github.com':'GitHub','gitlab.com':'GitLab',
+    'google.com':'Google','drive.google.com':'Google Drive',
+    'docs.google.com':'Google Docs','sheets.google.com':'Google Sheets',
+    'meet.google.com':'Google Meet','slack.com':'Slack',
+    'zoom.us':'Zoom','jira.atlassian.com':'Jira',
+    'confluence.atlassian.com':'Confluence','trello.com':'Trello',
+    'asana.com':'Asana','monday.com':'Monday.com',
+    'clickup.com':'ClickUp','groww.in':'Groww',
+    'moneycontrol.com':'Moneycontrol','naukri.com':'Naukri',
+    'stackoverflow.com':'Stack Overflow','reddit.com':'Reddit',
+    'netflix.com':'Netflix','spotify.com':'Spotify',
+    'tiktok.com':'TikTok','snapchat.com':'Snapchat',
+    'pinterest.com':'Pinterest','amazon.com':'Amazon',
+    'flipkart.com':'Flipkart','paytm.com':'Paytm',
+    '10.10.11.251':'WorkPulse'
+  };
+  return friendlyMap[d] || d;
 }
 
 function isIncognito(url) { return url && url.indexOf('New Incognito Tab') >= 0; }
@@ -1706,7 +1757,7 @@ async function loadWebActivity(page){
       grouped[w.employee_name].totalSecs += secs;
     });
 
-    list.innerHTML = Object.entries(grouped).map(function(entry){
+    var webHtml = Object.entries(grouped).map(function(entry){
       var name = entry[0];
       var data = entry[1];
       var hasRoster = !!(data.shiftStart && data.shiftEnd);
@@ -1773,7 +1824,7 @@ async function loadWebActivity(page){
         var pct = empTotal>0 ? ((secs/empTotal)*100).toFixed(1) : '0';
         var domain = extractDomain(w.url);
         var favicon = getFaviconUrl(w.url);
-        var displayUrl = domain || w.url;
+        var displayUrl = getFriendlyName(w.url);
         var dutyPct = hasRoster && secs>0 ? Math.round(dutySecs/secs*100) : null;
         var dutyColor = dutyPct!==null?(dutyPct>=80?'#10b981':dutyPct>=50?'#f59e0b':'#ef4444'):'var(--text3)';
 
@@ -1783,7 +1834,7 @@ async function loadWebActivity(page){
           '<td style="padding:10px 8px 10px 16px;color:var(--text3);font-size:11px;font-weight:700;font-family:monospace;width:32px;text-align:right">'+(idx+1)+'</td>'+
           '<td style="padding:10px 6px;width:36px">'+
             '<div style="width:32px;height:32px;border-radius:8px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center">'+
-              '<img src="'+favicon+'" style="width:18px;height:18px;object-fit:contain" onerror="this.style.display=\'none\'"/>'+
+              '<img src="'+favicon+'" style="width:18px;height:18px;object-fit:contain" onerror="this.style.display=\'none\'" />'+
             '</div>'+
           '</td>'+
           '<td style="padding:10px 12px;max-width:0">'+
@@ -1864,6 +1915,12 @@ async function loadWebActivity(page){
         '</div>'+
       '</div>';
     }).join('');
+
+    if (!webHtml.trim() && webProductivityFilter) {
+      list.innerHTML = '<div class="empty">No <strong>' + webProductivityFilter + '</strong> activity on this page. Try another page or clear the filter.</div>';
+    } else {
+      list.innerHTML = webHtml;
+    }
 
     renderWebPagination();
   }catch(e){list.innerHTML='<div class="empty">Error loading web activity.</div>';console.error(e);}
@@ -2188,7 +2245,7 @@ function renderWebCalendar(){
   if(lbl) lbl.textContent = months[webCalMonth] + ' ' + webCalYear;
   var firstDay = new Date(webCalYear, webCalMonth, 1).getDay();
   var daysInMonth = new Date(webCalYear, webCalMonth + 1, 0).getDate();
-  var today = new Date().toISOString().split('T')[0];
+  var today = (function(){var _d=new Date();return _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');})();
   var html = '';
   for(var i = 0; i < firstDay; i++) html += '<div></div>';
   for(var d = 1; d <= daysInMonth; d++){
@@ -2199,7 +2256,7 @@ function renderWebCalendar(){
     var bg = isSel ? '#00e5ff' : isToday ? 'rgba(0,229,255,0.15)' : 'transparent';
     var col = isSel ? '#0a0c10' : isToday ? '#00e5ff' : '#e2e8f0';
     var bdr = isSel ? '1px solid #00e5ff' : isToday ? '1px solid rgba(0,229,255,0.4)' : '1px solid transparent';
-    var dotColor = isSel ? '#0a0c10' : '#00e5ff';
+    var dotColor = isSel ? '#000' : '#00e5ff';
     html += '<div onclick="selectWebDate(\'' + ds + '\');event.stopPropagation()" style="padding:3px 1px;border-radius:4px;cursor:pointer;background:' + bg + ';color:' + col + ';font-size:11px;border:' + bdr + ';text-align:center;min-height:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px">' +
       '<span>' + d + '</span>' +
       (hasData ? '<div style="width:5px;height:5px;border-radius:50%;background:' + dotColor + '"></div>' : '<div style="width:5px;height:5px"></div>') +
@@ -2247,7 +2304,7 @@ var appCalDates = {};
 function initAppCalendar(){
   appCalYear = new Date().getFullYear();
   appCalMonth = new Date().getMonth();
-  appSelectedDate = new Date().toISOString().split('T')[0]; // default today
+  appSelectedDate = (function(){var _d=new Date();return _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');})(); // default today
   var lbl = document.getElementById('appCalBtnLabel');
   if(lbl) lbl.textContent = appSelectedDate;
   var cal = document.getElementById('appCalDropdown');
@@ -2299,7 +2356,7 @@ function renderAppCalendar(){
   if(lbl) lbl.textContent = months[appCalMonth] + ' ' + appCalYear;
   var firstDay = new Date(appCalYear, appCalMonth, 1).getDay();
   var daysInMonth = new Date(appCalYear, appCalMonth + 1, 0).getDate();
-  var today = new Date().toISOString().split('T')[0];
+  var today = (function(){var _d=new Date();return _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');})();
   var html = '';
   for(var i = 0; i < firstDay; i++) html += '<div></div>';
   for(var d = 1; d <= daysInMonth; d++){
@@ -2310,7 +2367,7 @@ function renderAppCalendar(){
     var bg = isSel ? '#00e5ff' : isToday ? 'rgba(0,229,255,0.15)' : 'transparent';
     var col = isSel ? '#0a0c10' : isToday ? '#00e5ff' : '#e2e8f0';
     var bdr = isSel ? '1px solid #00e5ff' : isToday ? '1px solid rgba(0,229,255,0.4)' : '1px solid transparent';
-    var dotColor = isSel ? '#0a0c10' : '#00e5ff';
+    var dotColor = isSel ? '#0a0c10' : isToday ? '#0a0c10' : '#00e5ff';
     html += '<div onclick="selectAppDate(\'' + ds + '\');event.stopPropagation()" style="padding:3px 1px;border-radius:4px;cursor:pointer;background:' + bg + ';color:' + col + ';font-size:11px;border:' + bdr + ';text-align:center;min-height:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px">' +
       '<span>' + d + '</span>' +
       (hasData ? '<div style="width:5px;height:5px;border-radius:50%;background:' + dotColor + '"></div>' : '<div style="width:5px;height:5px"></div>') +
@@ -2400,7 +2457,10 @@ async function loadDeleted(){
           '</td>'+
           '<td style="color:#64748b">'+new Date(e.deleted_at).toLocaleDateString()+'</td>'+
           '<td><span style="color:'+(daysLeft<=3?'#ef4444':'#f59e0b')+';font-weight:600">'+daysLeft+' days</span></td>'+
-          '<td><button class="btn" style="border-color:#10b981;color:#10b981;font-size:10px" onclick="restoreEmployee('+e.id+',\''+e.name+'\')">↺ Restore</button></td>'+
+          '<td><div style="display:flex;gap:6px">'+
+            '<button class="btn" style="border-color:#10b981;color:#10b981;font-size:10px" onclick="restoreEmployee('+e.id+',\''+e.name+'\')">↺ Restore</button>'+
+            '<button class="btn btn-danger" style="font-size:10px" onclick="permDeleteEmployee('+e.id+',\''+e.name+'\')">🗑 Delete Forever</button>'+
+          '</div></td>'+
           '</tr>';
       }).join('')+'</tbody></table>';
   }catch(e){list.innerHTML='<div class="empty">Error loading.</div>';}
@@ -2412,6 +2472,24 @@ async function restoreEmployee(id,name){
   await fetch('/api/employees/'+id+'/restore',{method:'POST'});
   toast('✓ '+name+' restored!','#10b981');
   loadDeleted();
+}
+
+async function permDeleteEmployee(id,name){
+  try{
+    var stats=await fetch('/api/employees/'+id+'/stats').then(function(r){return r.json();});
+    var msg='⚠️ PERMANENTLY DELETE '+name+'?\n\n'+
+      'This will erase ALL data forever:\n'+
+      '📸 Screenshots: '+stats.screenshots+'\n'+
+      '🌐 Web Activity: '+stats.web_total+' records\n'+
+      '💻 Apps tracked: '+stats.apps+'\n\n'+
+      'This CANNOT be undone. Type DELETE to confirm:';
+    var inp=prompt(msg);
+    if(inp!=='DELETE'){toast('Cancelled — type DELETE exactly','#f59e0b');return;}
+    var res=await fetch('/api/employees/'+id+'/permanent',{method:'DELETE'});
+    var data=await res.json();
+    if(data.success){toast('🗑 '+name+' permanently deleted','#ef4444');loadDeleted();}
+    else{toast('Error: '+(data.error||'Failed'),'#ef4444');}
+  }catch(e){toast('Error deleting employee','#ef4444');}
 }
 
 // ---- EMPLOYEE SETTINGS ----
@@ -2764,18 +2842,20 @@ async function loadDashboardUsers(){
   list.innerHTML='<div class="empty">Loading...</div>';
   try{
     var rows=await fetch('/api/dashboard-users').then(function(r){return r.json();});
-    if(!rows.length){list.innerHTML='<div class="empty">No users yet.</div>';return;}
-    list.innerHTML=rows.map(function(u){
+    // Only show USER role here — admins go in the Admin Users panel below
+    var users = rows.filter(function(u){ return u.role !== 'admin'; });
+    if(!users.length){list.innerHTML='<div class="empty">No monitoring users yet.</div>';return;}
+    list.innerHTML=users.map(function(u){
       return '<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid rgba(30,36,46,0.5)">'+
         '<div style="flex:1">'+
-        '<div style="color:#fff;font-size:12px;font-weight:600">'+u.name+'</div>'+
-        '<div style="color:#64748b;font-size:10px">'+u.email+'</div>'+
+        '<div style="color:var(--text);font-size:12px;font-weight:600">'+u.name+'</div>'+
+        '<div style="color:var(--text3);font-size:10px">'+u.email+'</div>'+
         '<div style="margin-top:4px">'+
-        '<span class="chip '+(u.role==='admin'?'chip-active':'chip-idle')+'">'+u.role+'</span>'+
-        '<span style="color:#64748b;font-size:10px;margin-left:8px">'+u.employee_count+' employees assigned</span>'+
+        '<span class="chip chip-idle">user</span>'+
+        '<span style="color:var(--text3);font-size:10px;margin-left:8px">'+u.employee_count+' employees assigned</span>'+
         '</div></div>'+
         '<div style="display:flex;gap:6px">'+
-        (u.role==='user'?'<button class="btn" style="font-size:10px" onclick="openAssign('+u.id+',\''+u.name+'\')">⚙ Assign</button>':'')+
+        '<button class="btn" style="font-size:10px" onclick="openAssign('+u.id+',\''+u.name+'\')">⚙ Assign</button>'+
         '<button class="btn" style="font-size:10px;background:rgba(245,158,11,0.15);color:#f59e0b;border-color:#f59e0b44" onclick="resetUserPassword('+u.id+',\''+u.name+'\')">🔑 Reset</button>'+
         '<button class="btn btn-danger" style="font-size:10px" onclick="removeDashboardUser('+u.id+',\''+u.name+'\')">Remove</button>'+
         '</div></div>';
@@ -2783,26 +2863,51 @@ async function loadDashboardUsers(){
   }catch(e){list.innerHTML='<div class="empty">Error loading.</div>';}
 }
 
+
 async function loadAdminUsers(){
   var list=document.getElementById('adminUsersList');
   list.innerHTML='<div class="empty">Loading...</div>';
   try{
-    var rows=await fetch('/api/admin-users').then(function(r){return r.json();});
-    if(!rows.length){list.innerHTML='<div class="empty">No admin users.</div>';return;}
-    list.innerHTML=rows.map(function(u){
+    // Load root admins from /api/admin-users
+    var rootAdmins=await fetch('/api/admin-users').then(function(r){return r.json();});
+    // Load dashboard users who have admin role
+    var dashUsers=await fetch('/api/dashboard-users').then(function(r){return r.json();});
+    var dashAdmins=dashUsers.filter(function(u){ return u.role==='admin'; });
+
+    var html='';
+
+    // Root admins
+    html+=rootAdmins.map(function(u){
       return '<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid rgba(30,36,46,0.5)">'+
         '<div style="flex:1">'+
-        '<div style="color:#fff;font-size:12px;font-weight:600">'+u.name+'</div>'+
-        '<div style="color:#64748b;font-size:10px">'+u.email+'</div>'+
-        '<div style="margin-top:4px">'+
-        '<span class="chip chip-active">root admin</span>'+
-        '</div></div>'+
+        '<div style="color:var(--text);font-size:12px;font-weight:600">'+u.name+'</div>'+
+        '<div style="color:var(--text3);font-size:10px">'+u.email+'</div>'+
+        '<div style="margin-top:4px"><span class="chip chip-active">root admin</span></div>'+
+        '</div>'+
         '<div style="display:flex;gap:6px">'+
         '<button class="btn" style="font-size:10px;background:rgba(245,158,11,0.15);color:#f59e0b;border-color:#f59e0b44" onclick="resetUserPassword('+u.id+',\''+u.name+'\',\'admin\')">🔑 Reset Password</button>'+
         '</div></div>';
     }).join('');
+
+    // Dashboard admins
+    html+=dashAdmins.map(function(u){
+      return '<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid rgba(30,36,46,0.5)">'+
+        '<div style="flex:1">'+
+        '<div style="color:var(--text);font-size:12px;font-weight:600">'+u.name+'</div>'+
+        '<div style="color:var(--text3);font-size:10px">'+u.email+'</div>'+
+        '<div style="margin-top:4px"><span class="chip chip-active">admin</span></div>'+
+        '</div>'+
+        '<div style="display:flex;gap:6px">'+
+        '<button class="btn" style="font-size:10px;background:rgba(245,158,11,0.15);color:#f59e0b;border-color:#f59e0b44" onclick="resetUserPassword('+u.id+',\''+u.name+'\')">🔑 Reset</button>'+
+        '<button class="btn btn-danger" style="font-size:10px" onclick="removeDashboardUser('+u.id+',\''+u.name+'\')">Remove</button>'+
+        '</div></div>';
+    }).join('');
+
+    if(!html){ list.innerHTML='<div class="empty">No admin users.</div>'; return; }
+    list.innerHTML=html;
   }catch(e){list.innerHTML='<div class="empty">Error loading.</div>';}
 }
+
 
 async function resetUserPassword(id, name, type){
   var newPass = prompt('Enter new password for '+name+' (min 6 characters):');
@@ -3181,7 +3286,7 @@ async function deleteDepartment(id,name){
 
 // ---- AUDIT LOG ----
 var auditCurrentPage=1,auditTotalPages=1,auditTotalCount=0;
-var AUDIT_ICONS={'Employee Added':'➕','Employee Deleted':'🗑','Employee Restored':'↺','Employee Permanently Deleted':'💀','Monitoring User Created':'👤','Monitoring User Removed':'❌','Admin Password Reset':'🔑','User Password Reset':'🔑','Screenshot Interval Changed':'📷','Data Retention Changed':'🗄','Roster Created':'📅','Roster Updated':'✏️','Roster Deleted':'🗑','Roster Assigned':'📌'};
+var AUDIT_ICONS={'Employee Added':'➕','Employee Deleted':'🗑','Employee Restored':'↺','Employee Permanently Deleted':'💀','Monitoring User Created':'👤','Monitoring User Removed':'❌','Admin Password Reset':'🔑','User Password Reset':'🔑','Screenshot Interval Changed':'📷','Data Retention Changed':'🗄','Roster Created':'📅','Roster Updated':'✏️','Roster Deleted':'🗑','Roster Assigned':'📌','Screenshot Flagged':'🚩','Screenshot Unflagged':'✅','Alert Resolved':'✓','Department Created':'🏢','Department Deleted':'🏢','Department Changed':'🏢','Email Config Updated':'✉️','Email Config Tested':'📨','MFA Enabled':'🔐','MFA Disabled':'🔓','Backup Created':'💾','Backup Deleted':'🗑','Database Restored':'🔄','Report Exported':'📊'};
 
 async function loadAuditLog(page){
   page=page||auditCurrentPage; auditCurrentPage=page;
@@ -3234,7 +3339,7 @@ function initSysCalendar(){sysCalYear=new Date().getFullYear();sysCalMonth=new D
 function toggleSysCal(event){event.stopPropagation();var d=document.getElementById('sysCalDropdown');var isHidden=d.style.display==='none'||!d.style.display;d.style.display=isHidden?'block':'none';if(isHidden){setTimeout(function(){document.addEventListener('click',function h(e){if(!document.getElementById('sysCalDropdown').contains(e.target)&&e.target.id!=='sysCalBtn'){document.getElementById('sysCalDropdown').style.display='none';document.removeEventListener('click',h);}});},50);}}
 function changeSysMonth(dir){sysCalMonth+=dir;if(sysCalMonth>11){sysCalMonth=0;sysCalYear++;}if(sysCalMonth<0){sysCalMonth=11;sysCalYear--;}renderSysCalendar();}
 async function loadSysCalendarDates(){try{var emp=document.getElementById('sys-emp')?document.getElementById('sys-emp').value:'';var url='/api/dashboard/system-activity-dates'+(emp?'?employee_id='+emp:'');var rows=await fetch(url).then(function(r){return r.json();});sysCalDates={};rows.forEach(function(r){var d=r.date.split('T')[0];sysCalDates[d]=parseInt(r.count);});renderSysCalendar();}catch(e){renderSysCalendar();}}
-function renderSysCalendar(){var el=document.getElementById('sysCalGrid');if(!el)return;var months=['January','February','March','April','May','June','July','August','September','October','November','December'];var lbl=document.getElementById('sysCalMonthLabel');if(lbl)lbl.textContent=months[sysCalMonth]+' '+sysCalYear;var firstDay=new Date(sysCalYear,sysCalMonth,1).getDay();var daysInMonth=new Date(sysCalYear,sysCalMonth+1,0).getDate();var today=new Date().toISOString().split('T')[0];var html='';for(var i=0;i<firstDay;i++)html+='<div></div>';for(var d=1;d<=daysInMonth;d++){var ds=sysCalYear+'-'+String(sysCalMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');var has=sysCalDates[ds]?true:false;var isSel=ds===sysSelectedDate,isToday=ds===today;var bg=isSel?'#00e5ff':isToday?'rgba(0,229,255,0.15)':'transparent';var col=isSel?'#0a0c10':isToday?'#00e5ff':'#e2e8f0';var bdr=isSel?'1px solid #00e5ff':isToday?'1px solid rgba(0,229,255,0.4)':'1px solid transparent';html+='<div onclick="selectSysDate(\''+ds+'\');event.stopPropagation()" style="padding:3px 1px;border-radius:4px;cursor:pointer;background:'+bg+';color:'+col+';font-size:11px;border:'+bdr+';text-align:center;min-height:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px"><span>'+d+'</span>'+(has?'<div style="width:5px;height:5px;border-radius:50%;background:'+(isSel?'#0a0c10':'#00e5ff')+'"></div>':'<div style="width:5px;height:5px"></div>')+'</div>';}el.innerHTML=html;}
+function renderSysCalendar(){var el=document.getElementById('sysCalGrid');if(!el)return;var months=['January','February','March','April','May','June','July','August','September','October','November','December'];var lbl=document.getElementById('sysCalMonthLabel');if(lbl)lbl.textContent=months[sysCalMonth]+' '+sysCalYear;var firstDay=new Date(sysCalYear,sysCalMonth,1).getDay();var daysInMonth=new Date(sysCalYear,sysCalMonth+1,0).getDate();var today=(function(){var _d=new Date();return _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');})();var html='';for(var i=0;i<firstDay;i++)html+='<div></div>';for(var d=1;d<=daysInMonth;d++){var ds=sysCalYear+'-'+String(sysCalMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');var has=sysCalDates[ds]?true:false;var isSel=ds===sysSelectedDate,isToday=ds===today;var bg=isSel?'#00e5ff':isToday?'rgba(0,229,255,0.15)':'transparent';var col=isSel?'#0a0c10':isToday?'#00e5ff':'#e2e8f0';var bdr=isSel?'1px solid #00e5ff':isToday?'1px solid rgba(0,229,255,0.4)':'1px solid transparent';html+='<div onclick="selectSysDate(\''+ds+'\');event.stopPropagation()" style="padding:3px 1px;border-radius:4px;cursor:pointer;background:'+bg+';color:'+col+';font-size:11px;border:'+bdr+';text-align:center;min-height:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px"><span>'+d+'</span>'+(has?'<div style="width:5px;height:5px;border-radius:50%;background:'+(isSel?'#000':'#00e5ff')+'"></div>':'<div style="width:5px;height:5px"></div>')+'</div>';}el.innerHTML=html;}
 function selectSysDate(ds){sysSelectedDate=(sysSelectedDate===ds)?'':ds;sysCurrentPage=1;var lbl=document.getElementById('sysCalBtnLabel');if(lbl)lbl.textContent=sysSelectedDate||'All Dates';var drop=document.getElementById('sysCalDropdown');if(drop)drop.style.display='none';renderSysCalendar();loadSysActivity(1);}
 function onSysEmpChange(){sysCurrentPage=1;loadSysCalendarDates();loadSysActivity(1);}
 function clearSysFilters(){var emp=document.getElementById('sys-emp');if(emp)emp.value='';sysSelectedDate='';sysCurrentPage=1;var lbl=document.getElementById('sysCalBtnLabel');if(lbl)lbl.textContent='All Dates';var cal=document.getElementById('sysCalDropdown');if(cal)cal.style.display='none';loadSysCalendarDates();loadSysActivity(1);}
@@ -3333,7 +3438,7 @@ async function doBackup(){
     document.body.removeChild(a); URL.revokeObjectURL(url);
     statusEl.style.background='rgba(16,185,129,0.07)';
     statusEl.style.border='1px solid rgba(16,185,129,0.25)';
-    statusEl.style.color='var(--green)';
+    statusEl.style.color='#10b981';
     statusEl.innerHTML='✓ Backup created and downloaded: <strong>'+filename+'</strong>';
     btnText.textContent='⤓ Download Backup';
     btn.disabled = false;
@@ -3457,40 +3562,140 @@ async function doRestore(){
   }
 }
 
+// ---- SCREENSHOT BACKUP & RESTORE ----
+var ssRestoreFile = null;
+
+async function doScreenshotBackup(){
+  var btn=document.getElementById('ssBackupBtn');
+  var btnText=document.getElementById('ssBackupBtnText');
+  var statusEl=document.getElementById('ssBackupStatus');
+  btn.disabled=true; btnText.textContent='⏳ Creating backup…';
+  statusEl.style.cssText='display:flex;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:12px;align-items:center;gap:8px;background:rgba(0,229,255,0.06);border:1px solid rgba(0,229,255,0.2);color:var(--accent)';
+  statusEl.innerHTML='<span style="animation:pulse 1s infinite;display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent)"></span> Compressing screenshots…';
+  try{
+    var res=await fetch('/api/admin/backup/screenshots',{method:'POST'});
+    if(!res.ok){var e=await res.json();throw new Error(e.error||'Server error');}
+    var blob=await res.blob();
+    var cd=res.headers.get('Content-Disposition')||'';
+    var fnMatch=cd.match(/filename="?([^"]+)"?/);
+    var filename=fnMatch?fnMatch[1]:'workpulse-screenshots.tar.gz';
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;a.download=filename;
+    document.body.appendChild(a);a.click();
+    document.body.removeChild(a);URL.revokeObjectURL(url);
+    statusEl.style.cssText='display:flex;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:12px;align-items:center;gap:8px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.25);color:#10b981';
+    statusEl.innerHTML='✓ Downloaded: <strong>'+filename+'</strong>';
+    btnText.textContent='📷 Download Screenshots Backup';
+    btn.disabled=false;
+    loadBackupHistory();
+  }catch(e){
+    statusEl.style.cssText='display:flex;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:12px;align-items:center;gap:8px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.25);color:#ef4444';
+    statusEl.innerHTML='✗ Failed: '+(e.message||'Unknown error');
+    btnText.textContent='📷 Download Screenshots Backup';
+    btn.disabled=false;
+  }
+}
+
+function ssDragOver(e){e.preventDefault();document.getElementById('ssRestoreDropZone').style.borderColor='#10b981';document.getElementById('ssRestoreDropZone').style.background='rgba(16,185,129,0.04)';}
+function ssDragLeave(e){document.getElementById('ssRestoreDropZone').style.borderColor='var(--border2)';document.getElementById('ssRestoreDropZone').style.background='';}
+function ssDrop(e){e.preventDefault();ssDragLeave(e);if(e.dataTransfer.files[0])applySsFile(e.dataTransfer.files[0]);}
+function ssFileChosen(input){if(input.files[0])applySsFile(input.files[0]);}
+function applySsFile(f){
+  ssRestoreFile=f;
+  var info=document.getElementById('ssRestoreFileInfo');
+  info.style.display='block';
+  info.textContent='📂 '+f.name+' ('+(f.size/1024/1024).toFixed(1)+' MB)';
+  document.getElementById('ssRestoreBtn').disabled=false;
+}
+
+async function doScreenshotRestore(){
+  if(!ssRestoreFile){toast('Please select a backup file first','#ef4444');return;}
+  if(!confirm('This will extract and overwrite files in the screenshots folder.\n\nAre you sure?')) return;
+  var btn=document.getElementById('ssRestoreBtn');
+  var btnText=document.getElementById('ssRestoreBtnText');
+  var panel=document.getElementById('ssRestoreLogPanel');
+  var logEl=document.getElementById('ssRestoreLog');
+  var fillEl=document.getElementById('ssRestoreFill');
+  var pctEl=document.getElementById('ssRestorePct');
+  var lblEl=document.getElementById('ssRestoreLabel');
+  btn.disabled=true;btnText.textContent='⏳ Restoring…';
+  panel.style.display='block';logEl.innerHTML='';fillEl.style.width='0%';
+  function rlog(msg,type){
+    var ts=new Date().toLocaleTimeString('en',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    var colors={ok:'#10b981',err:'#ef4444',warn:'#f59e0b',info:'#00e5ff',dim:'#4a5568'};
+    var line=document.createElement('div');
+    line.style.cssText='display:flex;gap:8px;';
+    line.innerHTML='<span style="color:#4a5568;flex-shrink:0">['+ts+']</span><span style="color:'+(colors[type]||'#e2e8f0')+'">'+msg+'</span>';
+    logEl.appendChild(line);logEl.scrollTop=logEl.scrollHeight;
+  }
+  try{
+    var fd=new FormData();fd.append('screenshots',ssRestoreFile);
+    rlog('Uploading screenshots archive…','info');
+    fillEl.style.width='10%';pctEl.textContent='10%';lblEl.textContent='Uploading…';
+    var res=await fetch('/api/admin/restore/screenshots',{method:'POST',body:fd});
+    var reader=res.body.getReader();var decoder=new TextDecoder();var buffer='';
+    while(true){
+      var chunk=await reader.read();if(chunk.done)break;
+      buffer+=decoder.decode(chunk.value,{stream:true});
+      var lines=buffer.split('\n');buffer=lines.pop();
+      for(var line of lines){
+        line=line.trim();if(!line)continue;
+        try{
+          var ev=JSON.parse(line);
+          if(ev.msg)rlog(ev.msg,ev.type||'info');
+          if(ev.pct!==undefined){fillEl.style.width=ev.pct+'%';pctEl.textContent=ev.pct+'%';}
+          if(ev.label)lblEl.textContent=ev.label;
+          if(ev.done){toast('✓ Screenshots restored!','#10b981');btnText.textContent='✓ Done';}
+          if(ev.error){toast('Failed: '+ev.error,'#ef4444');btn.disabled=false;btnText.textContent='📷 Restore Screenshots';}
+        }catch(e){}
+      }
+    }
+  }catch(e){
+    rlog('Error: '+e.message,'err');
+    toast('Error: '+e.message,'#ef4444');
+    btn.disabled=false;btnText.textContent='📷 Restore Screenshots';
+  }
+}
 // ---- END BACKUP & RESTORE ----
 // ---- REPORTS ----
 async function loadReportsPage(){
   try{
     var rows = await fetch('/api/employees').then(function(r){return r.json();});
-    var sel = document.getElementById('report-emp');
-    if(sel) sel.innerHTML = '<option value="">All Employees</option>' + rows.map(function(e){
-      return '<option value="'+e.id+'">'+e.name+'</option>';
-    }).join('');
+    var sels = document.querySelectorAll('#report-emp');
+    sels.forEach(function(sel){
+      sel.innerHTML = '<option value="">All Employees</option>' + rows.map(function(e){
+        return '<option value="'+e.id+'">'+e.name+'</option>';
+      }).join('');
+    });
     // Default to last 30 days
     var to = new Date(); var from = new Date(); from.setDate(from.getDate()-30);
-    document.getElementById('report-from').value = from.toISOString().split('T')[0];
-    document.getElementById('report-to').value   = to.toISOString().split('T')[0];
+    var froms = document.querySelectorAll('#report-from');
+    var tos = document.querySelectorAll('#report-to');
+    froms.forEach(function(el){ el.value = from.toISOString().split('T')[0]; });
+    tos.forEach(function(el){ el.value = to.toISOString().split('T')[0]; });
   }catch(e){}
 }
 
 async function exportReport(){
-  var empId   = document.getElementById('report-emp').value;
-  var from    = document.getElementById('report-from').value;
-  var to      = document.getElementById('report-to').value;
-  var inclSummary = document.getElementById('rpt-summary').checked;
-  var inclWeb     = document.getElementById('rpt-web').checked;
-  var inclApps    = document.getElementById('rpt-apps').checked;
-  var inclDaily   = document.getElementById('rpt-daily').checked;
+  var empId   = document.getElementById('report-emp') ? document.getElementById('report-emp').value : '';
+  var from    = document.getElementById('report-from') ? document.getElementById('report-from').value : '';
+  var to      = document.getElementById('report-to') ? document.getElementById('report-to').value : '';
+  // Checkboxes are optional — default true if not present
+  var inclSummary = document.getElementById('rpt-summary') ? document.getElementById('rpt-summary').checked : true;
+  var inclWeb     = document.getElementById('rpt-web')     ? document.getElementById('rpt-web').checked     : true;
+  var inclApps    = document.getElementById('rpt-apps')    ? document.getElementById('rpt-apps').checked    : true;
+  var inclDaily   = document.getElementById('rpt-daily')   ? document.getElementById('rpt-daily').checked   : true;
   if(!from || !to){ toast('Please select a date range','#ef4444'); return; }
   var btn = document.getElementById('exportReportBtn');
   var btnText = document.getElementById('exportReportText');
   var statusEl = document.getElementById('reportStatus');
-  btn.disabled = true;
-  btnText.textContent = '⏳ Generating…';
-  statusEl.style.cssText='display:flex;padding:10px 14px;border-radius:8px;font-size:12px;align-items:center;gap:8px;background:rgba(0,229,255,0.06);border:1px solid rgba(0,229,255,0.2);color:var(--accent)';
-  statusEl.innerHTML='<span style="animation:pulse 1s infinite;display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent)"></span> Building Excel report…';
+  if(btn) btn.disabled = true;
+  if(btnText) btnText.textContent = '⏳ Generating…';
+  if(statusEl){ statusEl.style.cssText='display:flex;padding:10px 14px;border-radius:8px;font-size:12px;align-items:center;gap:8px;background:rgba(0,229,255,0.06);border:1px solid rgba(0,229,255,0.2);color:var(--accent)';
+  statusEl.innerHTML='<span style="animation:pulse 1s infinite;display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent)"></span> Building Excel report…'; }
   try{
-    var params = new URLSearchParams({ from, to, summary: inclSummary, web: inclWeb, apps: inclApps, daily: inclDaily });
+    var params = new URLSearchParams({ from: from, to: to, summary: inclSummary, web: inclWeb, apps: inclApps, daily: inclDaily });
     if(empId) params.append('employee_id', empId);
     var res = await fetch('/api/admin/report?' + params.toString());
     if(!res.ok){ var e=await res.json(); throw new Error(e.error||'Server error'); }
@@ -3503,15 +3708,16 @@ async function exportReport(){
     a.href=url; a.download=filename;
     document.body.appendChild(a); a.click();
     document.body.removeChild(a); URL.revokeObjectURL(url);
-    statusEl.style.cssText='display:flex;padding:10px 14px;border-radius:8px;font-size:12px;align-items:center;gap:8px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.25);color:#10b981';
-    statusEl.innerHTML='✓ Report downloaded: <strong>'+filename+'</strong>';
-    btnText.textContent='⤓ Export Excel Report';
-    btn.disabled=false;
+    if(statusEl){ statusEl.style.cssText='display:flex;padding:10px 14px;border-radius:8px;font-size:12px;align-items:center;gap:8px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.25);color:#10b981';
+    statusEl.innerHTML='✓ Report downloaded: <strong>'+filename+'</strong>'; }
+    if(btnText) btnText.textContent='⤓ Export Excel';
+    if(btn) btn.disabled=false;
   }catch(e){
-    statusEl.style.cssText='display:flex;padding:10px 14px;border-radius:8px;font-size:12px;align-items:center;gap:8px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.25);color:#ef4444';
-    statusEl.innerHTML='✗ '+e.message;
-    btnText.textContent='⤓ Export Excel Report';
-    btn.disabled=false;
+    if(statusEl){ statusEl.style.cssText='display:flex;padding:10px 14px;border-radius:8px;font-size:12px;align-items:center;gap:8px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.25);color:#ef4444';
+    statusEl.innerHTML='✗ '+e.message; }
+    else { alert('Export failed: '+e.message); }
+    if(btnText) btnText.textContent='⤓ Export Excel';
+    if(btn) btn.disabled=false;
   }
 }
 
@@ -3593,6 +3799,99 @@ function applyPreset(provider){
   document.getElementById('smtp-tls').checked=p.tls;
   toast('✓ '+provider.charAt(0).toUpperCase()+provider.slice(1)+' preset applied','#10b981');
 }
+
+
+// ---- SYSTEM SETTINGS ----
+var _sysSettings = { timezone: 'Asia/Kolkata', company_name: 'WorkPulse', date_format: 'DD/MM/YYYY', default_theme: 'system' };
+
+async function loadSysSettings(){
+  try{
+    var data = await fetch('/api/admin/sys-settings').then(function(r){return r.json();});
+    _sysSettings = Object.assign(_sysSettings, data);
+    // Populate fields
+    var tzEl = document.getElementById('sys-timezone');
+    if(tzEl) tzEl.value = data.timezone || 'Asia/Kolkata';
+    var cnEl = document.getElementById('sys-company-name');
+    if(cnEl) cnEl.value = data.company_name || '';
+    var dfEl = document.getElementById('sys-date-format');
+    if(dfEl) dfEl.value = data.date_format || 'DD/MM/YYYY';
+    var dtEl = document.getElementById('sys-default-theme');
+    if(dtEl) dtEl.value = data.default_theme || 'system';
+    // Update displays
+    var tzDisp = document.getElementById('current-tz-display');
+    if(tzDisp) tzDisp.textContent = data.timezone || 'Asia/Kolkata';
+    updateLocalTimeDisplay(data.timezone || 'Asia/Kolkata');
+    renderSettingsSummary(data);
+  }catch(e){ console.error('loadSysSettings error:', e); }
+}
+
+function updateLocalTimeDisplay(tz){
+  var el = document.getElementById('local-time-display');
+  if(!el) return;
+  try{
+    el.textContent = new Date().toLocaleString('en-IN', {timeZone: tz, hour12: true, dateStyle:'medium', timeStyle:'short'});
+  }catch(e){ el.textContent = new Date().toLocaleString(); }
+}
+
+function renderSettingsSummary(data){
+  var el = document.getElementById('sysSettingsSummary');
+  if(!el) return;
+  var items = [
+    {label:'Timezone', val: data.timezone || 'Asia/Kolkata', color:'#00e5ff', icon:'🌐'},
+    {label:'Company', val: data.company_name || 'WorkPulse', color:'#10b981', icon:'🏢'},
+    {label:'Date Format', val: data.date_format || 'DD/MM/YYYY', color:'#7c3aed', icon:'📅'},
+    {label:'Theme', val: data.default_theme || 'system', color:'#f59e0b', icon:'🎨'},
+  ];
+  el.innerHTML = items.map(function(item){
+    return '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:16px;border-top:3px solid '+item.color+'">'+
+      '<div style="font-size:18px;margin-bottom:8px">'+item.icon+'</div>'+
+      '<div style="font-size:9px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-bottom:4px">'+item.label+'</div>'+
+      '<div style="font-size:13px;font-weight:700;color:'+item.color+';font-family:monospace">'+item.val+'</div>'+
+    '</div>';
+  }).join('');
+}
+
+async function saveSysSettings(){
+  var tzEl = document.getElementById('sys-timezone');
+  var cnEl = document.getElementById('sys-company-name');
+  var dfEl = document.getElementById('sys-date-format');
+  var dtEl = document.getElementById('sys-default-theme');
+  var statusEl = document.getElementById('sysSettingsStatus');
+  var payload = {
+    timezone: tzEl ? tzEl.value : 'Asia/Kolkata',
+    company_name: cnEl ? cnEl.value.trim() : 'WorkPulse',
+    date_format: dfEl ? dfEl.value : 'DD/MM/YYYY',
+    default_theme: dtEl ? dtEl.value : 'system'
+  };
+  try{
+    var res = await fetch('/api/admin/sys-settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    var data = await res.json();
+    if(data.success){
+      _sysSettings = payload;
+      // Apply theme if changed
+      if(payload.default_theme) setTheme(payload.default_theme);
+      // Update displays
+      var tzDisp = document.getElementById('current-tz-display');
+      if(tzDisp) tzDisp.textContent = payload.timezone;
+      updateLocalTimeDisplay(payload.timezone);
+      renderSettingsSummary(payload);
+      if(statusEl){
+        statusEl.style.cssText='display:block;padding:10px 14px;border-radius:8px;font-size:12px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.25);color:#10b981';
+        statusEl.textContent='✓ Settings saved! Restart server for timezone changes to take full effect.';
+      }
+      toast('✓ Settings saved!','#10b981');
+    } else {
+      toast('Error: '+(data.error||'Failed'),'#ef4444');
+    }
+  }catch(e){ toast('Error saving settings','#ef4444'); }
+}
+
+// Update local time every minute while on settings page
+setInterval(function(){
+  if(document.getElementById('local-time-display') && _sysSettings.timezone){
+    updateLocalTimeDisplay(_sysSettings.timezone);
+  }
+}, 60000);
 
 loadStats();
 loadEmployees();

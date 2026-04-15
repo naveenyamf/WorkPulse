@@ -147,8 +147,15 @@ if ($result.Count -eq 0) { Write-Output "[]" } else {
     const arr = Array.isArray(items) ? items : [items];
 return arr.filter(function(i){ return i && i.url && i.url.length > 2; }).map(function(i){
       var cleanUrl = i.url;
-      var urlInTitle = i.url.match(/https?:\/\/(?:www\.)?([a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
-      if (urlInTitle) cleanUrl = urlInTitle[1].toLowerCase();
+var urlInTitle = i.url.match(/https?:\/\/(?:www\.)?([a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2})?)/);
+if (urlInTitle) {
+  cleanUrl = urlInTitle[1].toLowerCase();
+} else {
+  // Try to extract domain if title starts with domain-like pattern
+  var domainMatch = i.url.match(/^([a-zA-Z0-9][a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2})?)/);
+  if (domainMatch) cleanUrl = domainMatch[1].toLowerCase();
+}
+
       return { url: cleanUrl, browser: i.browser || "Browser", seconds: 60 };
     });
   } catch(e) { return []; }

@@ -240,12 +240,16 @@ app.get("/api/dashboard/screenshots", requireLogin, async (req, res) => {
 });
 
 app.post('/api/screenshots/:id/flag', requireLogin, async (req, res) => {
+  const r = await pool.query('SELECT s.id, e.name FROM screenshots s JOIN employees e ON s.employee_id=e.id WHERE s.id=$1', [req.params.id]);
   await pool.query('UPDATE screenshots SET flagged=true WHERE id=$1', [req.params.id]);
+  await auditLog(req, 'Screenshot Flagged', 'Screenshot ID: ' + req.params.id + (r.rows[0] ? ' (' + r.rows[0].name + ')' : ''));
   res.json({ success: true });
 });
 
 app.post('/api/screenshots/:id/unflag', requireLogin, async (req, res) => {
+  const r = await pool.query('SELECT s.id, e.name FROM screenshots s JOIN employees e ON s.employee_id=e.id WHERE s.id=$1', [req.params.id]);
   await pool.query('UPDATE screenshots SET flagged=false WHERE id=$1', [req.params.id]);
+  await auditLog(req, 'Screenshot Unflagged', 'Screenshot ID: ' + req.params.id + (r.rows[0] ? ' (' + r.rows[0].name + ')' : ''));
   res.json({ success: true });
 });
 
@@ -515,7 +519,9 @@ app.get('/api/alerts', requireLogin, async (req, res) => {
 });
 
 app.post('/api/alerts/:id/resolve', requireLogin, async (req, res) => {
+  const r = await pool.query('SELECT a.id, e.name, a.message FROM alerts a JOIN employees e ON a.employee_id=e.id WHERE a.id=$1', [req.params.id]);
   await pool.query('UPDATE alerts SET resolved=true WHERE id=$1', [req.params.id]);
+  await auditLog(req, 'Alert Resolved', 'Alert ID: ' + req.params.id + (r.rows[0] ? ' | ' + r.rows[0].name + ': ' + (r.rows[0].message||'').slice(0,60) : ''));
   res.json({ success: true });
 });
 
@@ -579,11 +585,12 @@ app.get('/download/extension', (req, res) => {
 // Serve dashboard for all other routes
 app.get('/api/dashboard/screenshot-dates', requireLogin, async (req, res) => {
   try {
+    const tz = await getTimezone();
     const { employee_id } = req.query;
-    let query = `SELECT DISTINCT s.recorded_at::date as date, e.name as employee_name, COUNT(*) as count FROM screenshots s JOIN employees e ON s.employee_id=e.id WHERE e.active=true`;
+    let query = `SELECT DISTINCT to_char(s.recorded_at AT TIME ZONE '${tz}', 'YYYY-MM-DD') as date, e.name as employee_name, COUNT(*) as count FROM screenshots s JOIN employees e ON s.employee_id=e.id WHERE e.active=true`;
     const params = [];
     if (employee_id) { params.push(employee_id); query += ` AND s.employee_id=$${params.length}`; }
-    query += ' GROUP BY s.recorded_at::date, e.name ORDER BY date DESC';
+    query += ` GROUP BY to_char(s.recorded_at AT TIME ZONE '${tz}', 'YYYY-MM-DD'), e.name ORDER BY date DESC`;
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
@@ -592,16 +599,21 @@ app.get('/api/dashboard/screenshot-dates', requireLogin, async (req, res) => {
 });
 
 
+
+
+
+
 // Dates with web activity (for calendar)
 app.get('/api/dashboard/web-activity-dates', requireLogin, async (req, res) => {
   try {
+    const tz = await getTimezone();
     const { employee_id } = req.query;
     const allowed = getAllowedEmployees(req);
     const params = [];
-    let query = `SELECT w.recorded_at::date as date, COUNT(*) as count FROM web_activity w JOIN employees e ON w.employee_id=e.id WHERE e.active=true`;
+    let query = `SELECT to_char(w.recorded_at AT TIME ZONE '${tz}', 'YYYY-MM-DD') as date, COUNT(*) as count FROM web_activity w JOIN employees e ON w.employee_id=e.id WHERE e.active=true`;
     if (employee_id) { params.push(employee_id); query += ` AND w.employee_id=$${params.length}`; }
     if (allowed) { params.push(allowed); query += ` AND w.employee_id = ANY($${params.length}::int[])`; }
-    query += ' GROUP BY w.recorded_at::date ORDER BY date DESC';
+    query += ` GROUP BY to_char(w.recorded_at AT TIME ZONE '${tz}', 'YYYY-MM-DD') ORDER BY date DESC`;
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -610,13 +622,15 @@ app.get('/api/dashboard/web-activity-dates', requireLogin, async (req, res) => {
 // Dates with app usage (for calendar)
 app.get('/api/dashboard/app-usage-dates', requireLogin, async (req, res) => {
   try {
+    const tz = await getTimezone();
     const { employee_id } = req.query;
     const allowed = getAllowedEmployees(req);
     const params = [];
-    let query = `SELECT a.recorded_at::date as date, COUNT(*) as count FROM app_usage a JOIN employees e ON a.employee_id=e.id WHERE e.active=true`;
+    let query = `SELECT to_char(a.recorded_at AT TIME ZONE '${tz}', 'YYYY-MM-DD') as date, COUNT(*) as count FROM app_usage a JOIN employees e ON a.employee_id=e.id WHERE e.active=true`;
+
     if (employee_id) { params.push(employee_id); query += ` AND a.employee_id=$${params.length}`; }
     if (allowed) { params.push(allowed); query += ` AND a.employee_id = ANY($${params.length}::int[])`; }
-    query += ' GROUP BY a.recorded_at::date ORDER BY date DESC';
+    query += ` GROUP BY to_char(a.recorded_at AT TIME ZONE '${tz}', 'YYYY-MM-DD') ORDER BY date DESC`;
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1063,14 +1077,16 @@ app.get('/api/dashboard/system-activity', requireLogin, async (req, res) => {
 
 app.get('/api/dashboard/system-activity-dates', requireLogin, async (req, res) => {
   try {
+    const tz = await getTimezone();
     const { employee_id } = req.query;
     const allowed = getAllowedEmployees(req);
     const params = [];
     let where = 'WHERE e.active=true';
     if (employee_id) { params.push(employee_id); where += ` AND s.employee_id=$${params.length}`; }
     if (allowed) { params.push(allowed); where += ` AND s.employee_id = ANY($${params.length}::int[])`; }
-    const result = await pool.query(
-      `SELECT s.recorded_at::date as date, COUNT(*) as count FROM system_events s JOIN employees e ON s.employee_id=e.id ${where} GROUP BY s.recorded_at::date ORDER BY date DESC`,
+const result = await pool.query(
+      `SELECT to_char(s.recorded_at AT TIME ZONE '${tz}', 'YYYY-MM-DD') as date, COUNT(*) as count FROM system_events s JOIN employees e ON s.employee_id=e.id ${where} GROUP BY to_char(s.recorded_at AT TIME ZONE '${tz}', 'YYYY-MM-DD') ORDER BY date DESC`,
+
       params
     );
     res.json(result.rows);
@@ -1293,6 +1309,73 @@ app.post('/api/admin/restore', requireLogin, requireAdmin, multerBackup.single('
     res.end();
   }
 });
+
+// Screenshot backup - create tar.gz of all screenshots
+app.post('/api/admin/backup/screenshots', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const ssDir = path.join(__dirname, 'screenshots');
+    if (!fs.existsSync(ssDir)) {
+      return res.status(404).json({ error: 'Screenshots directory not found' });
+    }
+    const files = fs.readdirSync(ssDir).filter(f => f.match(/\.(jpg|jpeg|png|gif|webp)$/i));
+    if (!files.length) {
+      return res.status(404).json({ error: 'No screenshot files found to backup' });
+    }
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const filename = `workpulse-screenshots-${ts}.tar.gz`;
+    const filepath = path.join(backupsDir, filename);
+    execFile('tar', ['-czf', filepath, '-C', path.dirname(ssDir), path.basename(ssDir)], async (err) => {
+      if (err) {
+        console.error('[SS Backup] tar error:', err.message);
+        return res.status(500).json({ error: 'tar failed: ' + err.message });
+      }
+      await auditLog(req, 'Screenshots Backup Created', filename);
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Type', 'application/gzip');
+      fs.createReadStream(filepath).pipe(res);
+    });
+  } catch(err) {
+    console.error('[SS Backup]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Screenshot restore - extract tar.gz into screenshots folder
+app.post('/api/admin/restore/screenshots', requireLogin, requireAdmin, require('multer')({ dest: 'backups/tmp/' }).single('screenshots'), async (req, res) => {
+  res.setHeader('Content-Type', 'application/x-ndjson');
+  res.setHeader('Transfer-Encoding', 'chunked');
+  res.setHeader('Cache-Control', 'no-cache');
+  const send = (msg, type, pct, label) => {
+    res.write(JSON.stringify({ msg, type: type||'info', pct: pct||0, label: label||'' }) + '\n');
+  };
+  if (!req.file) { send('No file uploaded.', 'err'); res.end(); return; }
+  const tmpFile = req.file.path;
+  try {
+    send('Archive received: ' + req.file.originalname, 'ok', 15, 'File received');
+    const ssDir = path.join(__dirname, 'screenshots');
+    if (!fs.existsSync(ssDir)) fs.mkdirSync(ssDir, { recursive: true });
+    send('Extracting screenshots…', 'info', 30, 'Extracting…');
+    execFile('tar', ['-xzf', tmpFile, '-C', ssDir, '--strip-components=1'], async (err) => {
+      try { fs.unlinkSync(tmpFile); } catch(e) {}
+      if (err) {
+        send('✗ Extract error: ' + err.message, 'err', 0, 'Failed');
+        res.write(JSON.stringify({ error: err.message }) + '\n');
+        res.end(); return;
+      }
+      send('✓ Screenshots extracted successfully!', 'ok', 90, 'Almost done…');
+      await auditLog(req, 'Screenshots Restored', req.file.originalname);
+      send('✓ Done!', 'ok', 100, 'Done!');
+      res.write(JSON.stringify({ done: true, pct: 100, label: 'Done!' }) + '\n');
+      res.end();
+    });
+  } catch(err) {
+    try { fs.unlinkSync(tmpFile); } catch(e) {}
+    send('✗ Error: ' + err.message, 'err', 0, 'Failed');
+    res.write(JSON.stringify({ error: err.message }) + '\n');
+    res.end();
+  }
+});
+
 // ---- END BACKUP & RESTORE ----
 
 // ============================================================
@@ -1457,7 +1540,7 @@ app.get('/api/admin/report', requireLogin, requireAdmin, async (req, res) => {
       });
     }
 
-    // ── SHEET 4: Daily Breakdown ──────────────────────────────────────────────
+// ── SHEET 4: Daily Breakdown ──────────────────────────────────────────────
     if (inclDaily) {
       const ws = wb.addWorksheet('Daily Breakdown', { properties:{ tabColor:{ argb:'FFF59E0B' } } });
       ws.columns = [
@@ -1475,24 +1558,52 @@ app.get('/api/admin/report', requireLogin, requireAdmin, async (req, res) => {
       const params    = [fromDate, toDate];
       if (employee_id) params.push(employee_id);
       const rows = await pool.query(
-        `SELECT e.name as emp_name,
-          h.recorded_at::date as date,
-          COUNT(DISTINCT h.recorded_at::date) as active_days,
-          (SELECT COUNT(*) FROM screenshots s WHERE s.employee_id=e.id AND s.recorded_at::date=h.recorded_at::date) as ss_count,
-          (SELECT COUNT(DISTINCT date_trunc('minute',w.recorded_at)) FROM web_activity w WHERE w.employee_id=e.id AND w.recorded_at::date=h.recorded_at::date) as web_mins,
-          (SELECT COUNT(DISTINCT date_trunc('minute',a.recorded_at)) FROM app_usage a WHERE a.employee_id=e.id AND a.recorded_at::date=h.recorded_at::date) as app_mins,
-          MIN(h.recorded_at) as first_seen,
-          MAX(h.recorded_at) as last_seen
-         FROM heartbeats h JOIN employees e ON h.employee_id=e.id
-         WHERE h.recorded_at::date BETWEEN $1 AND $2 ${empFilter}
-         GROUP BY e.name, h.recorded_at::date
-         ORDER BY h.recorded_at::date DESC, e.name`, params);
+        `WITH daily_base AS (
+          SELECT e.id as emp_id, e.name as emp_name,
+            h.recorded_at::date as date,
+            MIN(h.recorded_at) as first_seen,
+            MAX(h.recorded_at) as last_seen
+          FROM heartbeats h JOIN employees e ON h.employee_id=e.id
+          WHERE h.recorded_at::date BETWEEN $1 AND $2 ${empFilter}
+          GROUP BY e.id, e.name, h.recorded_at::date
+        ),
+        daily_ss AS (
+          SELECT employee_id, recorded_at::date as date, COUNT(*) as cnt
+          FROM screenshots
+          WHERE recorded_at::date BETWEEN $1 AND $2
+          GROUP BY employee_id, recorded_at::date
+        ),
+        daily_web AS (
+          SELECT employee_id, recorded_at::date as date,
+            COUNT(DISTINCT date_trunc('minute', recorded_at)) as mins
+          FROM web_activity
+          WHERE recorded_at::date BETWEEN $1 AND $2
+          GROUP BY employee_id, recorded_at::date
+        ),
+        daily_apps AS (
+          SELECT employee_id, recorded_at::date as date,
+            COUNT(DISTINCT date_trunc('minute', recorded_at)) as mins
+          FROM app_usage
+          WHERE recorded_at::date BETWEEN $1 AND $2
+          GROUP BY employee_id, recorded_at::date
+        )
+        SELECT b.date, b.emp_name,
+          COALESCE(s.cnt, 0) as ss_count,
+          COALESCE(w.mins, 0) as web_mins,
+          COALESCE(a.mins, 0) as app_mins,
+          b.first_seen, b.last_seen
+        FROM daily_base b
+        LEFT JOIN daily_ss  s ON s.employee_id=b.emp_id AND s.date=b.date
+        LEFT JOIN daily_web w ON w.employee_id=b.emp_id AND w.date=b.date
+        LEFT JOIN daily_apps a ON a.employee_id=b.emp_id AND a.date=b.date
+        ORDER BY b.date DESC, b.emp_name`, params);
       rows.rows.forEach(function(r, i) {
         const fmt = function(d){ return d ? new Date(d).toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit',hour12:false}) : '—'; };
         const row = ws.addRow({ date:r.date, name:r.emp_name, ss:parseInt(r.ss_count)||0, web:parseInt(r.web_mins)||0, apps:parseInt(r.app_mins)||0, first:fmt(r.first_seen), last:fmt(r.last_seen) });
         styleData(row, i%2===0);
       });
     }
+
 
     // Write and send
     const ts = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
@@ -1512,6 +1623,64 @@ app.get('/api/admin/report', requireLogin, requireAdmin, async (req, res) => {
 // ============================================================
 // ---- EMAIL CONFIG & MFA -----------------------------------
 // ============================================================
+// ---- SYSTEM SETTINGS TABLE ----
+(async function initSysSettings() {
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS sys_settings (
+      id SERIAL PRIMARY KEY,
+      timezone VARCHAR(100) DEFAULT 'Asia/Kolkata',
+      company_name VARCHAR(200) DEFAULT 'WorkPulse',
+      date_format VARCHAR(20) DEFAULT 'DD/MM/YYYY',
+      default_theme VARCHAR(20) DEFAULT 'system',
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    // Seed default row if empty
+    const existing = await pool.query('SELECT COUNT(*) FROM sys_settings');
+    if (parseInt(existing.rows[0].count) === 0) {
+      await pool.query("INSERT INTO sys_settings (timezone, company_name, date_format, default_theme) VALUES ('Asia/Kolkata', 'WorkPulse', 'DD/MM/YYYY', 'system')");
+      console.log('[SysSettings] Default settings seeded.');
+    }
+  } catch(e) { console.error('[SysSettings] Init error:', e.message); }
+})();
+
+// Helper to get current timezone setting
+async function getTimezone() {
+  try {
+    const r = await pool.query('SELECT timezone FROM sys_settings LIMIT 1');
+    return r.rows[0]?.timezone || 'Asia/Kolkata';
+  } catch(e) { return 'Asia/Kolkata'; }
+}
+
+// Get sys settings API
+app.get('/api/admin/sys-settings', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM sys_settings LIMIT 1');
+    res.json(r.rows[0] || { timezone: 'Asia/Kolkata', company_name: 'WorkPulse', date_format: 'DD/MM/YYYY', default_theme: 'system' });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Save sys settings API
+app.post('/api/admin/sys-settings', requireLogin, requireAdmin, async (req, res) => {
+  const { timezone, company_name, date_format, default_theme } = req.body;
+  try {
+    const existing = await pool.query('SELECT id FROM sys_settings LIMIT 1');
+    if (existing.rows.length) {
+      await pool.query(
+        'UPDATE sys_settings SET timezone=$1, company_name=$2, date_format=$3, default_theme=$4, updated_at=NOW() WHERE id=$5',
+        [timezone, company_name || 'WorkPulse', date_format || 'DD/MM/YYYY', default_theme || 'system', existing.rows[0].id]
+      );
+    } else {
+      await pool.query(
+        'INSERT INTO sys_settings (timezone, company_name, date_format, default_theme) VALUES ($1,$2,$3,$4)',
+        [timezone, company_name || 'WorkPulse', date_format || 'DD/MM/YYYY', default_theme || 'system']
+      );
+    }
+    await auditLog(req, 'System Settings Updated', 'Timezone: ' + timezone);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+// ---- END SYSTEM SETTINGS ----
+
 (async function initEmailConfigTable() {
   try {
     await pool.query(`CREATE TABLE IF NOT EXISTS email_config (
@@ -1730,6 +1899,89 @@ app.post('/api/login-check-mfa', async (req, res) => {
     res.json({ mfa_enabled: cfg.rows[0]?.mfa_enabled === true });
   } catch(err) { res.json({ mfa_enabled: false }); }
 });
+
+// ---- SCREENSHOT BACKUP & RESTORE ----
+const multerSsRestore = require('multer')({ dest: 'backups/tmp/' });
+const screenshotsDir = path.join(__dirname, 'screenshots');
+
+// Backup screenshots as tar.gz
+app.post('/api/admin/backup/screenshots', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    if (!fs.existsSync(screenshotsDir)) {
+      return res.status(404).json({ error: 'Screenshots directory not found' });
+    }
+    const files = fs.readdirSync(screenshotsDir).filter(f => f.match(/\.(jpg|jpeg|png|gif|webp)$/i));
+    if (!files.length) {
+      return res.status(404).json({ error: 'No screenshot files found to backup' });
+    }
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const filename = `workpulse-screenshots-${ts}.tar.gz`;
+    const filepath = path.join(backupsDir, filename);
+
+    // Use tar to create the archive
+    const { execFile } = require('child_process');
+    execFile('tar', ['-czf', filepath, '-C', path.dirname(screenshotsDir), path.basename(screenshotsDir)], async (err) => {
+      if (err) {
+        console.error('[SS Backup] tar error:', err.message);
+        return res.status(500).json({ error: 'tar failed: ' + err.message });
+      }
+      await auditLog(req, 'Screenshots Backup Created', filename);
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Type', 'application/gzip');
+      fs.createReadStream(filepath).pipe(res);
+    });
+  } catch(err) {
+    console.error('[SS Backup]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Restore screenshots from tar.gz — streams NDJSON progress
+app.post('/api/admin/restore/screenshots', requireLogin, requireAdmin, multerSsRestore.single('screenshots'), async (req, res) => {
+  res.setHeader('Content-Type', 'application/x-ndjson');
+  res.setHeader('Transfer-Encoding', 'chunked');
+  res.setHeader('Cache-Control', 'no-cache');
+
+  const send = (msg, type, pct, label) => {
+    res.write(JSON.stringify({ msg, type: type||'info', pct: pct||0, label: label||'' }) + '\n');
+  };
+
+  if (!req.file) {
+    send('No file uploaded.', 'err'); res.end(); return;
+  }
+
+  const tmpFile = req.file.path;
+  try {
+    send('Archive received: ' + req.file.originalname, 'ok', 15, 'File received');
+
+    // Ensure screenshots dir exists
+    if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
+
+    send('Extracting screenshots…', 'info', 30, 'Extracting…');
+    const { execFile } = require('child_process');
+    // Extract with --strip-components=1 to avoid nested folder
+    execFile('tar', ['-xzf', tmpFile, '-C', screenshotsDir, '--strip-components=1'], async (err, stdout, stderr) => {
+      try { fs.unlinkSync(tmpFile); } catch(e) {}
+      if (err) {
+        send('✗ Extract error: ' + err.message, 'err', 0, 'Failed');
+        res.write(JSON.stringify({ error: err.message }) + '\n');
+        res.end(); return;
+      }
+      send('✓ Screenshots extracted successfully!', 'ok', 90, 'Almost done…');
+      await auditLog(req, 'Screenshots Restored', req.file.originalname);
+      send('✓ Audit log updated', 'dim', 98);
+      send('🎉 Screenshot restore complete!', 'ok', 100, 'Done!');
+      res.write(JSON.stringify({ done: true, pct: 100, label: 'Done!', msg: 'Restore complete.' }) + '\n');
+      res.end();
+    });
+  } catch(err) {
+    try { fs.unlinkSync(tmpFile); } catch(e) {}
+    send('✗ Error: ' + err.message, 'err', 0, 'Failed');
+    res.write(JSON.stringify({ error: err.message }) + '\n');
+    res.end();
+  }
+});
+// ---- END SCREENSHOT BACKUP & RESTORE ----
 
 app.listen(PORT, () => {
   console.log(`WorkPulse server running on port ${PORT}`);
