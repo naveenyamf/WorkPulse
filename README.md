@@ -42,7 +42,26 @@ sudo apt update && sudo apt upgrade -y
 
 ---
 
-### Step 2 — Install Node.js 18+
+### Step 2 — Create WorkPulse system user
+
+> ⚠️ **This step is required.** The agent download path is hardcoded to `/home/workpulse/`. If you skip this and use a different user, the Download Agent button will return "File not found".
+
+```bash
+sudo useradd -m -s /bin/bash workpulse
+sudo passwd workpulse
+```
+
+Set a strong password when prompted. Then switch to that user for all remaining steps:
+
+```bash
+sudo su - workpulse
+```
+
+> 💡 All remaining commands should be run as the `workpulse` user unless specified otherwise.
+
+---
+
+### Step 3 — Install Node.js 18+
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
@@ -53,7 +72,7 @@ npm -v
 
 ---
 
-### Step 3 — Install PostgreSQL
+### Step 4 — Install PostgreSQL
 
 ```bash
 sudo apt install -y postgresql postgresql-contrib
@@ -63,7 +82,7 @@ sudo systemctl enable postgresql
 
 ---
 
-### Step 4 — Create database and user
+### Step 5 — Create database and user
 
 > ⚠️ **Replace `YourStrongPassword` with your own password everywhere below. Use the same password in all places.**
 
@@ -82,7 +101,7 @@ GRANT ALL ON SCHEMA public TO workpulse_user;
 
 ---
 
-### Step 5 — Install Nginx
+### Step 6 — Install Nginx
 
 ```bash
 sudo apt install -y nginx
@@ -92,7 +111,7 @@ sudo systemctl enable nginx
 
 ---
 
-### Step 6 — Install PM2
+### Step 7 — Install PM2
 
 ```bash
 sudo npm install -g pm2
@@ -100,7 +119,9 @@ sudo npm install -g pm2
 
 ---
 
-### Step 7 — Clone the repository
+### Step 8 — Clone the repository
+
+> Make sure you are logged in as `workpulse` user (`sudo su - workpulse`) before running:
 
 ```bash
 cd ~
@@ -111,7 +132,7 @@ npm install
 
 ---
 
-### Step 8 — Configure environment
+### Step 9 — Configure environment
 
 ```bash
 nano .env
@@ -137,7 +158,7 @@ NODE_ENV=development
 
 ---
 
-### Step 9 — Configure Nginx reverse proxy
+### Step 10 — Configure Nginx reverse proxy
 
 ```bash
 sudo nano /etc/nginx/sites-available/workpulse
@@ -176,7 +197,7 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ---
 
-### Step 10 — Start the application
+### Step 11 — Start the application
 
 ```bash
 cd ~/workpulse-app
@@ -189,7 +210,7 @@ Follow the command PM2 prints to enable auto-start on reboot.
 
 ---
 
-### Step 11 — Run the web installer
+### Step 12 — Run the web installer
 
 Open your browser and go to:
 
@@ -213,7 +234,7 @@ Then open `http://your-server-ip` and sign in with the admin account you just cr
 
 ---
 
-### Step 12 — Build the Windows Agent
+### Step 13 — Build the Windows Agent
 
 The agent installer must be compiled on the server before employees can download it.
 
@@ -221,21 +242,26 @@ The agent installer must be compiled on the server before employees can download
 # Install required tools
 sudo apt install -y zip
 
+# Compile the agent executable
 cd ~/workpulse-app/winagent
 npm install
-npx pkg . --targets node18-win-x64 --output dist/WorkPulse-Agent.exe
+npx pkg . --targets node18-win-x64 --output ~/workpulse-app/winagent/dist/WorkPulse-Agent.exe
 
-# Package into ZIP for download
-cp dist/WorkPulse-Agent.exe ~/WorkPulse-Agent.exe
+# Copy EXE to home directory
+cp ~/workpulse-app/winagent/dist/WorkPulse-Agent.exe ~/WorkPulse-Agent.exe
+
+# Package into ZIP using full paths (prevents "file not found" errors)
 zip -j ~/WorkPulse-Agent-Windows.zip \
     ~/WorkPulse-Agent.exe \
-    installer.bat \
-    updater.bat \
-    uninstall.bat
+    ~/workpulse-app/winagent/installer.bat \
+    ~/workpulse-app/winagent/updater.bat \
+    ~/workpulse-app/winagent/uninstall.bat
 
-echo "✓ Agent built: ~/WorkPulse-Agent-Windows.zip"
+echo "✓ Agent built successfully"
 ls -lh ~/WorkPulse-Agent-Windows.zip
 ```
+
+> ✅ If you created the `workpulse` user in Step 2 and ran all commands as that user, no path changes are needed — the server will find the ZIP automatically at `/home/workpulse/`.
 
 > ⚠️ If you are running as a user other than `workpulse` (e.g. `novel`, `ubuntu`), update the agent path in `server.js`:
 > ```bash
@@ -402,7 +428,7 @@ pm2 restart workpulse --update-env
 
 **Cause:** Agent ZIP not built yet. Follow Step 12 above to build it.
 
-If running as a non-default user, also fix the path:
+Make sure you built the agent as the `workpulse` user (Step 13). If you used a different user, fix the path:
 ```bash
 sed -i "s|/home/workpulse/|${HOME}/|g" ~/workpulse-app/server.js
 pm2 restart workpulse --update-env
