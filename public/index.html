@@ -3,142 +3,408 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WorkPulse — Login</title>
+<title>WorkPulse — Sign In</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    background: #0a0c10;
-    font-family: 'Segoe UI', sans-serif;
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-image: linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
-    background-size: 40px 40px;
-  }
-  .login-box {
-    background: #111418;
-    border: 1px solid #1e242e;
-    border-radius: 12px;
-    padding: 48px 40px;
-    width: 100%;
-    max-width: 420px;
-  }
-  .logo { text-align: center; margin-bottom: 32px; }
-  .logo h1 { font-size: 28px; font-weight: 800; color: #fff; letter-spacing: -1px; }
-  .logo h1 span { color: #00e5ff; }
-  .logo p { color: #64748b; font-size: 13px; margin-top: 6px; }
-  .form-group { margin-bottom: 20px; }
-  label { display: block; font-size: 12px; color: #64748b; margin-bottom: 6px; letter-spacing: 1px; text-transform: uppercase; }
-  input {
-    width: 100%;
-    background: #181c22;
-    border: 1px solid #1e242e;
-    color: #e2e8f0;
-    font-size: 14px;
-    padding: 12px 14px;
-    border-radius: 6px;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-  input:focus { border-color: #00e5ff; }
-  .btn {
-    width: 100%;
-    background: #00e5ff;
-    color: #0a0c10;
-    border: none;
-    padding: 13px;
-    border-radius: 6px;
-    font-size: 14px;
-    font-weight: 700;
-    cursor: pointer;
-    margin-top: 8px;
-    transition: background 0.2s;
-    letter-spacing: 0.5px;
-  }
-  .btn:hover { background: #00c8e0; }
-  .error {
-    background: rgba(239,68,68,0.1);
-    border: 1px solid rgba(239,68,68,0.3);
-    color: #ef4444;
-    padding: 10px 14px;
-    border-radius: 6px;
-    font-size: 13px;
-    margin-bottom: 16px;
-    display: none;
-  }
-  .loading { opacity: 0.7; pointer-events: none; }
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800;900&family=DM+Sans:wght@400;500;600&display=swap');
+:root{--bg:#07090f;--bg2:#0d1117;--bg3:#131820;--border:#1c2333;--border2:#243044;--text:#e2e8f0;--text2:#94a3b8;--text3:#4a5568;--accent:#00e5ff;--green:#10b981;--red:#ef4444;--yellow:#f59e0b;}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,0.03) 1px,transparent 1px);background-size:48px 48px;pointer-events:none;}
+body::after{content:'';position:fixed;top:-200px;left:50%;transform:translateX(-50%);width:600px;height:500px;background:radial-gradient(ellipse,rgba(0,229,255,0.07) 0%,transparent 70%);pointer-events:none;}
+
+.wrap{position:relative;z-index:1;width:100%;max-width:400px;padding:20px 16px;}
+.logo{text-align:center;margin-bottom:32px;}
+.logo-mark{display:inline-flex;align-items:center;justify-content:center;width:54px;height:54px;background:linear-gradient(135deg,#00e5ff22,#0891b222);border:1px solid #00e5ff33;border-radius:14px;margin-bottom:14px;box-shadow:0 0 32px rgba(0,229,255,0.12);}
+.logo-mark svg{width:26px;height:26px;}
+.logo h1{font-family:'Syne',sans-serif;font-size:26px;font-weight:900;color:#fff;letter-spacing:-0.3px;}
+.logo h1 span{color:var(--accent);}
+.logo p{margin-top:5px;font-size:12px;color:var(--text3);}
+
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:0 8px 48px rgba(0,0,0,0.6);}
+.card-header{padding:20px 26px 16px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,var(--bg3),var(--bg2));display:flex;align-items:center;gap:10px;}
+.card-title{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;color:#fff;}
+.card-sub{font-size:10px;color:var(--text3);margin-top:1px;}
+.hicon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;}
+.hicon.blue{background:rgba(0,229,255,0.1);border:1px solid rgba(0,229,255,0.2);}
+.hicon.amber{background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);}
+.hicon.green{background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2);}
+.card-body{padding:24px 26px;}
+
+.field{margin-bottom:16px;}
+.field:last-of-type{margin-bottom:0;}
+label{display:block;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:6px;}
+input{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;padding:10px 13px;outline:none;transition:border-color 0.2s,box-shadow 0.2s;}
+input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,229,255,0.07);}
+input.mono{font-family:'DM Mono',monospace;font-size:14px;letter-spacing:4px;text-align:center;}
+input.error{border-color:var(--red);}
+
+.btn{width:100%;padding:11px 18px;border-radius:9px;border:none;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:7px;margin-top:20px;}
+.btn-accent{background:var(--accent);color:#07090f;box-shadow:0 4px 18px rgba(0,229,255,0.22);}
+.btn-accent:hover:not(:disabled){background:#19f0ff;transform:translateY(-1px);}
+.btn-accent:disabled{opacity:0.45;cursor:not-allowed;transform:none;}
+.btn-ghost{background:transparent;border:1px solid var(--border2);color:var(--text2);margin-top:10px;}
+.btn-ghost:hover{border-color:var(--border);color:var(--text);}
+.spinner{width:15px;height:15px;border:2px solid rgba(0,0,0,0.25);border-top-color:#07090f;border-radius:50%;animation:spin 0.7s linear infinite;display:none;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.alert{padding:10px 13px;border-radius:8px;font-size:12px;margin-top:14px;display:none;align-items:center;gap:8px;border:1px solid;}
+.alert.error{background:rgba(239,68,68,0.07);border-color:rgba(239,68,68,0.25);color:var(--red);display:flex;}
+.alert.success{background:rgba(16,185,129,0.07);border-color:rgba(16,185,129,0.25);color:var(--green);display:flex;}
+.alert.info{background:rgba(0,229,255,0.05);border-color:rgba(0,229,255,0.2);color:var(--accent);display:flex;}
+
+.forgot-link{text-align:center;margin-top:14px;}
+.forgot-link a{font-size:11px;color:var(--text3);cursor:pointer;border-bottom:1px dashed var(--border2);padding-bottom:1px;transition:color 0.15s;}
+.forgot-link a:hover{color:var(--text2);}
+
+/* OTP input styling */
+.otp-hint{text-align:center;font-size:11px;color:var(--text3);margin-bottom:16px;line-height:1.5;}
+.otp-hint strong{color:var(--accent);}
+.resend-link{text-align:center;margin-top:12px;}
+.resend-link a{font-size:11px;color:var(--text3);cursor:pointer;transition:color 0.15s;}
+.resend-link a:hover{color:var(--accent);}
+.timer{display:inline;font-family:'DM Mono',monospace;color:var(--yellow);}
+
+/* Step indicator */
+.step-indicator{display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:20px;}
+.step-dot-s{width:8px;height:8px;border-radius:50%;background:var(--border2);transition:all 0.3s;}
+.step-dot-s.active{background:var(--accent);box-shadow:0 0 8px var(--accent);}
+.step-dot-s.done{background:var(--green);}
+
+.screen{display:none;}
+.screen.active{display:block;animation:fadeIn 0.25s ease both;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+.pw-wrap{position:relative;}
+.pw-toggle{position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text3);font-size:12px;user-select:none;}
+.pw-toggle:hover{color:var(--text2);}
 </style>
 </head>
 <body>
-<div class="login-box">
+<div class="wrap">
   <div class="logo">
+    <div class="logo-mark">
+      <svg viewBox="0 0 28 28" fill="none">
+        <rect x="2" y="7" width="24" height="16" rx="3" stroke="#00e5ff" stroke-width="1.5"/>
+        <path d="M8 15l3 3 6-6" stroke="#00e5ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="11" y="2" width="6" height="6" rx="1.5" fill="#00e5ff" opacity="0.4"/>
+        <path d="M14 8v-1" stroke="#00e5ff" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </div>
     <h1>Work<span>Pulse</span></h1>
-    <p>Employee Productivity Monitor</p>
+    <p>Employee Monitoring · v2.0</p>
   </div>
-  <div class="error" id="errorMsg"></div>
-  <div class="form-group">
-    <label>Email Address</label>
-    <input type="email" id="email" placeholder="admin@yourcompany.com" />
+
+  <div class="card">
+
+    <!-- ═══ SCREEN 1: LOGIN ═══ -->
+    <div class="screen active" id="screen-login">
+      <div class="card-header">
+        <div class="hicon blue">🔐</div>
+        <div><div class="card-title">Sign In</div><div class="card-sub">Enter your credentials to continue</div></div>
+      </div>
+      <div class="card-body">
+        <div class="field">
+          <label>Email Address</label>
+          <input type="email" id="login-email" placeholder="admin@company.com" autocomplete="email">
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <div class="pw-wrap">
+            <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password" style="padding-right:36px">
+            <span class="pw-toggle" onclick="togglePw('login-pass',this)">Show</span>
+          </div>
+        </div>
+        <div class="alert" id="login-alert"></div>
+        <button class="btn btn-accent" id="loginBtn" onclick="doLogin()">
+          <div class="spinner" id="loginSpin"></div>
+          <span id="loginBtnText">Sign In →</span>
+        </button>
+        <div class="forgot-link">
+          <a onclick="goScreen('screen-forgot')">Forgot password?</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ SCREEN 2: MFA OTP ═══ -->
+    <div class="screen" id="screen-mfa">
+      <div class="card-header">
+        <div class="hicon amber">🔑</div>
+        <div><div class="card-title">Verification Required</div><div class="card-sub">Check your email for the OTP</div></div>
+      </div>
+      <div class="card-body">
+        <div class="otp-hint">A 6-digit code was sent to<br><strong id="mfa-email-display"></strong></div>
+        <div class="field">
+          <label>Enter OTP Code</label>
+          <input type="text" id="mfa-otp" class="mono" placeholder="000000" maxlength="6" autocomplete="one-time-code" oninput="this.value=this.value.replace(/\D/g,'')">
+        </div>
+        <div class="alert" id="mfa-alert"></div>
+        <button class="btn btn-accent" id="mfaBtn" onclick="verifyMFA()">
+          <div class="spinner" id="mfaSpin"></div>
+          <span id="mfaBtnText">Verify & Sign In →</span>
+        </button>
+        <div class="resend-link">
+          <a onclick="resendOTP('mfa')" id="resendMfaLink">Resend code</a>
+          <span class="timer" id="mfaTimer"></span>
+        </div>
+        <button class="btn btn-ghost" onclick="goScreen('screen-login')">← Back to login</button>
+      </div>
+    </div>
+
+    <!-- ═══ SCREEN 3: FORGOT PASSWORD ═══ -->
+    <div class="screen" id="screen-forgot">
+      <div class="card-header">
+        <div class="hicon amber">📧</div>
+        <div><div class="card-title">Forgot Password</div><div class="card-sub">We'll send a reset code to your email</div></div>
+      </div>
+      <div class="card-body">
+        <div class="field">
+          <label>Email Address</label>
+          <input type="email" id="forgot-email" placeholder="admin@company.com">
+        </div>
+        <div class="alert" id="forgot-alert"></div>
+        <button class="btn btn-accent" id="forgotBtn" onclick="sendForgotOTP()">
+          <div class="spinner" id="forgotSpin"></div>
+          <span id="forgotBtnText">Send Reset Code →</span>
+        </button>
+        <button class="btn btn-ghost" onclick="goScreen('screen-login')">← Back to login</button>
+      </div>
+    </div>
+
+    <!-- ═══ SCREEN 4: RESET OTP ═══ -->
+    <div class="screen" id="screen-reset-otp">
+      <div class="card-header">
+        <div class="hicon amber">🔑</div>
+        <div><div class="card-title">Enter Reset Code</div><div class="card-sub">Check your email for the OTP</div></div>
+      </div>
+      <div class="card-body">
+        <div class="otp-hint">A 6-digit reset code was sent to<br><strong id="reset-email-display"></strong></div>
+        <div class="field">
+          <label>Reset Code</label>
+          <input type="text" id="reset-otp" class="mono" placeholder="000000" maxlength="6" oninput="this.value=this.value.replace(/\D/g,'')">
+        </div>
+        <div class="alert" id="reset-otp-alert"></div>
+        <button class="btn btn-accent" id="resetOtpBtn" onclick="verifyResetOTP()">
+          <div class="spinner" id="resetOtpSpin"></div>
+          <span id="resetOtpBtnText">Verify Code →</span>
+        </button>
+        <div class="resend-link">
+          <a onclick="resendOTP('reset')">Resend code</a>
+        </div>
+        <button class="btn btn-ghost" onclick="goScreen('screen-forgot')">← Back</button>
+      </div>
+    </div>
+
+    <!-- ═══ SCREEN 5: NEW PASSWORD ═══ -->
+    <div class="screen" id="screen-new-password">
+      <div class="card-header">
+        <div class="hicon green">🔒</div>
+        <div><div class="card-title">Set New Password</div><div class="card-sub">Choose a strong password</div></div>
+      </div>
+      <div class="card-body">
+        <div class="field">
+          <label>New Password</label>
+          <div class="pw-wrap">
+            <input type="password" id="new-pass" placeholder="Min 8 characters" style="padding-right:36px">
+            <span class="pw-toggle" onclick="togglePw('new-pass',this)">Show</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Confirm Password</label>
+          <input type="password" id="new-pass2" placeholder="Re-enter password">
+        </div>
+        <div class="alert" id="newpass-alert"></div>
+        <button class="btn btn-accent" id="newPassBtn" onclick="doResetPassword()">
+          <div class="spinner" id="newPassSpin"></div>
+          <span id="newPassBtnText">Reset Password →</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ═══ SCREEN 6: SUCCESS ═══ -->
+    <div class="screen" id="screen-success">
+      <div class="card-body" style="text-align:center;padding:32px 26px">
+        <div style="font-size:40px;margin-bottom:14px">✅</div>
+        <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#fff;margin-bottom:8px">Password Reset!</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:20px">Your password has been updated successfully.</div>
+        <button class="btn btn-accent" style="margin-top:0" onclick="goScreen('screen-login')">Sign In Now →</button>
+      </div>
+    </div>
+
   </div>
-  <div class="form-group">
-    <label>Password</label>
-    <input type="password" id="password" placeholder="••••••••" />
-  </div>
-  <button class="btn" id="loginBtn" onclick="doLogin()">Sign In</button>
 </div>
+
 <script>
-  // If already logged in, go to dashboard
-  fetch('/api/me').then(r => r.json()).then(d => {
-    if (d.name) window.location.href = '/dashboard.html';
-  }).catch(() => {});
+var currentEmail  = '';
+var resetVerified = false;
 
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Enter') doLogin();
-  });
+// ── SCREEN NAVIGATION ─────────────────────────────────────────────────────────
+function goScreen(id) {
+  document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
+  document.getElementById(id).classList.add('active');
+  // Clear alerts on switch
+  document.querySelectorAll('.alert').forEach(function(a){ a.className='alert'; a.textContent=''; });
+}
 
-  async function doLogin() {
-    const email = document.getElementById('email').value.trim();
-    const password = document.getElementById('password').value;
-    const btn = document.getElementById('loginBtn');
-    const err = document.getElementById('errorMsg');
+// ── SHOW / HIDE PASSWORD ──────────────────────────────────────────────────────
+function togglePw(inputId, btn) {
+  var inp = document.getElementById(inputId);
+  var isPass = inp.type === 'password';
+  inp.type = isPass ? 'text' : 'password';
+  btn.textContent = isPass ? 'Hide' : 'Show';
+}
 
-    if (!email || !password) {
-      showError('Please enter your email and password.');
-      return;
+// ── ALERT HELPERS ─────────────────────────────────────────────────────────────
+function setAlert(id, type, msg) {
+  var el = document.getElementById(id);
+  el.className = 'alert ' + type;
+  el.textContent = msg;
+}
+function clearAlert(id){ document.getElementById(id).className='alert'; }
+
+function setBusy(btnId, spinId, textId, busy, text) {
+  document.getElementById(btnId).disabled = busy;
+  document.getElementById(spinId).style.display = busy ? 'block' : 'none';
+  document.getElementById(textId).textContent = text;
+}
+
+// ── LOGIN ─────────────────────────────────────────────────────────────────────
+async function doLogin() {
+  var email = document.getElementById('login-email').value.trim();
+  var pass  = document.getElementById('login-pass').value;
+  clearAlert('login-alert');
+  if (!email || !pass) { setAlert('login-alert','error','Please enter email and password.'); return; }
+  setBusy('loginBtn','loginSpin','loginBtnText', true, 'Signing in…');
+  try {
+    var res  = await fetch('/api/user-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password:pass})});
+    var data = await res.json();
+    if (data.mfa_required) {
+      currentEmail = data.email;
+      document.getElementById('mfa-email-display').textContent = data.email;
+      startResendTimer('mfaTimer','resendMfaLink');
+      goScreen('screen-mfa');
+    } else if (data.success) {
+      window.location.href = '/dashboard.html';
+    } else {
+      setAlert('login-alert','error', data.error || 'Invalid credentials');
     }
+  } catch(e) { setAlert('login-alert','error','Network error. Please try again.'); }
+  setBusy('loginBtn','loginSpin','loginBtnText', false, 'Sign In →');
+}
 
-    btn.classList.add('loading');
-    btn.textContent = 'Signing in...';
-    err.style.display = 'none';
-
-    try {
-      const res = await fetch('/api/user-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        window.location.href = '/dashboard.html';
-      } else {
-        showError(data.error || 'Invalid email or password.');
-        btn.classList.remove('loading');
-        btn.textContent = 'Sign In';
-      }
-    } catch (e) {
-      showError('Cannot connect to server. Please try again.');
-      btn.classList.remove('loading');
-      btn.textContent = 'Sign In';
+// ── MFA VERIFY ────────────────────────────────────────────────────────────────
+async function verifyMFA() {
+  var otp = document.getElementById('mfa-otp').value.trim();
+  clearAlert('mfa-alert');
+  if (otp.length !== 6) { setAlert('mfa-alert','error','Enter the 6-digit code from your email.'); return; }
+  setBusy('mfaBtn','mfaSpin','mfaBtnText', true, 'Verifying…');
+  try {
+    var res  = await fetch('/api/auth/verify-otp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:currentEmail,otp,purpose:'mfa'})});
+    var data = await res.json();
+    if (data.success) {
+      window.location.href = '/dashboard.html';
+    } else {
+      setAlert('mfa-alert','error', data.error || 'Invalid or expired code');
     }
-  }
+  } catch(e) { setAlert('mfa-alert','error','Network error.'); }
+  setBusy('mfaBtn','mfaSpin','mfaBtnText', false, 'Verify & Sign In →');
+}
 
-  function showError(msg) {
-    const err = document.getElementById('errorMsg');
-    err.textContent = msg;
-    err.style.display = 'block';
-  }
+// ── FORGOT PASSWORD ───────────────────────────────────────────────────────────
+async function sendForgotOTP() {
+  var email = document.getElementById('forgot-email').value.trim();
+  clearAlert('forgot-alert');
+  if (!email) { setAlert('forgot-alert','error','Please enter your email address.'); return; }
+  setBusy('forgotBtn','forgotSpin','forgotBtnText', true, 'Sending…');
+  try {
+    await fetch('/api/auth/forgot-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});
+    // Always show success to avoid email enumeration
+    currentEmail = email;
+    document.getElementById('reset-email-display').textContent = email;
+    goScreen('screen-reset-otp');
+    setAlert('reset-otp-alert','info','If this email exists, a reset code has been sent.');
+  } catch(e) { setAlert('forgot-alert','error','Network error.'); }
+  setBusy('forgotBtn','forgotSpin','forgotBtnText', false, 'Send Reset Code →');
+}
+
+async function verifyResetOTP() {
+  var otp = document.getElementById('reset-otp').value.trim();
+  clearAlert('reset-otp-alert');
+  if (otp.length !== 6) { setAlert('reset-otp-alert','error','Enter the 6-digit code.'); return; }
+  setBusy('resetOtpBtn','resetOtpSpin','resetOtpBtnText', true, 'Verifying…');
+  try {
+    var res  = await fetch('/api/auth/verify-otp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:currentEmail,otp,purpose:'reset'})});
+    var data = await res.json();
+    if (data.success && data.can_reset) {
+      resetVerified = true;
+      goScreen('screen-new-password');
+    } else {
+      setAlert('reset-otp-alert','error', data.error || 'Invalid or expired code');
+    }
+  } catch(e) { setAlert('reset-otp-alert','error','Network error.'); }
+  setBusy('resetOtpBtn','resetOtpSpin','resetOtpBtnText', false, 'Verify Code →');
+}
+
+async function doResetPassword() {
+  var pass  = document.getElementById('new-pass').value;
+  var pass2 = document.getElementById('new-pass2').value;
+  clearAlert('newpass-alert');
+  if (pass.length < 8)  { setAlert('newpass-alert','error','Password must be at least 8 characters.'); return; }
+  if (pass !== pass2)   { setAlert('newpass-alert','error','Passwords do not match.'); return; }
+  setBusy('newPassBtn','newPassSpin','newPassBtnText', true, 'Resetting…');
+  try {
+    var res  = await fetch('/api/auth/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:currentEmail,password:pass})});
+    var data = await res.json();
+    if (data.success) {
+      goScreen('screen-success');
+    } else {
+      setAlert('newpass-alert','error', data.error || 'Reset failed. Please start over.');
+    }
+  } catch(e) { setAlert('newpass-alert','error','Network error.'); }
+  setBusy('newPassBtn','newPassSpin','newPassBtnText', false, 'Reset Password →');
+}
+
+// ── RESEND OTP ────────────────────────────────────────────────────────────────
+async function resendOTP(purpose) {
+  if (!currentEmail) return;
+  try {
+    await fetch('/api/auth/send-otp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:currentEmail,purpose})});
+    if (purpose === 'mfa') startResendTimer('mfaTimer','resendMfaLink');
+  } catch(e) {}
+}
+
+function startResendTimer(timerId, linkId) {
+  var secs = 60;
+  var link = document.getElementById(linkId);
+  var timer = document.getElementById(timerId);
+  if (link) link.style.pointerEvents = 'none';
+  var iv = setInterval(function(){
+    secs--;
+    if (timer) timer.textContent = ' (' + secs + 's)';
+    if (secs <= 0) {
+      clearInterval(iv);
+      if (timer) timer.textContent = '';
+      if (link) link.style.pointerEvents = 'auto';
+    }
+  }, 1000);
+}
+
+// ── ENTER KEY ─────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Enter') return;
+  var active = document.querySelector('.screen.active');
+  if (!active) return;
+  var id = active.id;
+  if (id === 'screen-login')     doLogin();
+  if (id === 'screen-mfa')       verifyMFA();
+  if (id === 'screen-forgot')    sendForgotOTP();
+  if (id === 'screen-reset-otp') verifyResetOTP();
+  if (id === 'screen-new-password') doResetPassword();
+});
+
+// Check if already logged in
+fetch('/api/me').then(function(r){return r.json();}).then(function(d){
+  if(d.name) window.location.href='/dashboard.html';
+}).catch(function(){});
 </script>
 </body>
 </html>

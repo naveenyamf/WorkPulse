@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkPulse — Setup Wizard</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800;900&family=DM+Sans:wght@400;500;600&display=swap');
+:root{--bg:#07090f;--bg2:#0d1117;--bg3:#131820;--border:#1c2333;--border2:#243044;--text:#e2e8f0;--text2:#94a3b8;--text3:#4a5568;--accent:#00e5ff;--green:#10b981;--red:#ef4444;--yellow:#f59e0b;--purple:#8b5cf6;}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,0.03) 1px,transparent 1px);background-size:48px 48px;pointer-events:none;z-index:0;}
+body::after{content:'';position:fixed;top:-200px;left:50%;transform:translateX(-50%);width:700px;height:500px;background:radial-gradient(ellipse,rgba(0,229,255,0.06) 0%,transparent 70%);pointer-events:none;z-index:0;}
+.wrapper{position:relative;z-index:1;width:100%;max-width:640px;padding:24px 16px;animation:fadeUp 0.5s ease both;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+
+/* HEADER */
+.header{text-align:center;margin-bottom:28px;}
+.logo-mark{display:inline-flex;align-items:center;justify-content:center;width:54px;height:54px;background:linear-gradient(135deg,#00e5ff22,#0891b222);border:1px solid #00e5ff33;border-radius:14px;margin-bottom:14px;box-shadow:0 0 32px rgba(0,229,255,0.12);}
+.logo-mark svg{width:26px;height:26px;}
+.header h1{font-family:'Syne',sans-serif;font-size:26px;font-weight:900;color:#fff;letter-spacing:-0.3px;}
+.header h1 span{color:var(--accent);}
+.header p{margin-top:5px;font-size:12px;color:var(--text3);}
+
+/* STEPS */
+.steps-row{display:grid;grid-template-columns:1fr 32px 1fr 32px 1fr 32px 1fr;align-items:center;margin-bottom:28px;max-width:520px;margin-left:auto;margin-right:auto;}
+.step-box{display:flex;flex-direction:column;align-items:center;gap:5px;}
+.step-dot{width:30px;height:30px;border-radius:50%;border:2px solid var(--border2);background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--text3);transition:all 0.3s;font-family:'DM Mono',monospace;}
+.step-dot.active{border-color:var(--accent);background:rgba(0,229,255,0.1);color:var(--accent);box-shadow:0 0 14px rgba(0,229,255,0.2);}
+.step-dot.done{border-color:var(--green);background:rgba(16,185,129,0.15);color:var(--green);}
+.step-label{font-size:9px;font-weight:700;color:var(--text3);letter-spacing:0.5px;text-transform:uppercase;white-space:nowrap;}
+.step-label.active{color:var(--accent);}
+.step-label.done{color:var(--green);}
+.step-connector{height:1px;background:var(--border2);transition:background 0.4s;}
+.step-connector.done{background:var(--accent);}
+
+/* CARD */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:0 4px 40px rgba(0,0,0,0.5);}
+.card-header{padding:18px 24px 15px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,var(--bg3) 0%,var(--bg2) 100%);display:flex;align-items:center;gap:11px;}
+.hicon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;}
+.hicon.blue{background:rgba(0,229,255,0.1);border:1px solid rgba(0,229,255,0.2);}
+.hicon.green{background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2);}
+.hicon.purple{background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.2);}
+.hicon.yellow{background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);}
+.card-title{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;color:#fff;}
+.card-sub{font-size:10px;color:var(--text3);margin-top:1px;}
+.card-body{padding:22px 24px;}
+
+/* FORM */
+.field{margin-bottom:15px;}
+label{display:block;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:6px;}
+input[type=text],input[type=password],input[type=email]{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;padding:9px 13px;outline:none;transition:border-color 0.2s,box-shadow 0.2s;}
+input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,229,255,0.07);}
+input.mono{font-family:'DM Mono',monospace;font-size:12px;}
+.field-hint{margin-top:5px;font-size:10px;color:var(--text3);}
+.field-error{margin-top:5px;font-size:11px;color:var(--red);display:none;}
+
+/* CHOICE CARDS */
+.choice-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px;}
+.choice-card{border:2px solid var(--border2);border-radius:11px;padding:18px 14px;cursor:pointer;transition:all 0.2s;background:var(--bg3);text-align:center;}
+.choice-card:hover{border-color:var(--border);}
+.choice-card.sel-fresh{border-color:var(--accent);background:rgba(0,229,255,0.06);}
+.choice-card.sel-restore{border-color:var(--purple);background:rgba(139,92,246,0.06);}
+.choice-icon{font-size:28px;margin-bottom:8px;}
+.choice-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:800;color:#fff;margin-bottom:3px;}
+.choice-desc{font-size:10px;color:var(--text3);line-height:1.5;}
+
+/* SKIP LINK */
+.skip-link{text-align:center;margin-top:12px;}
+.skip-link a{font-size:11px;color:var(--text3);text-decoration:none;cursor:pointer;border-bottom:1px dashed var(--border2);padding-bottom:1px;transition:color 0.15s;}
+.skip-link a:hover{color:var(--text2);}
+
+/* PW STRENGTH */
+.pw-strength{margin-top:7px;display:none;}
+.pw-bars{display:flex;gap:3px;margin-bottom:3px;}
+.pw-bar{height:3px;flex:1;border-radius:2px;background:var(--border2);transition:background 0.3s;}
+.pw-label{font-size:10px;color:var(--text3);}
+
+/* FILE DROP */
+.file-drop{border:2px dashed var(--border2);border-radius:10px;padding:26px 16px;text-align:center;cursor:pointer;transition:all 0.2s;margin-top:8px;}
+.file-drop:hover,.file-drop.drag{border-color:var(--purple);background:rgba(139,92,246,0.05);}
+.file-drop-icon{font-size:26px;margin-bottom:7px;}
+.file-drop-title{font-size:13px;font-weight:600;color:var(--text2);margin-bottom:3px;}
+.file-drop-sub{font-size:11px;color:var(--text3);}
+.file-chosen{margin-top:9px;padding:7px 11px;background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.25);border-radius:6px;font-size:11px;color:#c4b5fd;font-family:'DM Mono',monospace;display:none;}
+
+/* BUTTONS */
+.btn{width:100%;padding:11px 18px;border-radius:9px;border:none;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:7px;margin-top:20px;}
+.btn-accent{background:var(--accent);color:#07090f;box-shadow:0 4px 18px rgba(0,229,255,0.22);}
+.btn-accent:hover:not(:disabled){background:#19f0ff;transform:translateY(-1px);}
+.btn-accent:disabled{opacity:0.45;cursor:not-allowed;transform:none;}
+.btn-purple{background:var(--purple);color:#fff;box-shadow:0 4px 18px rgba(139,92,246,0.25);}
+.btn-purple:hover:not(:disabled){background:#9d71f8;transform:translateY(-1px);}
+.btn-purple:disabled{opacity:0.45;cursor:not-allowed;}
+.btn-success{background:var(--green);color:#07090f;box-shadow:0 4px 18px rgba(16,185,129,0.22);}
+.btn-success:hover{background:#1ec993;transform:translateY(-1px);}
+.spinner{width:15px;height:15px;border:2px solid rgba(0,0,0,0.25);border-top-color:#07090f;border-radius:50%;animation:spin 0.7s linear infinite;display:none;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* DB STATUS */
+.db-status{margin-top:12px;padding:10px 13px;border-radius:8px;font-size:12px;display:none;align-items:center;gap:9px;border:1px solid;}
+.db-status.testing{background:rgba(0,229,255,0.05);border-color:rgba(0,229,255,0.2);color:var(--accent);display:flex;}
+.db-status.success{background:rgba(16,185,129,0.07);border-color:rgba(16,185,129,0.25);color:var(--green);display:flex;}
+.db-status.fail{background:rgba(239,68,68,0.07);border-color:rgba(239,68,68,0.25);color:var(--red);display:flex;}
+.db-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:currentColor;}
+.db-status.testing .db-dot{animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+
+/* INSTALL LOG */
+.install-log{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:13px;font-family:'DM Mono',monospace;font-size:11px;line-height:1.8;height:260px;overflow-y:auto;}
+.log-line{display:flex;gap:8px;}
+.log-line .ts{color:var(--text3);flex-shrink:0;}
+.log-line.ok .msg{color:var(--green);}
+.log-line.err .msg{color:var(--red);}
+.log-line.info .msg{color:var(--accent);}
+.log-line.dim .msg{color:var(--text3);}
+.log-line.warn .msg{color:var(--yellow);}
+
+/* PROGRESS */
+.progress-wrap{margin:14px 0;}
+.progress-label{display:flex;justify-content:space-between;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:7px;}
+.progress-bar{height:4px;background:var(--border2);border-radius:2px;overflow:hidden;}
+.progress-fill{height:100%;border-radius:2px;transition:width 0.4s cubic-bezier(.4,0,.2,1);width:0%;}
+.progress-fill.fresh{background:linear-gradient(90deg,var(--accent),#0891b2);box-shadow:0 0 8px var(--accent);}
+.progress-fill.restore{background:linear-gradient(90deg,var(--purple),#a78bfa);box-shadow:0 0 8px var(--purple);}
+
+/* SUCCESS */
+.success-panel{text-align:center;padding:28px 24px;}
+.success-icon{width:68px;height:68px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 18px;animation:popIn 0.5s cubic-bezier(.17,.67,.4,1.5) both;}
+.success-icon.fresh{background:rgba(16,185,129,0.12);border:2px solid rgba(16,185,129,0.3);box-shadow:0 0 36px rgba(16,185,129,0.15);}
+.success-icon.restore{background:rgba(139,92,246,0.12);border:2px solid rgba(139,92,246,0.3);box-shadow:0 0 36px rgba(139,92,246,0.15);}
+@keyframes popIn{from{transform:scale(0.5);opacity:0}to{transform:scale(1);opacity:1}}
+.success-panel h2{font-family:'Syne',sans-serif;font-size:21px;font-weight:900;color:#fff;margin-bottom:7px;}
+.success-panel p{font-size:12px;color:var(--text2);line-height:1.6;}
+.cred-box{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:13px 17px;margin:16px 0;text-align:left;}
+.cred-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;}
+.cred-row:last-child{border-bottom:none;}
+.cred-k{color:var(--text3);font-size:10px;letter-spacing:1px;text-transform:uppercase;font-weight:700;}
+.cred-v{color:var(--accent);font-family:'DM Mono',monospace;font-size:12px;}
+
+/* PAGES */
+.page{display:none;}
+.page.active{display:block;animation:fadeIn 0.3s ease both;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+
+/* MISC */
+.notice{background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:9px 13px;font-size:11px;color:var(--yellow);display:flex;gap:7px;margin-top:13px;line-height:1.5;}
+.notice.purple{background:rgba(139,92,246,0.07);border-color:rgba(139,92,246,0.25);color:#c4b5fd;}
+.divider{height:1px;background:var(--border);margin:16px 0;}
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+  <div class="header">
+    <div class="logo-mark">
+      <svg viewBox="0 0 28 28" fill="none">
+        <rect x="2" y="7" width="24" height="16" rx="3" stroke="#00e5ff" stroke-width="1.5"/>
+        <path d="M8 15l3 3 6-6" stroke="#00e5ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="11" y="2" width="6" height="6" rx="1.5" fill="#00e5ff" opacity="0.4"/>
+        <path d="M14 8v-1" stroke="#00e5ff" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <h1>Work<span>Pulse</span></h1>
+    <p>Setup Wizard · v2.0</p>
+  </div>
+
+  <!-- 4-step progress bar -->
+  <div class="steps-row">
+    <div class="step-box"><div class="step-dot active" id="sdot1">1</div><div class="step-label active" id="slbl1">Database</div></div>
+    <div class="step-connector" id="sc1"></div>
+    <div class="step-box"><div class="step-dot" id="sdot2">2</div><div class="step-label" id="slbl2">Setup Type</div></div>
+    <div class="step-connector" id="sc2"></div>
+    <div class="step-box"><div class="step-dot" id="sdot3">3</div><div class="step-label" id="slbl3">Admin</div></div>
+    <div class="step-connector" id="sc3"></div>
+    <div class="step-box"><div class="step-dot" id="sdot4">4</div><div class="step-label" id="slbl4">Install</div></div>
+  </div>
+
+  <!-- PAGE 1: DATABASE -->
+  <div class="page active" id="page1">
+    <div class="card">
+      <div class="card-header">
+        <div class="hicon blue">🗄️</div>
+        <div><div class="card-title">Database Connection</div><div class="card-sub">Connect to your PostgreSQL database</div></div>
+      </div>
+      <div class="card-body">
+        <div class="field"><label>Host</label><input type="text" id="db-host" value="localhost" class="mono"></div>
+        <div class="field"><label>Port</label><input type="text" id="db-port" value="5432" class="mono"></div>
+        <div class="field">
+          <label>Database Name</label>
+          <input type="text" id="db-name" placeholder="workpulse" class="mono">
+          <div class="field-hint">💡 Create first if new: <code style="color:var(--accent)">createdb workpulse</code></div>
+        </div>
+        <div class="field"><label>Username</label><input type="text" id="db-user" placeholder="workpulse_user" class="mono"></div>
+        <div class="field"><label>Password</label><input type="password" id="db-pass" placeholder="••••••••" class="mono"></div>
+        <div class="db-status" id="dbStatus"><div class="db-dot"></div><span id="dbStatusText"></span></div>
+        <button class="btn btn-accent" id="btn1" onclick="testAndNext()">
+          <div class="spinner" id="spin1"></div>
+          <span id="btn1text">Test Connection & Continue →</span>
+        </button>
+        <div class="notice">⚠️ The database must exist and the user must have CREATE TABLE privileges.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE 2: SETUP TYPE -->
+  <div class="page" id="page2">
+    <div class="card">
+      <div class="card-header">
+        <div class="hicon yellow">⚙️</div>
+        <div><div class="card-title">Setup Type</div><div class="card-sub">Choose how to set up WorkPulse</div></div>
+      </div>
+      <div class="card-body">
+        <div class="choice-grid">
+          <div class="choice-card" id="choice-fresh" onclick="selectType('fresh')">
+            <div class="choice-icon">✨</div>
+            <div class="choice-title">Fresh Install</div>
+            <div class="choice-desc">Create all tables and a new admin account from scratch</div>
+          </div>
+          <div class="choice-card" id="choice-restore" onclick="selectType('restore')">
+            <div class="choice-icon">🔄</div>
+            <div class="choice-title">Restore Backup</div>
+            <div class="choice-desc">Restore a .wpbackup file — all employees, data and settings</div>
+          </div>
+        </div>
+
+        <!-- Restore upload area (hidden until restore selected) -->
+        <div id="restoreWrap" style="display:none">
+          <div class="divider"></div>
+          <label>Backup File (.wpbackup or .sql)</label>
+          <div class="file-drop" id="fileDrop"
+               onclick="document.getElementById('bkpInput').click()"
+               ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+            <div class="file-drop-icon">📦</div>
+            <div class="file-drop-title">Click to choose or drag &amp; drop</div>
+            <div class="file-drop-sub">.wpbackup or .sql file</div>
+          </div>
+          <input type="file" id="bkpInput" accept=".wpbackup,.sql" style="display:none" onchange="onFileChosen(this)">
+          <div class="file-chosen" id="fileChosen"></div>
+          <div class="notice purple" style="margin-top:10px">🔄 All existing tables will be dropped and replaced. Only proceed if the DB is empty or data is not needed.</div>
+        </div>
+
+        <button class="btn btn-accent" id="btn2" onclick="goFromType()" disabled>Continue →</button>
+
+        <!-- Skip option -->
+        <div class="skip-link">
+          <a onclick="skipSetup()">Skip — I just want to set up the database connection only</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE 3: ADMIN (fresh install only) -->
+  <div class="page" id="page3">
+    <div class="card">
+      <div class="card-header">
+        <div class="hicon purple">👤</div>
+        <div><div class="card-title">Create Root Admin</div><div class="card-sub">Your primary administrator account</div></div>
+      </div>
+      <div class="card-body">
+        <div class="field"><label>Full Name</label><input type="text" id="admin-name" placeholder="e.g. Naveen Kumar"></div>
+        <div class="field"><label>Email Address</label><input type="email" id="admin-email" placeholder="admin@company.com" class="mono"></div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" id="admin-pass" placeholder="Min 8 characters" oninput="checkPw(this.value)">
+          <div class="pw-strength" id="pwStrength">
+            <div class="pw-bars"><div class="pw-bar" id="pw1"></div><div class="pw-bar" id="pw2"></div><div class="pw-bar" id="pw3"></div><div class="pw-bar" id="pw4"></div></div>
+            <div class="pw-label" id="pwLabel"></div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Confirm Password</label>
+          <input type="password" id="admin-pass2" placeholder="Re-enter password">
+          <div class="field-error" id="passErr">Passwords do not match</div>
+        </div>
+        <button class="btn btn-accent" onclick="goToInstall()">Create Admin & Install →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE 4: INSTALLING / RESTORING -->
+  <div class="page" id="page4">
+    <div class="card">
+      <div class="card-header">
+        <div class="hicon" id="installIcon" style="background:rgba(0,229,255,0.1);border:1px solid rgba(0,229,255,0.2)">⚡</div>
+        <div>
+          <div class="card-title" id="installTitle">Installing WorkPulse</div>
+          <div class="card-sub" id="installSub">Creating tables and configuring system…</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="progress-wrap">
+          <div class="progress-label"><span id="progressLabel">Initializing…</span><span id="progressPct">0%</span></div>
+          <div class="progress-bar"><div class="progress-fill fresh" id="progressFill"></div></div>
+        </div>
+        <div class="install-log" id="installLog"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE 5: DONE -->
+  <div class="page" id="page5">
+    <div class="card">
+      <div class="success-panel">
+        <div class="success-icon fresh" id="doneIcon">✓</div>
+        <h2 id="doneTitle">Installation Complete!</h2>
+        <p id="doneDesc">WorkPulse is ready. Log in with the credentials below.</p>
+        <div class="cred-box" id="finalCreds"></div>
+        <div class="notice">⚠️ <strong>Security:</strong> Remove the <code style="color:var(--yellow)">/install</code> route from <code style="color:var(--yellow)">server.js</code> once setup is done.</div>
+        <button class="btn btn-success" style="margin-top:16px" onclick="window.location.href='/'">🚀 Go to Dashboard</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE 6: SKIP DONE -->
+  <div class="page" id="page6">
+    <div class="card">
+      <div class="success-panel">
+        <div class="success-icon fresh" style="font-size:24px">⚙️</div>
+        <h2>Setup Skipped</h2>
+        <p>Database connection noted. No tables were created.<br>You can run the installer again anytime from <code style="color:var(--accent)">/install</code>.</p>
+        <div class="cred-box">
+          <div class="cred-row"><span class="cred-k">Dashboard URL</span><span class="cred-v" id="skipUrl"></span></div>
+          <div class="cred-row"><span class="cred-k">Installer</span><span class="cred-v">/install</span></div>
+        </div>
+        <button class="btn btn-success" style="margin-top:16px" onclick="window.location.href='/'">→ Go to Dashboard</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /wrapper -->
+
+<script>
+var dbConfig    = {};
+var adminConfig = {};
+var setupType   = null;   // 'fresh' | 'restore' | 'skip'
+var backupFile  = null;
+
+// ── STEP PROGRESS ──
+function setStep(active) {
+  for (var i = 1; i <= 4; i++) {
+    var dot = document.getElementById('sdot'+i);
+    var lbl = document.getElementById('slbl'+i);
+    if (i < active)       { dot.className='step-dot done';   dot.textContent='✓'; lbl.className='step-label done'; }
+    else if (i === active){ dot.className='step-dot active'; dot.textContent=i;   lbl.className='step-label active'; }
+    else                  { dot.className='step-dot';        dot.textContent=i;   lbl.className='step-label'; }
+    if (i < 4) document.getElementById('sc'+i).className = 'step-connector' + (i < active ? ' done' : '');
+  }
+}
+
+function showPage(n) {
+  document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); });
+  document.getElementById('page'+n).classList.add('active');
+  var stepMap = {1:1, 2:2, 3:3, 4:4, 5:4, 6:4};
+  setStep(stepMap[n] || n);
+}
+
+// ── PAGE 1: TEST DB ──
+async function testAndNext() {
+  var host = document.getElementById('db-host').value.trim() || 'localhost';
+  var port = document.getElementById('db-port').value.trim() || '5432';
+  var name = document.getElementById('db-name').value.trim();
+  var user = document.getElementById('db-user').value.trim();
+  var pass = document.getElementById('db-pass').value;
+  if (!name || !user) { setDbStatus('fail','Please fill in database name and username.'); return; }
+  var btn = document.getElementById('btn1');
+  btn.disabled = true;
+  document.getElementById('spin1').style.display = 'block';
+  document.getElementById('btn1text').textContent = 'Testing…';
+  setDbStatus('testing','Testing connection to PostgreSQL…');
+  try {
+    var res  = await fetch('/install/test-db',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({host,port,name,user,pass})});
+    var data = await res.json();
+    if (data.ok) {
+      setDbStatus('success','✓ Connected! ' + (data.version||''));
+      dbConfig = {host,port,name,user,pass};
+      setTimeout(function(){ showPage(2); }, 700);
+    } else {
+      setDbStatus('fail','✗ ' + (data.error||'Connection failed'));
+      btn.disabled = false;
+      document.getElementById('spin1').style.display = 'none';
+      document.getElementById('btn1text').textContent = 'Test Connection & Continue →';
+    }
+  } catch(e) {
+    setDbStatus('fail','✗ Network error — is the server running?');
+    btn.disabled = false;
+    document.getElementById('spin1').style.display = 'none';
+    document.getElementById('btn1text').textContent = 'Test Connection & Continue →';
+  }
+}
+function setDbStatus(type, msg) {
+  var el = document.getElementById('dbStatus');
+  el.className = 'db-status ' + type;
+  document.getElementById('dbStatusText').textContent = msg;
+}
+
+// ── PAGE 2: SETUP TYPE ──
+function selectType(type) {
+  setupType = type;
+  document.getElementById('choice-fresh').className   = 'choice-card' + (type==='fresh'   ? ' sel-fresh'   : '');
+  document.getElementById('choice-restore').className = 'choice-card' + (type==='restore' ? ' sel-restore' : '');
+  document.getElementById('restoreWrap').style.display = type==='restore' ? 'block' : 'none';
+  updateBtn2();
+}
+function updateBtn2() {
+  var btn = document.getElementById('btn2');
+  if (!setupType)            { btn.disabled = true;  return; }
+  if (setupType === 'fresh') { btn.disabled = false; return; }
+  btn.disabled = !backupFile;
+}
+
+// Drag & drop
+function onDragOver(e)  { e.preventDefault(); document.getElementById('fileDrop').classList.add('drag'); }
+function onDragLeave(e) { document.getElementById('fileDrop').classList.remove('drag'); }
+function onDrop(e)      { e.preventDefault(); document.getElementById('fileDrop').classList.remove('drag'); if(e.dataTransfer.files[0]) applyFile(e.dataTransfer.files[0]); }
+function onFileChosen(input) { if(input.files[0]) applyFile(input.files[0]); }
+function applyFile(f) {
+  backupFile = f;
+  var el = document.getElementById('fileChosen');
+  el.style.display = 'block';
+  el.textContent = '📦 ' + f.name + ' (' + (f.size/1024).toFixed(1) + ' KB)';
+  updateBtn2();
+}
+
+function goFromType() {
+  if (!setupType) return;
+  if (setupType === 'fresh') {
+    showPage(3);
+  } else {
+    // Restore — skip admin page, go straight to install
+    document.getElementById('installIcon').textContent   = '🔄';
+    document.getElementById('installIcon').style.background = 'rgba(139,92,246,0.1)';
+    document.getElementById('installIcon').style.borderColor = 'rgba(139,92,246,0.2)';
+    document.getElementById('installTitle').textContent  = 'Restoring Backup';
+    document.getElementById('installSub').textContent    = 'Importing your WorkPulse data…';
+    document.getElementById('progressFill').className    = 'progress-fill restore';
+    showPage(4);
+    runRestore();
+  }
+}
+
+function skipSetup() {
+  setupType = 'skip';
+  document.getElementById('skipUrl').textContent = window.location.origin;
+  showPage(6);
+}
+
+// ── PAGE 3: ADMIN ──
+function checkPw(val) {
+  var str = document.getElementById('pwStrength');
+  if (!val) { str.style.display='none'; return; }
+  str.style.display='block';
+  var score=0;
+  if(val.length>=8) score++;
+  if(val.length>=12) score++;
+  if(/[A-Z]/.test(val)&&/[a-z]/.test(val)) score++;
+  if(/[0-9!@#$%^&*]/.test(val)) score++;
+  var colors=['#ef4444','#f59e0b','#10b981','#00e5ff'];
+  var labels=['Weak','Fair','Good','Strong'];
+  ['pw1','pw2','pw3','pw4'].forEach(function(id,i){
+    document.getElementById(id).style.background = i<score ? colors[score-1] : 'var(--border2)';
+  });
+  var lbl=document.getElementById('pwLabel');
+  lbl.textContent=labels[Math.max(0,score-1)];
+  lbl.style.color=colors[Math.max(0,score-1)];
+}
+
+function goToInstall() {
+  var name  = document.getElementById('admin-name').value.trim();
+  var email = document.getElementById('admin-email').value.trim();
+  var pass  = document.getElementById('admin-pass').value;
+  var pass2 = document.getElementById('admin-pass2').value;
+  var err   = document.getElementById('passErr');
+  err.style.display = 'none';
+  if(!name||!email||!pass) { alert('Please fill in all fields.'); return; }
+  if(pass.length<8)        { alert('Password must be at least 8 characters.'); return; }
+  if(pass!==pass2)         { err.style.display='block'; return; }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { alert('Enter a valid email address.'); return; }
+  adminConfig = {name, email, pass};
+  showPage(4);
+  runInstall();
+}
+
+// ── INSTALL LOG HELPERS ──
+var logEl, fillEl, pctEl, lblEl;
+function initLog() {
+  logEl  = document.getElementById('installLog');
+  fillEl = document.getElementById('progressFill');
+  pctEl  = document.getElementById('progressPct');
+  lblEl  = document.getElementById('progressLabel');
+}
+function log(msg, type) {
+  var ts = new Date().toLocaleTimeString('en',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  var line = document.createElement('div');
+  line.className = 'log-line ' + (type||'info');
+  line.innerHTML = '<span class="ts">['+ts+']</span><span class="msg">'+esc(msg)+'</span>';
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function setProgress(pct, label) {
+  fillEl.style.width = pct+'%';
+  pctEl.textContent  = pct+'%';
+  if (label) lblEl.textContent = label;
+}
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ── PAGE 4: FRESH INSTALL ──
+async function runInstall() {
+  initLog();
+  log('Starting fresh installation…','info');
+  setProgress(5,'Connecting…');
+  try {
+    var res = await fetch('/install/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({db:dbConfig,admin:adminConfig})});
+    await streamEvents(res, false);
+  } catch(e) { log('Error: '+e.message,'err'); }
+}
+
+// ── PAGE 4: RESTORE ──
+async function runRestore() {
+  initLog();
+  log('Starting restore from backup…','info');
+  setProgress(5,'Uploading…');
+  try {
+    var fd = new FormData();
+    fd.append('backup', backupFile);
+    fd.append('db', JSON.stringify(dbConfig));
+    var res = await fetch('/install/restore',{method:'POST',body:fd});
+    await streamEvents(res, true);
+  } catch(e) { log('Error: '+e.message,'err'); }
+}
+
+// ── STREAM NDJSON EVENTS ──
+async function streamEvents(res, isRestore) {
+  var reader  = res.body.getReader();
+  var decoder = new TextDecoder();
+  var buffer  = '';
+  while (true) {
+    var chunk = await reader.read();
+    if (chunk.done) break;
+    buffer += decoder.decode(chunk.value, {stream:true});
+    var lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (var line of lines) {
+      line = line.trim(); if (!line) continue;
+      try {
+        var ev = JSON.parse(line);
+        if (ev.msg) log(ev.msg, ev.type||'info');
+        if (ev.pct !== undefined) setProgress(ev.pct, ev.label||'');
+        if (ev.done)  { await delay(600); showDone(ev, isRestore || ev.isRestore); }
+        if (ev.error) { log('Failed: '+ev.error,'err'); setProgress(0,'Failed'); }
+      } catch(e) {}
+    }
+  }
+}
+
+// ── PAGE 5: DONE ──
+function showDone(ev, isRestore) {
+  var icon  = document.getElementById('doneIcon');
+  var title = document.getElementById('doneTitle');
+  var desc  = document.getElementById('doneDesc');
+  var creds = document.getElementById('finalCreds');
+
+  if (isRestore) {
+    icon.className  = 'success-icon restore';
+    icon.textContent = '🔄';
+    title.textContent = 'Restore Complete!';
+    desc.textContent  = 'Your WorkPulse data has been restored. Log in with your existing credentials.';
+    creds.innerHTML =
+      '<div class="cred-row"><span class="cred-k">Dashboard URL</span><span class="cred-v">'+window.location.origin+'</span></div>'+
+      '<div class="cred-row"><span class="cred-k">Login</span><span class="cred-v">Use your existing admin credentials</span></div>';
+  } else {
+    var admin = ev.admin || adminConfig;
+    icon.className  = 'success-icon fresh';
+    icon.textContent = '✓';
+    title.textContent = 'Installation Complete!';
+    desc.textContent  = 'WorkPulse is ready. Log in with the credentials below.';
+    creds.innerHTML =
+      '<div class="cred-row"><span class="cred-k">Dashboard URL</span><span class="cred-v">'+window.location.origin+'</span></div>'+
+      '<div class="cred-row"><span class="cred-k">Admin Email</span><span class="cred-v">'+esc(admin.email)+'</span></div>'+
+      '<div class="cred-row"><span class="cred-k">Password</span><span class="cred-v">'+esc(admin.pass)+'</span></div>';
+  }
+  showPage(5);
+}
+
+function delay(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
+
+// Enter key shortcuts
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Enter') return;
+  if (document.getElementById('page1').classList.contains('active')) testAndNext();
+  if (document.getElementById('page3').classList.contains('active')) goToInstall();
+});
+</script>
+</body>
+</html>

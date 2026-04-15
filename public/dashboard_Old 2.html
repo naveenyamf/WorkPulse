@@ -217,9 +217,6 @@ tr.emp-row:hover{background:var(--card-hover)}
     <div class="nav-item" onclick="showPage('alerts',this)" id="nav-alerts">
       <span class="nav-icon">◬</span><span>Alerts</span>
     </div>
-    <div class="nav-item" onclick="showPage('reports',this)" id="nav-reports">
-      <span class="nav-icon">📊</span><span>Reports</span>
-    </div>
 
     <div class="nav-section">Admin</div>
     <div class="nav-item admin-only" onclick="showPage('addemployee',this)" id="nav-addemployee">
@@ -239,9 +236,6 @@ tr.emp-row:hover{background:var(--card-hover)}
     </div>
     <div class="nav-item admin-only" onclick="showPage('backup',this)" id="nav-backup">
       <span class="nav-icon">💾</span><span>Backup & Restore</span>
-    </div>
-    <div class="nav-item admin-only" onclick="showPage('emailconfig',this)" id="nav-emailconfig">
-      <span class="nav-icon">✉️</span><span>Email Config</span>
     </div>
     <div class="nav-item admin-only" onclick="showPage('auditlog',this)" id="nav-auditlog">
       <span class="nav-icon">📋</span><span>Audit Log</span>
@@ -639,140 +633,6 @@ tr.emp-row:hover{background:var(--card-hover)}
   </div>
 </div>
 
-<!-- REPORTS PAGE -->
-<div class="page" id="page-reports">
-  <div class="panel" style="margin-bottom:18px">
-    <div class="panel-header">
-      <div class="panel-title">📊 Export Report</div>
-    </div>
-    <div style="padding:20px 24px">
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:flex-end">
-        <div>
-          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Employee</label>
-          <select id="report-emp" class="filter-select" style="width:100%;padding:9px 12px">
-            <option value="">All Employees</option>
-          </select>
-        </div>
-        <div>
-          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Date From</label>
-          <input type="date" id="report-from" class="filter-select" style="width:100%;padding:9px 12px">
-        </div>
-        <div>
-          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Date To</label>
-          <input type="date" id="report-to" class="filter-select" style="width:100%;padding:9px 12px">
-        </div>
-        <button class="btn btn-accent" onclick="downloadReport()" id="reportBtn" style="padding:9px 20px;margin-top:0;white-space:nowrap">
-          <span id="reportBtnText">⤓ Export Excel</span>
-        </button>
-      </div>
-      <div id="reportStatus" style="display:none;margin-top:14px;padding:10px 14px;border-radius:8px;font-size:12px"></div>
-    </div>
-  </div>
-
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px">
-    <div class="stat-card c1"><div class="stat-label">Sheets Included</div><div class="stat-val" style="font-size:28px">4</div><div class="stat-sub">per export</div></div>
-    <div class="stat-card c3"><div class="stat-label">Web Activity</div><div class="stat-val" style="font-size:28px">✓</div><div class="stat-sub">URL + browser + time</div></div>
-    <div class="stat-card c2"><div class="stat-label">App Usage</div><div class="stat-val" style="font-size:28px">✓</div><div class="stat-sub">app + duration</div></div>
-    <div class="stat-card c4"><div class="stat-label">System Events</div><div class="stat-val" style="font-size:28px">✓</div><div class="stat-sub">login/logout/lock</div></div>
-  </div>
-
-  <div class="panel">
-    <div class="panel-header"><div class="panel-title">What's in the Report?</div></div>
-    <div style="padding:18px 24px;display:grid;grid-template-columns:1fr 1fr;gap:18px">
-      <div>
-        <div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px">📋 Sheet 1 — Summary</div>
-        <div style="font-size:12px;color:var(--text2);line-height:1.8">Employee name, email, department, roster assignment, total screenshots, web records, app records, system events</div>
-      </div>
-      <div>
-        <div style="font-size:12px;font-weight:700;color:#10b981;margin-bottom:8px">🌐 Sheet 2 — Web Activity</div>
-        <div style="font-size:12px;color:var(--text2);line-height:1.8">Every URL visited with browser, duration in seconds, and timestamp (up to 10,000 rows)</div>
-      </div>
-      <div>
-        <div style="font-size:12px;font-weight:700;color:#7c3aed;margin-bottom:8px">💻 Sheet 3 — App Usage</div>
-        <div style="font-size:12px;color:var(--text2);line-height:1.8">App name, total time in HH:MM, number of sessions, first and last seen timestamps</div>
-      </div>
-      <div>
-        <div style="font-size:12px;font-weight:700;color:#f59e0b;margin-bottom:8px">⚡ Sheet 4 — System Events</div>
-        <div style="font-size:12px;color:var(--text2);line-height:1.8">Startup, shutdown, lock, unlock, sleep, wakeup events with full timestamps and day of week</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- EMAIL CONFIG PAGE -->
-<div class="page" id="page-emailconfig">
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
-    <div class="panel">
-      <div class="panel-header"><div class="panel-title">✉️ SMTP Configuration</div></div>
-      <div style="padding:20px 24px">
-        <div style="margin-bottom:14px">
-          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">SMTP Host</label>
-          <input type="text" id="smtp-host" placeholder="smtp.gmail.com" class="filter-select" style="width:100%;padding:9px 12px;font-family:monospace">
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-          <div>
-            <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Port</label>
-            <input type="text" id="smtp-port" value="587" class="filter-select" style="width:100%;padding:9px 12px;font-family:monospace">
-          </div>
-          <div style="display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:2px">
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2)">
-              <input type="checkbox" id="smtp-secure" style="width:auto;accent-color:var(--accent)"> Use SSL/TLS (port 465)
-            </label>
-          </div>
-        </div>
-        <div style="margin-bottom:14px">
-          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">SMTP Username</label>
-          <input type="text" id="smtp-user" placeholder="your@gmail.com" class="filter-select" style="width:100%;padding:9px 12px;font-family:monospace">
-        </div>
-        <div style="margin-bottom:14px">
-          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">SMTP Password / App Password</label>
-          <input type="password" id="smtp-pass" placeholder="Leave blank to keep existing" class="filter-select" style="width:100%;padding:9px 12px">
-        </div>
-        <div style="margin-bottom:14px">
-          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">From Address</label>
-          <input type="text" id="smtp-from" placeholder="WorkPulse &lt;noreply@company.com&gt;" class="filter-select" style="width:100%;padding:9px 12px">
-        </div>
-        <div style="margin-bottom:18px;display:flex;align-items:center;gap:10px">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2)">
-            <input type="checkbox" id="smtp-enabled" style="width:auto;accent-color:var(--accent)"> Enable email sending
-          </label>
-        </div>
-        <div style="display:flex;gap:10px">
-          <button class="btn btn-accent" onclick="saveEmailConfig()" style="flex:1">Save Config</button>
-          <button class="btn" onclick="testEmail()" style="flex:1">Send Test Email</button>
-        </div>
-        <div id="emailConfigStatus" style="display:none;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:12px"></div>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-header"><div class="panel-title">📖 Setup Guide</div></div>
-      <div style="padding:20px 24px">
-        <div style="font-size:12px;color:var(--text2);line-height:1.9">
-          <div style="font-weight:700;color:var(--text);margin-bottom:10px">Gmail (recommended)</div>
-          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-family:monospace;font-size:11px;margin-bottom:14px;line-height:1.8">
-            Host: smtp.gmail.com<br>
-            Port: 587 (TLS) or 465 (SSL)<br>
-            User: your.email@gmail.com<br>
-            Pass: <span style="color:var(--accent)">App Password</span> (not your real password)
-          </div>
-          <div style="font-weight:700;color:var(--text);margin-bottom:6px">How to get Gmail App Password:</div>
-          <ol style="padding-left:16px;line-height:2">
-            <li>Go to Google Account → Security</li>
-            <li>Enable 2-Step Verification</li>
-            <li>Search "App passwords"</li>
-            <li>Create one for "Mail"</li>
-            <li>Use that 16-char code as the password</li>
-          </ol>
-          <div style="margin-top:14px;padding:10px 14px;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);border-radius:8px;font-size:11px;color:#f59e0b">
-            ⚠️ Email is used for <strong>Forgot Password</strong> only. Enable it so users can reset their passwords without admin help.
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- AUDIT LOG PAGE -->
 <div class="page" id="page-auditlog">
   <div class="panel">
@@ -801,143 +661,6 @@ tr.emp-row:hover{background:var(--card-hover)}
     <div class="panel">
       <div class="panel-header"><div class="panel-title">All Departments</div><button class="btn" onclick="loadDepartments()">↻ Refresh</button></div>
       <div id="deptList"></div>
-    </div>
-  </div>
-</div>
-
-<!-- REPORTS PAGE -->
-<div class="page" id="page-reports">
-  <div class="panel" style="margin-bottom:18px">
-    <div class="panel-header">
-      <div class="panel-title">📊 Export Employee Report</div>
-    </div>
-    <div style="padding:20px 22px">
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px">
-        <div>
-          <label style="display:block;font-size:10px;color:var(--text3);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;font-weight:700">Employee</label>
-          <select id="report-emp" class="filter-select" style="width:100%;padding:9px 12px">
-            <option value="">All Employees</option>
-          </select>
-        </div>
-        <div>
-          <label style="display:block;font-size:10px;color:var(--text3);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;font-weight:700">From Date</label>
-          <input type="date" id="report-from" class="filter-select" style="width:100%;padding:9px 12px">
-        </div>
-        <div>
-          <label style="display:block;font-size:10px;color:var(--text3);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;font-weight:700">To Date</label>
-          <input type="date" id="report-to" class="filter-select" style="width:100%;padding:9px 12px">
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px">
-          <input type="checkbox" id="rpt-summary" checked style="accent-color:var(--accent)"> Summary
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px">
-          <input type="checkbox" id="rpt-web" checked style="accent-color:var(--accent)"> Web Activity
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px">
-          <input type="checkbox" id="rpt-apps" checked style="accent-color:var(--accent)"> App Usage
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px">
-          <input type="checkbox" id="rpt-daily" checked style="accent-color:var(--accent)"> Daily Breakdown
-        </label>
-      </div>
-      <button class="btn btn-accent" id="exportReportBtn" onclick="exportReport()" style="width:200px">
-        <span id="exportReportText">⤓ Export Excel Report</span>
-      </button>
-      <div id="reportStatus" style="display:none;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:12px"></div>
-    </div>
-  </div>
-
-  <!-- Preview summary cards -->
-  <div id="reportPreview" style="display:none">
-    <div class="panel">
-      <div class="panel-header"><div class="panel-title">📋 Report Preview</div></div>
-      <div id="reportPreviewContent" style="padding:20px 22px"></div>
-    </div>
-  </div>
-</div>
-
-<!-- EMAIL CONFIG PAGE -->
-<div class="page" id="page-emailconfig">
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
-    <div class="panel">
-      <div class="panel-header"><div class="panel-title">✉️ SMTP Configuration</div></div>
-      <div style="padding:20px 22px">
-        <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:18px">
-          Configure email settings for forgot password and login OTP. Supports Gmail, Outlook, and any SMTP server.
-        </div>
-        <div style="margin-bottom:14px">
-          <label style="display:block;font-size:10px;color:var(--text3);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;font-weight:700">SMTP Host</label>
-          <input type="text" id="smtp-host" placeholder="smtp.gmail.com" class="filter-select" style="width:100%;padding:9px 12px;font-family:monospace">
-        </div>
-        <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:14px">
-          <div>
-            <label style="display:block;font-size:10px;color:var(--text3);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;font-weight:700">SMTP Username</label>
-            <input type="text" id="smtp-user" placeholder="you@gmail.com" class="filter-select" style="width:100%;padding:9px 12px">
-          </div>
-          <div>
-            <label style="display:block;font-size:10px;color:var(--text3);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;font-weight:700">Port</label>
-            <input type="text" id="smtp-port" placeholder="587" class="filter-select" style="width:100%;padding:9px 12px;font-family:monospace">
-          </div>
-        </div>
-        <div style="margin-bottom:14px">
-          <label style="display:block;font-size:10px;color:var(--text3);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;font-weight:700">SMTP Password / App Password</label>
-          <input type="password" id="smtp-pass" placeholder="••••••••••••" class="filter-select" style="width:100%;padding:9px 12px">
-          <div style="font-size:10px;color:var(--text3);margin-top:4px">💡 For Gmail: use an <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color:var(--accent)">App Password</a>, not your regular password</div>
-        </div>
-        <div style="margin-bottom:14px">
-          <label style="display:block;font-size:10px;color:var(--text3);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;font-weight:700">From Name</label>
-          <input type="text" id="smtp-from-name" placeholder="WorkPulse" class="filter-select" style="width:100%;padding:9px 12px">
-        </div>
-        <div style="margin-bottom:18px">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2)">
-            <input type="checkbox" id="smtp-tls" checked style="accent-color:var(--accent)"> Use TLS/STARTTLS
-          </label>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <button class="btn btn-accent" onclick="saveEmailConfig()" style="margin-top:0">💾 Save Config</button>
-          <button class="btn" onclick="testEmailConfig()" style="margin-top:0" id="testEmailBtn">📨 Send Test Email</button>
-        </div>
-        <div id="emailConfigStatus" style="display:none;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:12px"></div>
-      </div>
-    </div>
-
-    <div>
-      <div class="panel" style="margin-bottom:18px">
-        <div class="panel-header"><div class="panel-title">🔐 MFA Settings</div></div>
-        <div style="padding:20px 22px">
-          <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:16px">
-            When enabled, all admin logins will require a 6-digit OTP sent to their email address.
-          </div>
-          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px">
-            <input type="checkbox" id="mfa-enabled" style="accent-color:var(--accent);width:16px;height:16px">
-            <div>
-              <div style="font-size:13px;font-weight:600;color:var(--text)">Enable Email OTP (MFA)</div>
-              <div style="font-size:11px;color:var(--text3);margin-top:2px">Require email verification on every login</div>
-            </div>
-          </label>
-          <div style="font-size:11px;color:var(--text3);background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:10px 12px;margin-bottom:14px">
-            ⚠️ Make sure SMTP is configured and tested before enabling MFA, otherwise you may be locked out.
-          </div>
-          <button class="btn btn-accent" onclick="saveMfaSettings()" style="margin-top:0">💾 Save MFA Settings</button>
-        </div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-header"><div class="panel-title">📧 Quick Presets</div></div>
-        <div style="padding:16px 18px;display:flex;flex-direction:column;gap:8px">
-          <button class="btn" style="margin-top:0;justify-content:flex-start;gap:12px" onclick="applyPreset('gmail')">
-            <span style="font-size:16px">📧</span><div style="text-align:left"><div style="font-size:12px;font-weight:600">Gmail</div><div style="font-size:10px;color:var(--text3)">smtp.gmail.com · Port 587</div></div>
-          </button>
-          <button class="btn" style="margin-top:0;justify-content:flex-start;gap:12px" onclick="applyPreset('outlook')">
-            <span style="font-size:16px">📨</span><div style="text-align:left"><div style="font-size:12px;font-weight:600">Outlook / Office 365</div><div style="font-size:10px;color:var(--text3)">smtp.office365.com · Port 587</div></div>
-          </button>
-          <button class="btn" style="margin-top:0;justify-content:flex-start;gap:12px" onclick="applyPreset('yahoo')">
-            <span style="font-size:16px">📮</span><div style="text-align:left"><div style="font-size:12px;font-weight:600">Yahoo Mail</div><div style="font-size:10px;color:var(--text3)">smtp.mail.yahoo.com · Port 587</div></div>
-          </button>
-        </div>
-      </div>
     </div>
   </div>
 </div>
@@ -1135,7 +858,7 @@ function showPage(name,el){
     var p=document.getElementById('nav-webactivity-parent');
     if(g){g.style.display='block';if(a)a.style.transform='rotate(90deg)';if(p)p.classList.add('open');}
   }
-  var titles={dashboard:'Dashboard',employees:'Employees',addemployee:'Add Agents to Monitor',screenshots:'Screenshots',webactivity:'Web Activity',appusage:'App Usage',alerts:'Alerts',flagged:'Flagged Screenshots',deleted:'Deleted Users',users:'Admin / Monitor Users',roster:'Duty Roster',sysactivity:'System Activity',auditlog:'Audit Log',departments:'Departments',backup:'Backup & Restore',reports:'Reports',emailconfig:'Email Configuration'};
+  var titles={dashboard:'Dashboard',employees:'Employees',addemployee:'Add Agents to Monitor',screenshots:'Screenshots',webactivity:'Web Activity',appusage:'App Usage',alerts:'Alerts',flagged:'Flagged Screenshots',deleted:'Deleted Users',users:'Admin / Monitor Users',roster:'Duty Roster',sysactivity:'System Activity',auditlog:'Audit Log',departments:'Departments',backup:'Backup & Restore'};
   document.getElementById('pageTitle').textContent=titles[name]||name;
   if(name==='dashboard'){loadStats();loadEmployees();}
   if(name==='employees'){loadEmployeesFull();}
@@ -1152,8 +875,6 @@ function showPage(name,el){
   if(name==='auditlog'){loadAuditLog();}
   if(name==='departments'){loadDepartments();}
   if(name==='backup'){loadBackupHistory();}
-  if(name==='reports'){loadReportsPage();}
-  if(name==='emailconfig'){loadEmailConfig();}
 }
 
 function refreshPage(){
@@ -3458,142 +3179,6 @@ async function doRestore(){
 }
 
 // ---- END BACKUP & RESTORE ----
-// ---- REPORTS ----
-async function loadReportsPage(){
-  try{
-    var rows = await fetch('/api/employees').then(function(r){return r.json();});
-    var sel = document.getElementById('report-emp');
-    if(sel) sel.innerHTML = '<option value="">All Employees</option>' + rows.map(function(e){
-      return '<option value="'+e.id+'">'+e.name+'</option>';
-    }).join('');
-    // Default to last 30 days
-    var to = new Date(); var from = new Date(); from.setDate(from.getDate()-30);
-    document.getElementById('report-from').value = from.toISOString().split('T')[0];
-    document.getElementById('report-to').value   = to.toISOString().split('T')[0];
-  }catch(e){}
-}
-
-async function exportReport(){
-  var empId   = document.getElementById('report-emp').value;
-  var from    = document.getElementById('report-from').value;
-  var to      = document.getElementById('report-to').value;
-  var inclSummary = document.getElementById('rpt-summary').checked;
-  var inclWeb     = document.getElementById('rpt-web').checked;
-  var inclApps    = document.getElementById('rpt-apps').checked;
-  var inclDaily   = document.getElementById('rpt-daily').checked;
-  if(!from || !to){ toast('Please select a date range','#ef4444'); return; }
-  var btn = document.getElementById('exportReportBtn');
-  var btnText = document.getElementById('exportReportText');
-  var statusEl = document.getElementById('reportStatus');
-  btn.disabled = true;
-  btnText.textContent = '⏳ Generating…';
-  statusEl.style.cssText='display:flex;padding:10px 14px;border-radius:8px;font-size:12px;align-items:center;gap:8px;background:rgba(0,229,255,0.06);border:1px solid rgba(0,229,255,0.2);color:var(--accent)';
-  statusEl.innerHTML='<span style="animation:pulse 1s infinite;display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent)"></span> Building Excel report…';
-  try{
-    var params = new URLSearchParams({ from, to, summary: inclSummary, web: inclWeb, apps: inclApps, daily: inclDaily });
-    if(empId) params.append('employee_id', empId);
-    var res = await fetch('/api/admin/report?' + params.toString());
-    if(!res.ok){ var e=await res.json(); throw new Error(e.error||'Server error'); }
-    var blob = await res.blob();
-    var cd = res.headers.get('Content-Disposition')||'';
-    var fnMatch = cd.match(/filename="?([^"]+)"?/);
-    var filename = fnMatch ? fnMatch[1] : 'workpulse-report.xlsx';
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href=url; a.download=filename;
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a); URL.revokeObjectURL(url);
-    statusEl.style.cssText='display:flex;padding:10px 14px;border-radius:8px;font-size:12px;align-items:center;gap:8px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.25);color:#10b981';
-    statusEl.innerHTML='✓ Report downloaded: <strong>'+filename+'</strong>';
-    btnText.textContent='⤓ Export Excel Report';
-    btn.disabled=false;
-  }catch(e){
-    statusEl.style.cssText='display:flex;padding:10px 14px;border-radius:8px;font-size:12px;align-items:center;gap:8px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.25);color:#ef4444';
-    statusEl.innerHTML='✗ '+e.message;
-    btnText.textContent='⤓ Export Excel Report';
-    btn.disabled=false;
-  }
-}
-
-// ---- EMAIL CONFIG ----
-async function loadEmailConfig(){
-  try{
-    var data = await fetch('/api/admin/email-config').then(function(r){return r.json();});
-    if(data.smtp_host)      document.getElementById('smtp-host').value      = data.smtp_host;
-    if(data.smtp_port)      document.getElementById('smtp-port').value      = data.smtp_port;
-    if(data.smtp_user)      document.getElementById('smtp-user').value      = data.smtp_user;
-    if(data.smtp_from_name) document.getElementById('smtp-from-name').value = data.smtp_from_name;
-    document.getElementById('smtp-tls').checked     = data.smtp_tls !== false;
-    document.getElementById('mfa-enabled').checked  = data.mfa_enabled === true;
-  }catch(e){}
-}
-
-async function saveEmailConfig(){
-  var statusEl = document.getElementById('emailConfigStatus');
-  var payload = {
-    smtp_host:      document.getElementById('smtp-host').value.trim(),
-    smtp_port:      parseInt(document.getElementById('smtp-port').value)||587,
-    smtp_user:      document.getElementById('smtp-user').value.trim(),
-    smtp_pass:      document.getElementById('smtp-pass').value,
-    smtp_from_name: document.getElementById('smtp-from-name').value.trim()||'WorkPulse',
-    smtp_tls:       document.getElementById('smtp-tls').checked,
-  };
-  if(!payload.smtp_host||!payload.smtp_user){ toast('Please fill in SMTP host and username','#ef4444'); return; }
-  try{
-    var res = await fetch('/api/admin/email-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    var data = await res.json();
-    if(data.success){
-      statusEl.style.cssText='display:block;padding:10px 14px;border-radius:8px;font-size:12px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.25);color:#10b981';
-      statusEl.textContent='✓ Email configuration saved!';
-      toast('✓ Email config saved','#10b981');
-    } else { toast('Error: '+(data.error||'Failed'),'#ef4444'); }
-  }catch(e){ toast('Error saving config','#ef4444'); }
-}
-
-async function testEmailConfig(){
-  var btn = document.getElementById('testEmailBtn');
-  btn.disabled=true; btn.textContent='📨 Sending…';
-  var statusEl = document.getElementById('emailConfigStatus');
-  try{
-    var res = await fetch('/api/admin/email-config/test',{method:'POST'});
-    var data = await res.json();
-    if(data.success){
-      statusEl.style.cssText='display:block;padding:10px 14px;border-radius:8px;font-size:12px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.25);color:#10b981';
-      statusEl.textContent='✓ Test email sent to '+data.sent_to+'! Check your inbox.';
-      toast('✓ Test email sent!','#10b981');
-    } else {
-      statusEl.style.cssText='display:block;padding:10px 14px;border-radius:8px;font-size:12px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.25);color:#ef4444';
-      statusEl.textContent='✗ '+( data.error||'Send failed');
-      toast('Send failed: '+(data.error||'Unknown'),'#ef4444');
-    }
-  }catch(e){ toast('Error: '+e.message,'#ef4444'); }
-  btn.disabled=false; btn.textContent='📨 Send Test Email';
-}
-
-async function saveMfaSettings(){
-  var enabled = document.getElementById('mfa-enabled').checked;
-  try{
-    var res = await fetch('/api/admin/email-config/mfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mfa_enabled:enabled})});
-    var data = await res.json();
-    if(data.success) toast('✓ MFA settings saved','#10b981');
-    else toast('Error: '+(data.error||'Failed'),'#ef4444');
-  }catch(e){ toast('Error saving MFA settings','#ef4444'); }
-}
-
-function applyPreset(provider){
-  var presets={
-    gmail:  {host:'smtp.gmail.com',   port:'587', tls:true},
-    outlook:{host:'smtp.office365.com',port:'587', tls:true},
-    yahoo:  {host:'smtp.mail.yahoo.com',port:'587',tls:true},
-  };
-  var p=presets[provider];
-  if(!p) return;
-  document.getElementById('smtp-host').value=p.host;
-  document.getElementById('smtp-port').value=p.port;
-  document.getElementById('smtp-tls').checked=p.tls;
-  toast('✓ '+provider.charAt(0).toUpperCase()+provider.slice(1)+' preset applied','#10b981');
-}
-
 loadStats();
 loadEmployees();
 setInterval(function(){loadStats();loadEmployees();},30000);

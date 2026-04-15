@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkPulse — Login</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0c10;
+    font-family: 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-image: linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+  .login-box {
+    background: #111418;
+    border: 1px solid #1e242e;
+    border-radius: 12px;
+    padding: 48px 40px;
+    width: 100%;
+    max-width: 420px;
+  }
+  .logo { text-align: center; margin-bottom: 32px; }
+  .logo h1 { font-size: 28px; font-weight: 800; color: #fff; letter-spacing: -1px; }
+  .logo h1 span { color: #00e5ff; }
+  .logo p { color: #64748b; font-size: 13px; margin-top: 6px; }
+  .form-group { margin-bottom: 20px; }
+  label { display: block; font-size: 12px; color: #64748b; margin-bottom: 6px; letter-spacing: 1px; text-transform: uppercase; }
+  input {
+    width: 100%;
+    background: #181c22;
+    border: 1px solid #1e242e;
+    color: #e2e8f0;
+    font-size: 14px;
+    padding: 12px 14px;
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  input:focus { border-color: #00e5ff; }
+  .btn {
+    width: 100%;
+    background: #00e5ff;
+    color: #0a0c10;
+    border: none;
+    padding: 13px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: background 0.2s;
+    letter-spacing: 0.5px;
+  }
+  .btn:hover { background: #00c8e0; }
+  .error {
+    background: rgba(239,68,68,0.1);
+    border: 1px solid rgba(239,68,68,0.3);
+    color: #ef4444;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    margin-bottom: 16px;
+    display: none;
+  }
+  .loading { opacity: 0.7; pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="login-box">
+  <div class="logo">
+    <h1>Work<span>Pulse</span></h1>
+    <p>Employee Productivity Monitor</p>
+  </div>
+  <div class="error" id="errorMsg"></div>
+  <div class="form-group">
+    <label>Email Address</label>
+    <input type="email" id="email" placeholder="admin@yourcompany.com" />
+  </div>
+  <div class="form-group">
+    <label>Password</label>
+    <input type="password" id="password" placeholder="••••••••" />
+  </div>
+  <button class="btn" id="loginBtn" onclick="doLogin()">Sign In</button>
+</div>
+<script>
+  // If already logged in, go to dashboard
+  fetch('/api/me').then(r => r.json()).then(d => {
+    if (d.name) window.location.href = '/dashboard.html';
+  }).catch(() => {});
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+
+  async function doLogin() {
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const btn = document.getElementById('loginBtn');
+    const err = document.getElementById('errorMsg');
+
+    if (!email || !password) {
+      showError('Please enter your email and password.');
+      return;
+    }
+
+    btn.classList.add('loading');
+    btn.textContent = 'Signing in...';
+    err.style.display = 'none';
+
+    try {
+      const res = await fetch('/api/user-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        window.location.href = '/dashboard.html';
+      } else {
+        showError(data.error || 'Invalid email or password.');
+        btn.classList.remove('loading');
+        btn.textContent = 'Sign In';
+      }
+    } catch (e) {
+      showError('Cannot connect to server. Please try again.');
+      btn.classList.remove('loading');
+      btn.textContent = 'Sign In';
+    }
+  }
+
+  function showError(msg) {
+    const err = document.getElementById('errorMsg');
+    err.textContent = msg;
+    err.style.display = 'block';
+  }
+</script>
+</body>
+</html>
