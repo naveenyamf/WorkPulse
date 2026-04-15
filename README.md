@@ -1,6 +1,6 @@
 # WorkPulse 2.0 — Employee Monitoring Dashboard
 
-> A self-hosted, privacy-respecting employee activity monitoring system for Windows environments. Tracks web activity, app usage, screenshots, system events, and more — all from a sleek real-time dashboard.
+> A self-hosted employee activity monitoring system for Windows environments. Tracks web activity, app usage, screenshots, system events and more — from a real-time dashboard.
 
 ---
 
@@ -8,13 +8,13 @@
 
 - **Live Dashboard** — Real-time employee status, active app, idle detection
 - **Screenshots** — Automatic periodic screenshots with flagging system
-- **Web Activity** — Tracks URLs visited per browser with productivity scoring (Productive / Neutral / Non-Productive)
-- **App Usage** — Tracks time spent per application with donut chart visualization
+- **Web Activity** — Tracks URLs visited per browser with productivity scoring
+- **App Usage** — Time spent per application with donut chart visualization
 - **System Events** — Startup, shutdown, lock, unlock, sleep, wakeup events
 - **Duty Roster** — Shift assignment with in-shift vs off-shift time tracking
 - **Reports** — Export Excel reports (Summary, Web Activity, App Usage, Daily Breakdown)
 - **Backup & Restore** — Full PostgreSQL DB backup + screenshot archive backup/restore
-- **Multi-User** — Admin and Monitor (view-only) user roles with employee assignment
+- **Multi-User** — Admin and Monitor (view-only) roles with employee assignment
 - **MFA Support** — Email OTP login verification
 - **Audit Log** — Full admin action logging
 - **Dark / Light Mode** — System-aware theme with manual override
@@ -22,51 +22,42 @@
 
 ---
 
-## Requirements
+## Server Requirements
 
-- Ubuntu 20.04+ server
+- Ubuntu 20.04+ (or any Debian-based Linux)
 - Node.js 18+
 - PostgreSQL 14+
-- Windows PCs for monitored employees (agent runs on Windows)
+- Nginx (as reverse proxy)
+- PM2 (process manager)
 
 ---
 
-## Installation
+## Server Installation
 
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/naveenyamf/WorkPulse.git
-cd WorkPulse
-```
-
-### 2. Install dependencies
+### Step 1 — Update system
 
 ```bash
-npm install
+sudo apt update && sudo apt upgrade -y
 ```
 
-### 3. Configure environment
+### Step 2 — Install Node.js 18+
 
 ```bash
-cp .env.example .env
-nano .env
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt install -y nodejs
+node -v
+npm -v
 ```
 
-Fill in:
+### Step 3 — Install PostgreSQL
 
-```env
-PORT=3000
-SESSION_SECRET=your_random_secret_here
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=workpulse
-DB_USER=workpulse_user
-DB_PASSWORD=your_db_password
-NODE_ENV=production
+```bash
+sudo apt install -y postgresql postgresql-contrib
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
 ```
 
-### 4. Set up PostgreSQL
+Create database and user:
 
 ```bash
 sudo -u postgres psql
@@ -74,168 +65,210 @@ sudo -u postgres psql
 
 ```sql
 CREATE DATABASE workpulse;
-CREATE USER workpulse_user WITH PASSWORD 'your_db_password';
+CREATE USER workpulse_user WITH PASSWORD 'your_strong_password';
 GRANT ALL PRIVILEGES ON DATABASE workpulse TO workpulse_user;
+ALTER DATABASE workpulse OWNER TO workpulse_user;
 \q
 ```
 
-### 5. Run the installer
-
-Start the server once to trigger the web installer:
+### Step 4 — Install Nginx
 
 ```bash
-node server.js
+sudo apt install -y nginx
+sudo systemctl start nginx
+sudo systemctl enable nginx
 ```
 
-Then open in your browser:
-
-```
-http://your-server-ip:3000/install
-```
-
-Follow the setup wizard to create your admin account and initialize the database.
-
-### 6. Run with PM2 (recommended)
+### Step 5 — Install PM2
 
 ```bash
-npm install -g pm2
+sudo npm install -g pm2
+```
+
+### Step 6 — Clone the repository
+
+```bash
+cd /home/workpulse
+git clone https://github.com/naveenyamf/WorkPulse.git workpulse-app
+cd workpulse-app
+npm install
+```
+
+### Step 7 — Configure environment
+
+```bash
+nano .env
+```
+
+Fill in:
+
+```env
+PORT=3000
+SESSION_SECRET=your_random_long_secret_here
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=workpulse
+DB_USER=workpulse_user
+DB_PASSWORD=your_strong_password
+NODE_ENV=production
+```
+
+### Step 8 — Configure Nginx reverse proxy
+
+```bash
+sudo nano /etc/nginx/sites-available/workpulse
+```
+
+Paste this:
+
+```nginx
+server {
+    listen 80;
+    server_name your-server-ip-or-domain;
+
+    client_max_body_size 500M;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    location /screenshots/ {
+        alias /home/workpulse/workpulse-app/screenshots/;
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+}
+```
+
+Enable the site:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/workpulse /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+### Step 9 — Start the application
+
+```bash
+cd /home/workpulse/workpulse-app
 pm2 start server.js --name workpulse
 pm2 save
 pm2 startup
 ```
 
+Follow the command PM2 outputs to enable auto-start on reboot.
+
+### Step 10 — Run the web installer
+
+Open your browser and go to:
+
+```
+http://your-server-ip/install
+```
+
+Follow the setup wizard to create your admin account and initialize the database.
+
+> After setup is complete, the installer is automatically disabled for security.
+
 ---
 
-## Agent Setup (Windows PCs)
+## Agent Setup (Employee Windows PCs)
 
-The WorkPulse Agent runs silently on employee Windows machines and reports activity to the server.
+### Step 1 — Add the employee in dashboard
 
-### Step 1 — Download the agent
+1. Login to dashboard at `http://your-server-ip`
+2. Go to **Admin → Add Agents to Monitor**
+3. Fill in employee name and email → Click **Add Employee**
 
-From the dashboard sidebar, click **Download Agent** to get `agent.js`.
+### Step 2 — Download the installer
 
-Or copy `winagent/agent.js` to the employee PC.
+From the dashboard sidebar, click **Download Agent** — this downloads `installer.bat`.
 
-### Step 2 — Install Node.js on employee PC
+### Step 3 — Run the installer on employee PC
 
-Download and install Node.js from https://nodejs.org (LTS version).
+1. Copy `installer.bat` to the employee Windows PC
+2. **Right-click** → **Run as Administrator**
+3. Enter the WorkPulse server URL when prompted
+4. Enter the employee email address
+5. The installer will automatically:
+   - Fetch the agent token from the server
+   - Install the agent to `C:\WorkPulse\`
+   - Add to Windows startup (runs silently on every login)
+   - Start the agent immediately
 
-Then install required packages:
+### Step 4 — Verify in dashboard
 
-```cmd
-npm install -g axios form-data
-```
+Within 1-2 minutes the employee should appear as **Active** in the dashboard.
 
-### Step 3 — Configure the agent
+### Updating the agent
 
-Edit `agent.js` and set your server URL at the top:
+Run `updater.bat` as Administrator on the employee PC. Downloads latest version and restarts automatically.
 
-```javascript
-let SERVER_URL = 'http://your-server-ip';
-```
+### Uninstalling the agent
 
-### Step 4 — Get the agent token
-
-In the dashboard, go to **Employees** → find the employee → copy their **Agent Token**.
-
-Create a file called `config.json` in the same folder as `agent.js`:
-
-```json
-{
-  "token": "paste_agent_token_here",
-  "server_url": "http://your-server-ip"
-}
-```
-
-### Step 5 — Run the agent
-
-```cmd
-node agent.js
-```
-
-To run silently on startup, create a scheduled task or use a `.vbs` launcher.
+Run `uninstall.bat` as Administrator. Stops agent, removes all files and startup entries.
 
 ---
 
 ## Browser Extension — Required for URL Tracking
 
-> ⚠️ Without this extension, only page titles are captured instead of real URLs.
+> Without this extension, only page titles are captured instead of real URLs.
 
-The agent captures browser activity by reading window titles. To capture actual URLs, employees must install the **"URL in Title"** Chrome/Edge extension.
+### Install on Chrome
 
-### Install URL in Title Extension
+[URL in Title — Chrome Web Store](https://chromewebstore.google.com/detail/url-in-title/ignpacbgnbnkaiooknalneoeladjnfgb)
 
-**Chrome:**
-👉 [Install from Chrome Web Store](https://chromewebstore.google.com/detail/url-in-title/ignpacbgnbnkaiooknalneoeladjnfgb)
+### Install on Edge
 
-**Edge:**
-👉 Same extension works on Edge — visit the link above in Edge and click **Allow extensions from other stores** if prompted.
+Visit the same link above in Microsoft Edge. Click **Allow extensions from other stores** if prompted.
 
 ### Configure the extension
 
 After installing:
 1. Click the extension icon in the browser toolbar
 2. Go to **Options**
-3. Set the title format to:
-   ```
-   {url} | {title}
-   ```
+3. Set the title format to: `{url} | {title}`
 4. Click **Save**
 
-Once configured, the agent will automatically extract real domains from the browser title bar.
+Once configured, the agent extracts real domains automatically.
 
 ---
 
-## Dashboard Access
-
-Open your browser and go to:
-
-```
-http://your-server-ip:3000
-```
-
-Login with the admin credentials you created during installation.
-
----
-
-## Configuration
+## Dashboard Configuration
 
 ### Timezone
-
-Go to **Admin → System Settings** to set your local timezone. This affects all calendar date displays, activity logs, and reports.
+Go to **Admin → System Settings** → select timezone → **Save**. Affects all calendars, logs and reports.
 
 ### Email / MFA
-
-Go to **Admin → Email Configuration** to set up SMTP for:
-- Forgot password OTP emails
-- Login MFA verification
+Go to **Admin → Email Configuration** to set up SMTP for forgot password and MFA login.
 
 ### Screenshot Interval
+Go to **Employees** → **Settings** on any employee to set screenshot interval, data retention, roster and department.
 
-Go to **Employees** → click **⚙ Settings** on any employee to configure:
-- Screenshot capture interval (1 min to 1 hour)
-- Data retention period
-- Duty roster assignment
-- Department
+### Duty Roster
+Go to **Admin → Duty Roster** to create shifts and assign employees. Shows in-shift vs off-shift breakdowns in Web Activity.
 
 ---
 
 ## Backup & Restore
 
-Go to **Admin → Backup & Restore** to:
-- Download full PostgreSQL database backup (`.wpbackup`)
-- Download all screenshots as a `.tar.gz` archive
-- Restore from a previous backup
+Go to **Admin → Backup & Restore**:
 
----
-
-## Security Notes
-
-- All agent tokens are unique per employee (256-bit random hex)
-- Passwords are hashed with bcrypt
-- Sessions expire after 24 hours
-- Admin and Monitor roles are strictly separated
-- All admin actions are logged in the Audit Log
+| Action | Description |
+|--------|-------------|
+| Download Backup | Full PostgreSQL dump (.wpbackup) |
+| Download Screenshots Backup | All screenshot images as .tar.gz |
+| Restore Backup | Upload .wpbackup to restore DB |
+| Restore Screenshots | Upload .tar.gz to restore images |
 
 ---
 
@@ -245,40 +278,63 @@ Go to **Admin → Backup & Restore** to:
 |-----------|-----------|
 | Backend | Node.js + Express |
 | Database | PostgreSQL |
-| Frontend | Vanilla JS + CSS (no framework) |
-| Agent | Node.js + PowerShell |
+| Frontend | Vanilla JS + CSS |
+| Agent | Node.js + PowerShell + BAT |
+| Web Server | Nginx |
+| Process Manager | PM2 |
 | Auth | express-session + bcryptjs |
 | Reports | ExcelJS |
 | Email | Nodemailer |
 
 ---
 
+## Folder Structure
+
+```
+workpulse-app/
+├── public/            # Dashboard HTML, login page
+├── winagent/          # Windows agent files
+│   ├── agent.js       # Main agent script
+│   ├── installer.bat  # Agent installer for employee PCs
+│   ├── uninstall.bat  # Agent uninstaller
+│   ├── updater.bat    # Agent updater
+│   └── launch.vbs     # Silent launcher
+├── screenshots/       # Screenshot storage (gitignored)
+├── backups/           # Backups (gitignored)
+├── db.js              # PostgreSQL connection
+├── install.js         # Web installer
+├── server.js          # Main Express server
+└── .env               # Environment config (gitignored)
+```
+
+---
+
 ## Changelog
 
+### v2.2 (April 2026)
+- System Settings page (timezone, company name, date format, theme)
+- All calendars timezone-aware
+- URL tracking via URL in Title extension
+- Admin users separated from Monitor users
+- GitHub cleanup
+
 ### v2.1 (April 2026)
-- System Settings page with timezone configuration
-- Screenshot backup & restore
-- Excel report export with 4 sheets
+- Screenshot backup and restore
+- Excel report export
 - Email OTP / MFA login
-- Forgot password flow
-- Audit log for all admin actions
-- Calendar dot fix for today's date (timezone-aware)
-- Admin users correctly separated from Monitor users
-- URL tracking via "URL in Title" extension support
+- Forgot password
+- Audit log
 
 ### v2.0
 - Duty Roster with shift tracking
-- In-shift vs Off-shift time breakdown in Web Activity
 - App Usage donut charts
 - System Activity log
-- Dark/Light mode
-- Multi-user support with employee assignment
+- Dark / Light mode
+- Multi-user support
 - Flagged screenshots
 
 ### v1.0
 - Initial release
-- Basic employee monitoring
-- Screenshots, web activity, app usage
 
 ---
 
