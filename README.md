@@ -49,11 +49,7 @@ sudo apt update && sudo apt upgrade -y
 ```bash
 sudo useradd -m -s /bin/bash workpulse
 sudo passwd workpulse
-```
-
-Set a strong password when prompted. Then switch to that user for all remaining steps:
-
-```bash
+sudo usermod -aG sudo workpulse
 sudo su - workpulse
 ```
 
