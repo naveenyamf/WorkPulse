@@ -1,12 +1,12 @@
 @echo off
 setlocal enabledelayedexpansion
-title WorkPulse Agent Uninstaller v1.1
+title WorkPulse Agent Uninstaller
 color 0C
 cls
 
 echo.
 echo  ================================================
-echo   WorkPulse Agent Uninstaller v1.1
+echo   WorkPulse Agent Uninstaller v2.2
 echo  ================================================
 echo.
 
@@ -19,16 +19,14 @@ if %errorlevel% neq 0 (
 
 echo  Stopping agent...
 taskkill /F /IM WorkPulse-Agent.exe >nul 2>&1
+taskkill /F /IM wscript.exe >nul 2>&1
 taskkill /F /IM node.exe >nul 2>&1
 timeout /t 2 /nobreak >nul
 
-echo  Removing startup entry...
+echo  Removing startup entries...
 reg delete "HKLM\Software\Microsoft\Windows\CurrentVersion\Run" /v "WorkPulse" /f >nul 2>&1
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "WorkPulse" /f >nul 2>&1
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "WorkPulseAgent" /f >nul 2>&1
-
-echo  Removing hosts entry...
-powershell -NoProfile -Command "(Get-Content 'C:\Windows\System32\drivers\etc\hosts') | Where-Object { $_ -notmatch 'monitoring.novelinfra.com' } | Set-Content 'C:\Windows\System32\drivers\etc\hosts'"
 
 echo  Removing files...
 cd C:\
@@ -40,6 +38,7 @@ echo   WorkPulse Agent Removed Successfully
 echo  ================================================
 echo.
 echo   All files and startup entries have been removed.
+echo   The agent will no longer run on this PC.
 echo  ================================================
 echo.
 pause
