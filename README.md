@@ -40,6 +40,8 @@
 sudo apt update && sudo apt upgrade -y
 ```
 
+---
+
 ### Step 2 — Install Node.js 18+
 
 ```bash
@@ -49,6 +51,8 @@ node -v
 npm -v
 ```
 
+---
+
 ### Step 3 — Install PostgreSQL
 
 ```bash
@@ -57,7 +61,11 @@ sudo systemctl start postgresql
 sudo systemctl enable postgresql
 ```
 
-Create database and user:
+---
+
+### Step 4 — Create database and user
+
+> ⚠️ **Replace `YourStrongPassword` with your own password everywhere below. Use the same password in all places.**
 
 ```bash
 sudo -u postgres psql
@@ -65,13 +73,16 @@ sudo -u postgres psql
 
 ```sql
 CREATE DATABASE workpulse;
-CREATE USER workpulse_user WITH PASSWORD 'your_strong_password';
+CREATE USER workpulse_user WITH PASSWORD 'YourStrongPassword';
 GRANT ALL PRIVILEGES ON DATABASE workpulse TO workpulse_user;
 ALTER DATABASE workpulse OWNER TO workpulse_user;
+GRANT ALL ON SCHEMA public TO workpulse_user;
 \q
 ```
 
-### Step 4 — Install Nginx
+---
+
+### Step 5 — Install Nginx
 
 ```bash
 sudo apt install -y nginx
@@ -79,47 +90,60 @@ sudo systemctl start nginx
 sudo systemctl enable nginx
 ```
 
-### Step 5 — Install PM2
+---
+
+### Step 6 — Install PM2
 
 ```bash
 sudo npm install -g pm2
 ```
 
-### Step 6 — Clone the repository
+---
+
+### Step 7 — Clone the repository
 
 ```bash
-cd /home/workpulse
+cd ~
 git clone https://github.com/naveenyamf/WorkPulse.git workpulse-app
 cd workpulse-app
 npm install
 ```
 
-### Step 7 — Configure environment
+---
+
+### Step 8 — Configure environment
 
 ```bash
 nano .env
 ```
 
-Fill in:
+Fill in — **replace `YourStrongPassword` with the same password you used in Step 4:**
 
 ```env
 PORT=3000
-SESSION_SECRET=your_random_long_secret_here
+SESSION_SECRET=paste_any_long_random_string_here
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=workpulse
 DB_USER=workpulse_user
-DB_PASSWORD=your_strong_password
-NODE_ENV=production
+DB_PASSWORD=YourStrongPassword
+DB_PASS=YourStrongPassword
+NODE_ENV=development
 ```
 
-### Step 8 — Configure Nginx reverse proxy
+> ⚠️ Keep `NODE_ENV=development` until you set up HTTPS/SSL. With `production`, session cookies require HTTPS and you will be signed out immediately on plain HTTP. Switch to `production` only after SSL is configured.
+
+> 💡 For `SESSION_SECRET`, use any long random string — e.g. open a new terminal and run: `openssl rand -hex 48`
+
+---
+
+### Step 9 — Configure Nginx reverse proxy
 
 ```bash
 sudo nano /etc/nginx/sites-available/workpulse
 ```
 
-Paste this:
+Paste this — **replace `your-server-ip-or-domain` with your actual IP or domain:**
 
 ```nginx
 server {
@@ -139,35 +163,33 @@ server {
         proxy_read_timeout 300s;
         proxy_send_timeout 300s;
     }
-
-    location /screenshots/ {
-        alias /home/workpulse/workpulse-app/screenshots/;
-        expires 7d;
-        add_header Cache-Control "public";
-    }
 }
 ```
 
 Enable the site:
 
 ```bash
+sudo rm -f /etc/nginx/sites-enabled/default
 sudo ln -s /etc/nginx/sites-available/workpulse /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl reload nginx
+sudo nginx -t && sudo systemctl reload nginx
 ```
 
-### Step 9 — Start the application
+---
+
+### Step 10 — Start the application
 
 ```bash
-cd /home/workpulse/workpulse-app
+cd ~/workpulse-app
 pm2 start server.js --name workpulse
 pm2 save
 pm2 startup
 ```
 
-Follow the command PM2 outputs to enable auto-start on reboot.
+Follow the command PM2 prints to enable auto-start on reboot.
 
-### Step 10 — Run the web installer
+---
+
+### Step 11 — Run the web installer
 
 Open your browser and go to:
 
@@ -175,9 +197,51 @@ Open your browser and go to:
 http://your-server-ip/install
 ```
 
-Follow the setup wizard to create your admin account and initialize the database.
+The wizard will walk you through:
+1. Enter your DB connection details and test the connection
+2. Choose **Fresh Install**
+3. Create your root admin account (name, email, password)
+4. All tables and default data are created automatically
 
-> After setup is complete, the installer is automatically disabled for security.
+After the wizard completes, restart the server to load the new `.env`:
+
+```bash
+pm2 restart workpulse --update-env
+```
+
+Then open `http://your-server-ip` and sign in with the admin account you just created.
+
+---
+
+### Step 12 — Build the Windows Agent
+
+The agent installer must be compiled on the server before employees can download it.
+
+```bash
+# Install required tools
+sudo apt install -y zip
+
+cd ~/workpulse-app/winagent
+npm install
+npx pkg . --targets node18-win-x64 --output dist/WorkPulse-Agent.exe
+
+# Package into ZIP for download
+cp dist/WorkPulse-Agent.exe ~/WorkPulse-Agent.exe
+zip -j ~/WorkPulse-Agent-Windows.zip \
+    ~/WorkPulse-Agent.exe \
+    installer.bat \
+    updater.bat \
+    uninstall.bat
+
+echo "✓ Agent built: ~/WorkPulse-Agent-Windows.zip"
+ls -lh ~/WorkPulse-Agent-Windows.zip
+```
+
+> ⚠️ If you are running as a user other than `workpulse` (e.g. `novel`, `ubuntu`), update the agent path in `server.js`:
+> ```bash
+> sed -i "s|/home/workpulse/|${HOME}/|g" ~/workpulse-app/server.js
+> pm2 restart workpulse --update-env
+> ```
 
 ---
 
@@ -189,33 +253,33 @@ Follow the setup wizard to create your admin account and initialize the database
 2. Go to **Admin → Add Agents to Monitor**
 3. Fill in employee name and email → Click **Add Employee**
 
-### Step 2 — Download the installer
+### Step 2 — Download the agent
 
-From the dashboard sidebar, click **Download Agent** — this downloads `installer.bat`.
+From the dashboard sidebar, click **⤓ Download Agent** — downloads `WorkPulse-Agent-Windows.zip`.
 
-### Step 3 — Run the installer on employee PC
+### Step 3 — Run on employee PC
 
-1. Copy `installer.bat` to the employee Windows PC
-2. **Right-click** → **Run as Administrator**
-3. Enter the WorkPulse server URL when prompted
-4. Enter the employee email address
-5. The installer will automatically:
-   - Fetch the agent token from the server
-   - Install the agent to `C:\WorkPulse\`
-   - Add to Windows startup (runs silently on every login)
-   - Start the agent immediately
+1. Extract the ZIP on the employee's Windows PC
+2. **Right-click** `installer.bat` → **Run as Administrator**
+3. Enter the WorkPulse server URL when prompted (e.g. `http://your-server-ip`)
+4. Enter the employee's email address
+5. The installer automatically:
+   - Fetches the agent token from the server
+   - Installs to `C:\WorkPulse\`
+   - Adds to Windows startup (runs silently on every login)
+   - Starts the agent immediately
 
 ### Step 4 — Verify in dashboard
 
-Within 1-2 minutes the employee should appear as **Active** in the dashboard.
+Within 1–2 minutes the employee appears as **Active** in the dashboard.
 
 ### Updating the agent
 
-Run `updater.bat` as Administrator on the employee PC. Downloads latest version and restarts automatically.
+Run `updater.bat` as Administrator on the employee PC.
 
 ### Uninstalling the agent
 
-Run `uninstall.bat` as Administrator. Stops agent, removes all files and startup entries.
+Run `uninstall.bat` as Administrator.
 
 ---
 
@@ -229,33 +293,30 @@ Run `uninstall.bat` as Administrator. Stops agent, removes all files and startup
 
 ### Install on Edge
 
-Visit the same link above in Microsoft Edge. Click **Allow extensions from other stores** if prompted.
+Visit the same link in Microsoft Edge. Click **Allow extensions from other stores** if prompted.
 
 ### Configure the extension
 
-After installing:
 1. Click the extension icon in the browser toolbar
 2. Go to **Options**
 3. Set the title format to: `{url} | {title}`
 4. Click **Save**
-
-Once configured, the agent extracts real domains automatically.
 
 ---
 
 ## Dashboard Configuration
 
 ### Timezone
-Go to **Admin → System Settings** → select timezone → **Save**. Affects all calendars, logs and reports.
+Go to **Admin → System Settings** → select timezone → **Save**.
 
 ### Email / MFA
 Go to **Admin → Email Configuration** to set up SMTP for forgot password and MFA login.
 
 ### Screenshot Interval
-Go to **Employees** → **Settings** on any employee to set screenshot interval, data retention, roster and department.
+Go to **Employees** → **⚙ Settings** on any employee.
 
 ### Duty Roster
-Go to **Admin → Duty Roster** to create shifts and assign employees. Shows in-shift vs off-shift breakdowns in Web Activity.
+Go to **Admin → Duty Roster** to create shifts and assign employees.
 
 ---
 
@@ -292,8 +353,8 @@ Go to **Admin → Backup & Restore**:
 
 ```
 workpulse-app/
-├── public/            # Dashboard HTML, login page
-├── winagent/          # Windows agent files
+├── public/            # Dashboard HTML, login page, installer page
+├── winagent/          # Windows agent source
 │   ├── agent.js       # Main agent script
 │   ├── installer.bat  # Agent installer for employee PCs
 │   ├── uninstall.bat  # Agent uninstaller
@@ -301,10 +362,78 @@ workpulse-app/
 │   └── launch.vbs     # Silent launcher
 ├── screenshots/       # Screenshot storage (gitignored)
 ├── backups/           # Backups (gitignored)
-├── db.js              # PostgreSQL connection
-├── install.js         # Web installer
+├── db.js              # PostgreSQL connection pool
+├── install.js         # Web installer route
 ├── server.js          # Main Express server
 └── .env               # Environment config (gitignored)
+```
+
+---
+
+## Troubleshooting
+
+### Signed out immediately after login
+
+**Cause:** `NODE_ENV=production` requires HTTPS for session cookies. On plain HTTP it drops the session.
+
+**Fix:**
+```bash
+sed -i 's/NODE_ENV=production/NODE_ENV=development/' ~/workpulse-app/.env
+pm2 restart workpulse --update-env
+```
+
+Switch back to `production` only after HTTPS/SSL is configured.
+
+---
+
+### Database connection error: client password must be a string
+
+**Cause:** `db.js` reads `DB_PASS` but `.env` only has `DB_PASSWORD`.
+
+**Fix:** Ensure both are in `.env`:
+```bash
+echo "DB_PASS=YourStrongPassword" >> ~/workpulse-app/.env
+pm2 restart workpulse --update-env
+```
+
+---
+
+### Download Agent shows "File not found"
+
+**Cause:** Agent ZIP not built yet. Follow Step 12 above to build it.
+
+If running as a non-default user, also fix the path:
+```bash
+sed -i "s|/home/workpulse/|${HOME}/|g" ~/workpulse-app/server.js
+pm2 restart workpulse --update-env
+```
+
+---
+
+### Bad Gateway (502)
+
+```bash
+pm2 logs workpulse --lines 30
+pm2 restart workpulse --update-env
+```
+
+---
+
+### Cannot connect to database
+
+```bash
+sudo systemctl status postgresql
+sudo -u postgres psql -c "\l"
+```
+
+---
+
+### PM2 restarts keep signing everyone out
+
+Sessions are in memory — every restart signs everyone out. This is expected during setup. Once the server is stable it won't happen.
+
+```bash
+pm2 show workpulse | grep restart
 ```
 
 ---
@@ -322,8 +451,8 @@ workpulse-app/
 - Screenshot backup and restore
 - Excel report export
 - Email OTP / MFA login
-- Forgot password
-- Audit log
+- Forgot password flow
+- Audit log improvements
 
 ### v2.0
 - Duty Roster with shift tracking
