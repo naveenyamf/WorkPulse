@@ -192,18 +192,6 @@ function getAllApps(activeApp) {
   // Only track foreground active app — not background/minimized apps
   if (!activeApp || activeApp === 'Desktop' || activeApp === '') return [];
   return [{ name: activeApp, seconds: 60 }];
-} else { "[]" }`;
-    const result = runPS(script);
-    if (!result || result === '[]' || result === 'null') return [];
-    let apps;
-    try { apps = JSON.parse(result); } catch(e) { return []; }
-    const arr = Array.isArray(apps) ? apps : [apps];
-    return arr
-      .filter(function(a) { return a && a.length > 1; })
-      .map(function(a) { return { name: a, seconds: 60 }; });
-  } catch(e) {
-    return [];
-  }
 }
 
 function takeScreenshot(callback) {
@@ -285,7 +273,8 @@ schedule.scheduleJob('*/1 * * * *', async function() {
       active_app: app,
       idle: isIdle,
       apps: apps,
-      urls: urls
+      urls: urls,
+      version: AGENT_VERSION
     }, {
       headers: { 'x-agent-token': AGENT_TOKEN },
       timeout: 10000
