@@ -46,31 +46,32 @@ function runPS(script) {
 
 function getActiveWindow() {
   try {
-    const result = runPS(`
-Add-Type @"
-  using System;
-  using System.Runtime.InteropServices;
-  public class WinAPI {
-    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-    [DllImport("user32.dll")] public static extern int GetWindowThreadProcessId(IntPtr hWnd, out int lpdwProcessId);
-    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
-  }
-"@
-$hwnd = [WinAPI]::GetForegroundWindow()
-if ($hwnd -eq [IntPtr]::Zero) { Write-Output 'Desktop'; exit }
-if ([WinAPI]::IsIconic($hwnd)) { Write-Output 'Desktop'; exit }
-$pid = 0
-[WinAPI]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null
-if ($pid -eq 0) { Write-Output 'Desktop'; exit }
-try {
-  $proc = Get-Process -Id $pid -ErrorAction Stop
-  if ($proc.Name -match 'ApplicationFrameHost|ShellExperienceHost|SearchUI|SearchApp') {
-    Write-Output 'Desktop'
-  } else {
-    Write-Output $proc.Name
-  }
-} catch { Write-Output 'Desktop' }
-`);
+    var psScript = [
+      'Add-Type @"',
+      '  using System;',
+      '  using System.Runtime.InteropServices;',
+      '  public class WinAPI {',
+      '    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();',
+      '    [DllImport("user32.dll")] public static extern int GetWindowThreadProcessId(IntPtr hWnd, out int lpdwProcessId);',
+      '    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);',
+      '  }',
+      '"@',
+      '$hwnd = [WinAPI]::GetForegroundWindow()',
+      'if ($hwnd -eq [IntPtr]::Zero) { Write-Output "Desktop"; exit }',
+      'if ([WinAPI]::IsIconic($hwnd)) { Write-Output "Desktop"; exit }',
+      '$pid = 0',
+      '[WinAPI]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null',
+      'if ($pid -eq 0) { Write-Output "Desktop"; exit }',
+      'try {',
+      '  $proc = Get-Process -Id $pid -ErrorAction Stop',
+      '  if ($proc.Name -match "ApplicationFrameHost|ShellExperienceHost|SearchUI|SearchApp") {',
+      '    Write-Output "Desktop"',
+      '  } else {',
+      '    Write-Output $proc.Name',
+      '  }',
+      '} catch { Write-Output "Desktop" }'
+    ].join('\n');
+    const result = runPS(psScript);
     return result || 'Desktop';
   } catch (e) {
     return 'Desktop';
