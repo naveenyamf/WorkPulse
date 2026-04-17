@@ -6,6 +6,7 @@ const path = require('path');
 const os = require('os');
 const { execSync, exec } = require('child_process');
 
+const AGENT_VERSION = '2.5.0';
 const CONFIG_FILE = 'C:\\WorkPulse\\config.json';
 let SERVER_URL = 'http://10.10.11.251';
 
@@ -20,6 +21,7 @@ function loadConfig() {
     const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
     AGENT_TOKEN = config.token;
     if (config.server_url) SERVER_URL = config.server_url;
+    console.log('WorkPulse Agent v' + AGENT_VERSION);
     console.log('Agent started for:', config.email);
     console.log('Server:', SERVER_URL);
     return true;
@@ -44,9 +46,31 @@ function runPS(script) {
 
 function getActiveWindow() {
   try {
-    const result = runPS(
-      'Get-Process | Where-Object { $_.MainWindowTitle -ne "" -and $_.Name -ne "ApplicationFrameHost" } | Select-Object -First 1 -ExpandProperty Name'
-    );
+    const result = runPS(`
+Add-Type @"
+  using System;
+  using System.Runtime.InteropServices;
+  public class WinAPI {
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern int GetWindowThreadProcessId(IntPtr hWnd, out int lpdwProcessId);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+  }
+"@
+$hwnd = [WinAPI]::GetForegroundWindow()
+if ($hwnd -eq [IntPtr]::Zero) { Write-Output 'Desktop'; exit }
+if ([WinAPI]::IsIconic($hwnd)) { Write-Output 'Desktop'; exit }
+$pid = 0
+[WinAPI]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null
+if ($pid -eq 0) { Write-Output 'Desktop'; exit }
+try {
+  $proc = Get-Process -Id $pid -ErrorAction Stop
+  if ($proc.Name -match 'ApplicationFrameHost|ShellExperienceHost|SearchUI|SearchApp') {
+    Write-Output 'Desktop'
+  } else {
+    Write-Output $proc.Name
+  }
+} catch { Write-Output 'Desktop' }
+`);
     return result || 'Desktop';
   } catch (e) {
     return 'Desktop';
@@ -163,12 +187,10 @@ if (urlInTitle) {
 
 
 
-function getAllApps() {
-  try {
-    const script = `
-$apps = Get-Process | Where-Object { $_.MainWindowTitle -ne "" } | Where-Object { $_.Name -notmatch "ApplicationFrameHost|SearchHost|TextInputHost" }
-if ($apps) {
-  $apps | Select-Object -ExpandProperty Name | Select-Object -Unique | ConvertTo-Json -Compress
+function getAllApps(activeApp) {
+  // Only track foreground active app — not background/minimized apps
+  if (!activeApp || activeApp === 'Desktop' || activeApp === '') return [];
+  return [{ name: activeApp, seconds: 60 }];
 } else { "[]" }`;
     const result = runPS(script);
     if (!result || result === '[]' || result === 'null') return [];

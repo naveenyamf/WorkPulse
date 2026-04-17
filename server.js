@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const schedule = require('node-schedule');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
@@ -240,16 +241,12 @@ app.get("/api/dashboard/screenshots", requireLogin, async (req, res) => {
 });
 
 app.post('/api/screenshots/:id/flag', requireLogin, async (req, res) => {
-  const r = await pool.query('SELECT s.id, e.name FROM screenshots s JOIN employees e ON s.employee_id=e.id WHERE s.id=$1', [req.params.id]);
   await pool.query('UPDATE screenshots SET flagged=true WHERE id=$1', [req.params.id]);
-  await auditLog(req, 'Screenshot Flagged', 'Screenshot ID: ' + req.params.id + (r.rows[0] ? ' (' + r.rows[0].name + ')' : ''));
   res.json({ success: true });
 });
 
 app.post('/api/screenshots/:id/unflag', requireLogin, async (req, res) => {
-  const r = await pool.query('SELECT s.id, e.name FROM screenshots s JOIN employees e ON s.employee_id=e.id WHERE s.id=$1', [req.params.id]);
   await pool.query('UPDATE screenshots SET flagged=false WHERE id=$1', [req.params.id]);
-  await auditLog(req, 'Screenshot Unflagged', 'Screenshot ID: ' + req.params.id + (r.rows[0] ? ' (' + r.rows[0].name + ')' : ''));
   res.json({ success: true });
 });
 
@@ -272,10 +269,12 @@ app.get("/api/dashboard/web-activity", requireLogin, async (req, res) => {
         AND w.url != 'Desktop' AND w.url != 'Unknown'
         AND w.url != 'New Tab' AND w.url != 'New tab'
         AND w.url != 'Speed Dial' AND length(w.url) < 150
+        ${date ? "AND w.recorded_at::date=$1::date" : ""}
       )`;
 
 
     const empParams = [];
+    if (date) { empParams.push(date); } // $1 for date in EXISTS
     if (employee_id) { empParams.push(employee_id); empQuery += ` AND e.id=$${empParams.length}`; }
     if (allowed) { empParams.push(allowed); empQuery += ` AND e.id = ANY($${empParams.length}::int[])`; }
     empQuery += ' ORDER BY e.name';
@@ -403,7 +402,16 @@ app.get('/api/dashboard/app-usage', requireLogin, async (req, res) => {
     if (!emps.length) return res.json({ rows: [], total, page, pages });
 
     const empIds = emps.map(e => e.id);
-    const params = date ? [empIds, date] : [empIds];
+    // For overnight shifts, also check next day
+    let dateFilter = '';
+    let params = [empIds];
+    if (date) {
+      const nd = new Date(date); nd.setDate(nd.getDate()+1);
+      const nextDate = nd.toISOString().split('T')[0];
+      params = [empIds, date, nextDate];
+      // dateFilter uses $2 and $3
+      dateFilter = `AND a.recorded_at::date IN ($2::date, $3::date)`;
+    }
     let query = `WITH app_data AS (
       SELECT
         CASE
@@ -450,19 +458,36 @@ COUNT(DISTINCT DATE_TRUNC('minute', a.recorded_at)) as app_minutes,
         COUNT(a.id) * 60 as total_seconds
 
       FROM app_usage a JOIN employees e ON a.employee_id=e.id
+      LEFT JOIN duty_rosters r ON e.roster_id=r.id
       WHERE e.active=true
         AND LOWER(a.app_name) NOT IN ('applicationframehost','desktop','unknown','','searchhost','textinputhost')
         AND a.app_name NOT SIMILAR TO '[0-9]%'
         AND a.employee_id = ANY($1::int[])
-        ${date ? 'AND a.recorded_at::date=$2' : ''}
+        ${date ? dateFilter : ''}
+        -- Filter to shift window using JOIN
+        AND CASE
+          WHEN r.start_time IS NULL THEN true
+          WHEN r.end_time > r.start_time THEN
+            a.recorded_at::time >= r.start_time AND a.recorded_at::time < r.end_time
+          ELSE
+            a.recorded_at::time >= r.start_time OR a.recorded_at::time < r.end_time
+        END
       GROUP BY 1, a.employee_id, e.name
     ),
     emp_totals AS (
       SELECT employee_id,
         COUNT(DISTINCT DATE_TRUNC('minute', a.recorded_at)) * 60 as unique_total_seconds
       FROM app_usage a JOIN employees e ON a.employee_id=e.id
+      LEFT JOIN duty_rosters r ON e.roster_id=r.id
       WHERE e.active=true AND a.employee_id = ANY($1::int[])
-        ${date ? 'AND a.recorded_at::date=$2' : ''}
+        ${date ? dateFilter : ''}
+        AND CASE
+          WHEN r.start_time IS NULL THEN true
+          WHEN r.end_time > r.start_time THEN
+            a.recorded_at::time >= r.start_time AND a.recorded_at::time < r.end_time
+          ELSE
+            a.recorded_at::time >= r.start_time OR a.recorded_at::time < r.end_time
+        END
       GROUP BY employee_id
     )
 SELECT d.app_name, d.employee_name, d.employee_id,
@@ -474,6 +499,7 @@ SELECT d.app_name, d.employee_name, d.employee_id,
        LEFT JOIN duty_rosters r ON e2.roster_id = r.id
        WHERE a2.employee_id = d.employee_id
          AND LOWER(a2.app_name) NOT IN ('applicationframehost','desktop','unknown','','searchhost','textinputhost')
+         ${date ? `AND a2.recorded_at::date IN ($2::date, $3::date)` : ''}
          AND CASE
            WHEN r.start_time IS NULL THEN true
            WHEN r.end_time > r.start_time THEN
@@ -519,9 +545,7 @@ app.get('/api/alerts', requireLogin, async (req, res) => {
 });
 
 app.post('/api/alerts/:id/resolve', requireLogin, async (req, res) => {
-  const r = await pool.query('SELECT a.id, e.name, a.message FROM alerts a JOIN employees e ON a.employee_id=e.id WHERE a.id=$1', [req.params.id]);
   await pool.query('UPDATE alerts SET resolved=true WHERE id=$1', [req.params.id]);
-  await auditLog(req, 'Alert Resolved', 'Alert ID: ' + req.params.id + (r.rows[0] ? ' | ' + r.rows[0].name + ': ' + (r.rows[0].message||'').slice(0,60) : ''));
   res.json({ success: true });
 });
 
@@ -585,12 +609,11 @@ app.get('/download/extension', (req, res) => {
 // Serve dashboard for all other routes
 app.get('/api/dashboard/screenshot-dates', requireLogin, async (req, res) => {
   try {
-    const tz = await getTimezone();
     const { employee_id } = req.query;
-    let query = `SELECT DISTINCT to_char(s.recorded_at AT TIME ZONE '${tz}', 'YYYY-MM-DD') as date, e.name as employee_name, COUNT(*) as count FROM screenshots s JOIN employees e ON s.employee_id=e.id WHERE e.active=true`;
+    let query = `SELECT s.recorded_at::date::text as date, COUNT(*) as count FROM screenshots s JOIN employees e ON s.employee_id=e.id WHERE e.active=true AND s.recorded_at >= NOW() - INTERVAL '90 days'`;
     const params = [];
     if (employee_id) { params.push(employee_id); query += ` AND s.employee_id=$${params.length}`; }
-    query += ` GROUP BY to_char(s.recorded_at AT TIME ZONE '${tz}', 'YYYY-MM-DD'), e.name ORDER BY date DESC`;
+    query += ' GROUP BY s.recorded_at::date ORDER BY date DESC';
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
@@ -599,21 +622,16 @@ app.get('/api/dashboard/screenshot-dates', requireLogin, async (req, res) => {
 });
 
 
-
-
-
-
 // Dates with web activity (for calendar)
 app.get('/api/dashboard/web-activity-dates', requireLogin, async (req, res) => {
   try {
-    const tz = await getTimezone();
     const { employee_id } = req.query;
     const allowed = getAllowedEmployees(req);
     const params = [];
-    let query = `SELECT to_char(w.recorded_at AT TIME ZONE '${tz}', 'YYYY-MM-DD') as date, COUNT(*) as count FROM web_activity w JOIN employees e ON w.employee_id=e.id WHERE e.active=true`;
+    let query = `SELECT w.recorded_at::date::text as date, COUNT(*) as count FROM web_activity w JOIN employees e ON w.employee_id=e.id WHERE e.active=true AND w.recorded_at >= NOW() - INTERVAL '90 days'`;
     if (employee_id) { params.push(employee_id); query += ` AND w.employee_id=$${params.length}`; }
     if (allowed) { params.push(allowed); query += ` AND w.employee_id = ANY($${params.length}::int[])`; }
-    query += ` GROUP BY to_char(w.recorded_at AT TIME ZONE '${tz}', 'YYYY-MM-DD') ORDER BY date DESC`;
+    query += ' GROUP BY w.recorded_at::date ORDER BY date DESC';
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -622,15 +640,13 @@ app.get('/api/dashboard/web-activity-dates', requireLogin, async (req, res) => {
 // Dates with app usage (for calendar)
 app.get('/api/dashboard/app-usage-dates', requireLogin, async (req, res) => {
   try {
-    const tz = await getTimezone();
     const { employee_id } = req.query;
     const allowed = getAllowedEmployees(req);
     const params = [];
-    let query = `SELECT to_char(a.recorded_at AT TIME ZONE '${tz}', 'YYYY-MM-DD') as date, COUNT(*) as count FROM app_usage a JOIN employees e ON a.employee_id=e.id WHERE e.active=true`;
-
+    let query = `SELECT a.recorded_at::date::text as date, COUNT(*) as count FROM app_usage a JOIN employees e ON a.employee_id=e.id WHERE e.active=true AND a.recorded_at >= NOW() - INTERVAL '90 days'`;
     if (employee_id) { params.push(employee_id); query += ` AND a.employee_id=$${params.length}`; }
     if (allowed) { params.push(allowed); query += ` AND a.employee_id = ANY($${params.length}::int[])`; }
-    query += ` GROUP BY to_char(a.recorded_at AT TIME ZONE '${tz}', 'YYYY-MM-DD') ORDER BY date DESC`;
+    query += ' GROUP BY a.recorded_at::date ORDER BY date DESC';
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -838,6 +854,23 @@ app.post('/api/user-login', async (req, res) => {
       if (!match) return res.status(401).json({ error: 'Invalid credentials' });
       const empResult = await pool.query('SELECT employee_id FROM user_employee_access WHERE user_id=$1', [user.id]);
       loginData = { adminId: user.id, adminName: user.name, adminRole: user.role, isUser: true, email: user.email, allowedEmployees: empResult.rows.map(r => r.employee_id) };
+    }
+
+    // Check per-user TOTP first
+    let userTotpEnabled = false;
+    try {
+      if (!loginData.isUser) {
+        const tr = await pool.query('SELECT totp_enabled FROM admins WHERE id=$1', [loginData.adminId]);
+        userTotpEnabled = tr.rows[0]?.totp_enabled === true;
+      } else {
+        const tr = await pool.query('SELECT totp_enabled FROM dashboard_users WHERE id=$1', [loginData.adminId]);
+        userTotpEnabled = tr.rows[0]?.totp_enabled === true;
+      }
+    } catch(e) {}
+
+    if (userTotpEnabled) {
+      req.session.pendingLogin = loginData;
+      return res.json({ totp_required: true });
     }
 
     if (mfaOn) {
@@ -1077,16 +1110,14 @@ app.get('/api/dashboard/system-activity', requireLogin, async (req, res) => {
 
 app.get('/api/dashboard/system-activity-dates', requireLogin, async (req, res) => {
   try {
-    const tz = await getTimezone();
     const { employee_id } = req.query;
     const allowed = getAllowedEmployees(req);
     const params = [];
     let where = 'WHERE e.active=true';
     if (employee_id) { params.push(employee_id); where += ` AND s.employee_id=$${params.length}`; }
     if (allowed) { params.push(allowed); where += ` AND s.employee_id = ANY($${params.length}::int[])`; }
-const result = await pool.query(
-      `SELECT to_char(s.recorded_at AT TIME ZONE '${tz}', 'YYYY-MM-DD') as date, COUNT(*) as count FROM system_events s JOIN employees e ON s.employee_id=e.id ${where} GROUP BY to_char(s.recorded_at AT TIME ZONE '${tz}', 'YYYY-MM-DD') ORDER BY date DESC`,
-
+    const result = await pool.query(
+      `SELECT s.recorded_at::date::text as date, COUNT(*) as count FROM system_events s JOIN employees e ON s.employee_id=e.id ${where} GROUP BY s.recorded_at::date ORDER BY date DESC`,
       params
     );
     res.json(result.rows);
@@ -1309,73 +1340,100 @@ app.post('/api/admin/restore', requireLogin, requireAdmin, multerBackup.single('
     res.end();
   }
 });
-
-// Screenshot backup - create tar.gz of all screenshots
+// Screenshot backup — tar.gz of screenshots folder
 app.post('/api/admin/backup/screenshots', requireLogin, requireAdmin, async (req, res) => {
   try {
-    const ssDir = path.join(__dirname, 'screenshots');
-    if (!fs.existsSync(ssDir)) {
-      return res.status(404).json({ error: 'Screenshots directory not found' });
-    }
-    const files = fs.readdirSync(ssDir).filter(f => f.match(/\.(jpg|jpeg|png|gif|webp)$/i));
-    if (!files.length) {
-      return res.status(404).json({ error: 'No screenshot files found to backup' });
-    }
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const filename = `workpulse-screenshots-${ts}.tar.gz`;
     const filepath = path.join(backupsDir, filename);
-    execFile('tar', ['-czf', filepath, '-C', path.dirname(ssDir), path.basename(ssDir)], async (err) => {
-      if (err) {
-        console.error('[SS Backup] tar error:', err.message);
-        return res.status(500).json({ error: 'tar failed: ' + err.message });
-      }
+    const ssDir = path.join(__dirname, 'screenshots');
+    if (!fs.existsSync(ssDir)) return res.status(404).json({ error: 'Screenshots directory not found' });
+    const { execFile } = require('child_process');
+    execFile('tar', ['-czf', filepath, '-C', __dirname, 'screenshots'], {}, async (err) => {
+      if (err) return res.status(500).json({ error: 'tar failed: ' + err.message });
       await auditLog(req, 'Screenshots Backup Created', filename);
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.setHeader('Content-Type', 'application/gzip');
       fs.createReadStream(filepath).pipe(res);
     });
-  } catch(err) {
-    console.error('[SS Backup]', err.message);
-    res.status(500).json({ error: err.message });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// List screenshot backups on server
+app.get('/api/admin/backup/screenshots/list', requireLogin, requireAdmin, (req, res) => {
+  try {
+    const files = fs.readdirSync(backupsDir)
+      .filter(f => f.endsWith('.tar.gz'))
+      .map(f => {
+        const stat = fs.statSync(path.join(backupsDir, f));
+        return { filename: f, size_mb: (stat.size/1024/1024).toFixed(1), created_at: stat.mtime };
+      })
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    res.json(files);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Screenshot upload to server backups folder (saves file, doesn't extract yet)
+app.post('/api/admin/backup/screenshots/upload', requireLogin, requireAdmin, multerBackup.single('screenshots'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  try {
+    const origName = req.file.originalname || 'uploaded-screenshots.tar.gz';
+    const destPath = path.join(backupsDir, origName);
+    fs.renameSync(req.file.path, destPath);
+    console.log('[SS Upload] Saved to:', destPath);
+    await auditLog(req, 'Screenshots Backup Uploaded', origName);
+    res.json({ success: true, filename: origName });
+  } catch(e) {
+    console.error('[SS Upload] Error:', e.message);
+    res.status(500).json({ error: e.message });
   }
 });
 
-// Screenshot restore - extract tar.gz into screenshots folder
-app.post('/api/admin/restore/screenshots', requireLogin, requireAdmin, require('multer')({ dest: 'backups/tmp/' }).single('screenshots'), async (req, res) => {
+// Screenshot restore — extract tar.gz over screenshots folder
+app.post('/api/admin/restore/screenshots', requireLogin, requireAdmin, multerBackup.single('screenshots'), async (req, res) => {
   res.setHeader('Content-Type', 'application/x-ndjson');
   res.setHeader('Transfer-Encoding', 'chunked');
   res.setHeader('Cache-Control', 'no-cache');
-  const send = (msg, type, pct, label) => {
-    res.write(JSON.stringify({ msg, type: type||'info', pct: pct||0, label: label||'' }) + '\n');
-  };
-  if (!req.file) { send('No file uploaded.', 'err'); res.end(); return; }
+  const send = (msg, type, pct, label) => res.write(JSON.stringify({ msg, type: type||'info', pct: pct||0, label: label||'' }) + '\n');
+
+  if (!req.file) {
+    console.error('[SS Restore] No file in req.file — multer tmp dir issue?');
+    send('No file uploaded.', 'err'); res.end(); return;
+  }
+
   const tmpFile = req.file.path;
+  console.log('[SS Restore] File received:', req.file.originalname, req.file.size, 'bytes');
+
   try {
-    send('Archive received: ' + req.file.originalname, 'ok', 15, 'File received');
+    send('File received: ' + req.file.originalname, 'ok', 10, 'File ready');
     const ssDir = path.join(__dirname, 'screenshots');
     if (!fs.existsSync(ssDir)) fs.mkdirSync(ssDir, { recursive: true });
     send('Extracting screenshots…', 'info', 30, 'Extracting…');
-    execFile('tar', ['-xzf', tmpFile, '-C', ssDir, '--strip-components=1'], async (err) => {
+    console.log('[SS Restore] Extracting to:', __dirname);
+    const { execFile } = require('child_process');
+    execFile('tar', ['-xzf', tmpFile, '-C', __dirname], {}, async (err) => {
       try { fs.unlinkSync(tmpFile); } catch(e) {}
       if (err) {
-        send('✗ Extract error: ' + err.message, 'err', 0, 'Failed');
+        console.error('[SS Restore] tar failed:', err.message);
+        send('✗ Extract failed: ' + err.message, 'err', 0, 'Failed');
         res.write(JSON.stringify({ error: err.message }) + '\n');
         res.end(); return;
       }
-      send('✓ Screenshots extracted successfully!', 'ok', 90, 'Almost done…');
+      console.log('[SS Restore] Extraction complete!');
+      send('✓ Screenshots restored!', 'ok', 95, 'Done!');
       await auditLog(req, 'Screenshots Restored', req.file.originalname);
-      send('✓ Done!', 'ok', 100, 'Done!');
-      res.write(JSON.stringify({ done: true, pct: 100, label: 'Done!' }) + '\n');
+      send('🎉 Screenshot restore complete!', 'ok', 100, 'Done!');
+      res.write(JSON.stringify({ done: true, pct: 100, label: 'Done!', msg: 'Done.' }) + '\n');
       res.end();
     });
   } catch(err) {
+    console.error('[SS Restore] Error:', err.message);
     try { fs.unlinkSync(tmpFile); } catch(e) {}
-    send('✗ Error: ' + err.message, 'err', 0, 'Failed');
+    send('✗ ' + err.message, 'err', 0, 'Failed');
     res.write(JSON.stringify({ error: err.message }) + '\n');
     res.end();
   }
 });
-
 // ---- END BACKUP & RESTORE ----
 
 // ============================================================
@@ -1540,7 +1598,7 @@ app.get('/api/admin/report', requireLogin, requireAdmin, async (req, res) => {
       });
     }
 
-// ── SHEET 4: Daily Breakdown ──────────────────────────────────────────────
+    // ── SHEET 4: Daily Breakdown ──────────────────────────────────────────────
     if (inclDaily) {
       const ws = wb.addWorksheet('Daily Breakdown', { properties:{ tabColor:{ argb:'FFF59E0B' } } });
       ws.columns = [
@@ -1558,52 +1616,28 @@ app.get('/api/admin/report', requireLogin, requireAdmin, async (req, res) => {
       const params    = [fromDate, toDate];
       if (employee_id) params.push(employee_id);
       const rows = await pool.query(
-        `WITH daily_base AS (
-          SELECT e.id as emp_id, e.name as emp_name,
-            h.recorded_at::date as date,
-            MIN(h.recorded_at) as first_seen,
-            MAX(h.recorded_at) as last_seen
-          FROM heartbeats h JOIN employees e ON h.employee_id=e.id
-          WHERE h.recorded_at::date BETWEEN $1 AND $2 ${empFilter}
-          GROUP BY e.id, e.name, h.recorded_at::date
-        ),
-        daily_ss AS (
-          SELECT employee_id, recorded_at::date as date, COUNT(*) as cnt
-          FROM screenshots
-          WHERE recorded_at::date BETWEEN $1 AND $2
-          GROUP BY employee_id, recorded_at::date
-        ),
-        daily_web AS (
-          SELECT employee_id, recorded_at::date as date,
-            COUNT(DISTINCT date_trunc('minute', recorded_at)) as mins
-          FROM web_activity
-          WHERE recorded_at::date BETWEEN $1 AND $2
-          GROUP BY employee_id, recorded_at::date
-        ),
-        daily_apps AS (
-          SELECT employee_id, recorded_at::date as date,
-            COUNT(DISTINCT date_trunc('minute', recorded_at)) as mins
-          FROM app_usage
-          WHERE recorded_at::date BETWEEN $1 AND $2
-          GROUP BY employee_id, recorded_at::date
-        )
-        SELECT b.date, b.emp_name,
-          COALESCE(s.cnt, 0) as ss_count,
-          COALESCE(w.mins, 0) as web_mins,
-          COALESCE(a.mins, 0) as app_mins,
-          b.first_seen, b.last_seen
-        FROM daily_base b
-        LEFT JOIN daily_ss  s ON s.employee_id=b.emp_id AND s.date=b.date
-        LEFT JOIN daily_web w ON w.employee_id=b.emp_id AND w.date=b.date
-        LEFT JOIN daily_apps a ON a.employee_id=b.emp_id AND a.date=b.date
-        ORDER BY b.date DESC, b.emp_name`, params);
+        `SELECT e.name as emp_name,
+          h.recorded_at::date as date,
+          COUNT(DISTINCT h.recorded_at::date) as active_days,
+          COUNT(DISTINCT s.id) as ss_count,
+          COUNT(DISTINCT date_trunc('minute',w.recorded_at)) as web_mins,
+          COUNT(DISTINCT date_trunc('minute',au.recorded_at)) as app_mins,
+          MIN(h.recorded_at) as first_seen,
+          MAX(h.recorded_at) as last_seen
+         FROM heartbeats h
+         JOIN employees e ON h.employee_id=e.id
+         LEFT JOIN screenshots s ON s.employee_id=e.id AND s.recorded_at::date=h.recorded_at::date
+         LEFT JOIN web_activity w ON w.employee_id=e.id AND w.recorded_at::date=h.recorded_at::date
+         LEFT JOIN app_usage au ON au.employee_id=e.id AND au.recorded_at::date=h.recorded_at::date
+         WHERE h.recorded_at::date BETWEEN $1 AND $2 ${empFilter}
+         GROUP BY e.name, h.recorded_at::date
+         ORDER BY h.recorded_at::date DESC, e.name`, params);
       rows.rows.forEach(function(r, i) {
         const fmt = function(d){ return d ? new Date(d).toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit',hour12:false}) : '—'; };
         const row = ws.addRow({ date:r.date, name:r.emp_name, ss:parseInt(r.ss_count)||0, web:parseInt(r.web_mins)||0, apps:parseInt(r.app_mins)||0, first:fmt(r.first_seen), last:fmt(r.last_seen) });
         styleData(row, i%2===0);
       });
     }
-
 
     // Write and send
     const ts = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
@@ -1623,64 +1657,6 @@ app.get('/api/admin/report', requireLogin, requireAdmin, async (req, res) => {
 // ============================================================
 // ---- EMAIL CONFIG & MFA -----------------------------------
 // ============================================================
-// ---- SYSTEM SETTINGS TABLE ----
-(async function initSysSettings() {
-  try {
-    await pool.query(`CREATE TABLE IF NOT EXISTS sys_settings (
-      id SERIAL PRIMARY KEY,
-      timezone VARCHAR(100) DEFAULT 'Asia/Kolkata',
-      company_name VARCHAR(200) DEFAULT 'WorkPulse',
-      date_format VARCHAR(20) DEFAULT 'DD/MM/YYYY',
-      default_theme VARCHAR(20) DEFAULT 'system',
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    )`);
-    // Seed default row if empty
-    const existing = await pool.query('SELECT COUNT(*) FROM sys_settings');
-    if (parseInt(existing.rows[0].count) === 0) {
-      await pool.query("INSERT INTO sys_settings (timezone, company_name, date_format, default_theme) VALUES ('Asia/Kolkata', 'WorkPulse', 'DD/MM/YYYY', 'system')");
-      console.log('[SysSettings] Default settings seeded.');
-    }
-  } catch(e) { console.error('[SysSettings] Init error:', e.message); }
-})();
-
-// Helper to get current timezone setting
-async function getTimezone() {
-  try {
-    const r = await pool.query('SELECT timezone FROM sys_settings LIMIT 1');
-    return r.rows[0]?.timezone || 'Asia/Kolkata';
-  } catch(e) { return 'Asia/Kolkata'; }
-}
-
-// Get sys settings API
-app.get('/api/admin/sys-settings', requireLogin, requireAdmin, async (req, res) => {
-  try {
-    const r = await pool.query('SELECT * FROM sys_settings LIMIT 1');
-    res.json(r.rows[0] || { timezone: 'Asia/Kolkata', company_name: 'WorkPulse', date_format: 'DD/MM/YYYY', default_theme: 'system' });
-  } catch(err) { res.status(500).json({ error: err.message }); }
-});
-
-// Save sys settings API
-app.post('/api/admin/sys-settings', requireLogin, requireAdmin, async (req, res) => {
-  const { timezone, company_name, date_format, default_theme } = req.body;
-  try {
-    const existing = await pool.query('SELECT id FROM sys_settings LIMIT 1');
-    if (existing.rows.length) {
-      await pool.query(
-        'UPDATE sys_settings SET timezone=$1, company_name=$2, date_format=$3, default_theme=$4, updated_at=NOW() WHERE id=$5',
-        [timezone, company_name || 'WorkPulse', date_format || 'DD/MM/YYYY', default_theme || 'system', existing.rows[0].id]
-      );
-    } else {
-      await pool.query(
-        'INSERT INTO sys_settings (timezone, company_name, date_format, default_theme) VALUES ($1,$2,$3,$4)',
-        [timezone, company_name || 'WorkPulse', date_format || 'DD/MM/YYYY', default_theme || 'system']
-      );
-    }
-    await auditLog(req, 'System Settings Updated', 'Timezone: ' + timezone);
-    res.json({ success: true });
-  } catch(err) { res.status(500).json({ error: err.message }); }
-});
-// ---- END SYSTEM SETTINGS ----
-
 (async function initEmailConfigTable() {
   try {
     await pool.query(`CREATE TABLE IF NOT EXISTS email_config (
@@ -1795,13 +1771,18 @@ app.post('/api/admin/email-config/test', requireLogin, requireAdmin, async (req,
 
 // Save MFA setting
 app.post('/api/admin/email-config/mfa', requireLogin, requireAdmin, async (req, res) => {
-  const { mfa_enabled } = req.body;
+  const { mfa_enabled, totp_global_enabled } = req.body;
   try {
     const existing = await pool.query('SELECT id FROM email_config LIMIT 1');
     if (existing.rows.length) {
       await pool.query('UPDATE email_config SET mfa_enabled=$1 WHERE id=$2', [mfa_enabled, existing.rows[0].id]);
     } else {
       await pool.query('INSERT INTO email_config (mfa_enabled) VALUES ($1)', [mfa_enabled]);
+    }
+    // If TOTP global disabled, disable totp for all users
+    if (totp_global_enabled === false) {
+      await pool.query('UPDATE admins SET totp_enabled=false, totp_secret=NULL');
+      await pool.query('UPDATE dashboard_users SET totp_enabled=false, totp_secret=NULL');
     }
     await auditLog(req, mfa_enabled ? 'MFA Enabled' : 'MFA Disabled', '');
     res.json({ success: true });
@@ -1900,88 +1881,629 @@ app.post('/api/login-check-mfa', async (req, res) => {
   } catch(err) { res.json({ mfa_enabled: false }); }
 });
 
-// ---- SCREENSHOT BACKUP & RESTORE ----
-const multerSsRestore = require('multer')({ dest: 'backups/tmp/' });
-const screenshotsDir = path.join(__dirname, 'screenshots');
 
-// Backup screenshots as tar.gz
-app.post('/api/admin/backup/screenshots', requireLogin, requireAdmin, async (req, res) => {
+// ============================================================
+// ---- TOTP AUTHENTICATOR MFA --------------------------------
+// ============================================================
+const speakeasy = require('speakeasy');
+const QRCode    = require('qrcode');
+
+(async function initTOTP() {
   try {
-    if (!fs.existsSync(screenshotsDir)) {
-      return res.status(404).json({ error: 'Screenshots directory not found' });
-    }
-    const files = fs.readdirSync(screenshotsDir).filter(f => f.match(/\.(jpg|jpeg|png|gif|webp)$/i));
-    if (!files.length) {
-      return res.status(404).json({ error: 'No screenshot files found to backup' });
-    }
-    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const filename = `workpulse-screenshots-${ts}.tar.gz`;
-    const filepath = path.join(backupsDir, filename);
+    await pool.query("ALTER TABLE admins ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(200)");
+    await pool.query("ALTER TABLE admins ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT false");
+    await pool.query("ALTER TABLE dashboard_users ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(200)");
+    await pool.query("ALTER TABLE dashboard_users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT false");
+  } catch(e) { console.error('[TOTP] Init:', e.message); }
+})();
 
-    // Use tar to create the archive
-    const { execFile } = require('child_process');
-    execFile('tar', ['-czf', filepath, '-C', path.dirname(screenshotsDir), path.basename(screenshotsDir)], async (err) => {
-      if (err) {
-        console.error('[SS Backup] tar error:', err.message);
-        return res.status(500).json({ error: 'tar failed: ' + err.message });
-      }
-      await auditLog(req, 'Screenshots Backup Created', filename);
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.setHeader('Content-Type', 'application/gzip');
-      fs.createReadStream(filepath).pipe(res);
-    });
-  } catch(err) {
-    console.error('[SS Backup]', err.message);
-    res.status(500).json({ error: err.message });
+async function getTotpUser(session) {
+  if (!session.isUser) {
+    const r = await pool.query('SELECT totp_secret, totp_enabled FROM admins WHERE id=$1', [session.adminId]);
+    return r.rows[0];
+  } else {
+    const r = await pool.query('SELECT totp_secret, totp_enabled FROM dashboard_users WHERE id=$1', [session.adminId]);
+    return r.rows[0];
   }
+}
+
+// Get TOTP status
+app.get('/api/auth/totp/status', requireLogin, async (req, res) => {
+  try {
+    const u = await getTotpUser(req.session);
+    res.json({ totp_enabled: u?.totp_enabled === true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// Restore screenshots from tar.gz — streams NDJSON progress
-app.post('/api/admin/restore/screenshots', requireLogin, requireAdmin, multerSsRestore.single('screenshots'), async (req, res) => {
-  res.setHeader('Content-Type', 'application/x-ndjson');
-  res.setHeader('Transfer-Encoding', 'chunked');
-  res.setHeader('Cache-Control', 'no-cache');
-
-  const send = (msg, type, pct, label) => {
-    res.write(JSON.stringify({ msg, type: type||'info', pct: pct||0, label: label||'' }) + '\n');
-  };
-
-  if (!req.file) {
-    send('No file uploaded.', 'err'); res.end(); return;
-  }
-
-  const tmpFile = req.file.path;
+// Start TOTP setup — generate secret + QR
+app.post('/api/auth/totp/setup', requireLogin, async (req, res) => {
   try {
-    send('Archive received: ' + req.file.originalname, 'ok', 15, 'File received');
-
-    // Ensure screenshots dir exists
-    if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
-
-    send('Extracting screenshots…', 'info', 30, 'Extracting…');
-    const { execFile } = require('child_process');
-    // Extract with --strip-components=1 to avoid nested folder
-    execFile('tar', ['-xzf', tmpFile, '-C', screenshotsDir, '--strip-components=1'], async (err, stdout, stderr) => {
-      try { fs.unlinkSync(tmpFile); } catch(e) {}
-      if (err) {
-        send('✗ Extract error: ' + err.message, 'err', 0, 'Failed');
-        res.write(JSON.stringify({ error: err.message }) + '\n');
-        res.end(); return;
-      }
-      send('✓ Screenshots extracted successfully!', 'ok', 90, 'Almost done…');
-      await auditLog(req, 'Screenshots Restored', req.file.originalname);
-      send('✓ Audit log updated', 'dim', 98);
-      send('🎉 Screenshot restore complete!', 'ok', 100, 'Done!');
-      res.write(JSON.stringify({ done: true, pct: 100, label: 'Done!', msg: 'Restore complete.' }) + '\n');
-      res.end();
+    const secret = speakeasy.generateSecret({
+      length: 20,
+      name: encodeURIComponent('WorkPulse (' + req.session.adminName + ')'),
+      issuer: 'WorkPulse'
     });
-  } catch(err) {
-    try { fs.unlinkSync(tmpFile); } catch(e) {}
-    send('✗ Error: ' + err.message, 'err', 0, 'Failed');
-    res.write(JSON.stringify({ error: err.message }) + '\n');
-    res.end();
-  }
+    req.session.totpTempSecret = secret.base32;
+    const qr = await QRCode.toDataURL(secret.otpauth_url);
+    res.json({ success: true, secret: secret.base32, qr });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
-// ---- END SCREENSHOT BACKUP & RESTORE ----
+
+// Verify setup code and activate
+app.post('/api/auth/totp/activate', requireLogin, async (req, res) => {
+  const { token } = req.body;
+  const secret = req.session.totpTempSecret;
+  if (!secret) return res.status(400).json({ error: 'No setup in progress. Click Setup again.' });
+  const valid = speakeasy.totp.verify({ secret, encoding: 'base32', token: String(token), window: 2 });
+  if (!valid) return res.status(401).json({ error: 'Invalid code. Try again.' });
+  try {
+    if (!req.session.isUser) {
+      await pool.query('UPDATE admins SET totp_secret=$1, totp_enabled=true WHERE id=$2', [secret, req.session.adminId]);
+    } else {
+      await pool.query('UPDATE dashboard_users SET totp_secret=$1, totp_enabled=true WHERE id=$2', [secret, req.session.adminId]);
+    }
+    delete req.session.totpTempSecret;
+    await auditLog(req, 'TOTP Activated', req.session.adminName);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Disable TOTP
+app.post('/api/auth/totp/disable', requireLogin, async (req, res) => {
+  try {
+    if (!req.session.isUser) {
+      await pool.query('UPDATE admins SET totp_secret=NULL, totp_enabled=false WHERE id=$1', [req.session.adminId]);
+    } else {
+      await pool.query('UPDATE dashboard_users SET totp_secret=NULL, totp_enabled=false WHERE id=$1', [req.session.adminId]);
+    }
+    await auditLog(req, 'TOTP Disabled', req.session.adminName);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Verify TOTP during login
+app.post('/api/auth/totp/verify-login', async (req, res) => {
+  const { token } = req.body;
+  if (!req.session.pendingLogin) return res.status(401).json({ error: 'No pending login' });
+  const p = req.session.pendingLogin;
+  try {
+    let row;
+    if (!p.isUser) {
+      const r = await pool.query('SELECT totp_secret FROM admins WHERE id=$1', [p.adminId]);
+      row = r.rows[0];
+    } else {
+      const r = await pool.query('SELECT totp_secret FROM dashboard_users WHERE id=$1', [p.adminId]);
+      row = r.rows[0];
+    }
+    if (!row?.totp_secret) return res.status(400).json({ error: 'Authenticator not set up for this account' });
+    const valid = speakeasy.totp.verify({ secret: row.totp_secret, encoding: 'base32', token: String(token), window: 2 });
+    if (!valid) return res.status(401).json({ error: 'Invalid code. Check your authenticator app.' });
+    // Complete login
+    req.session.adminId   = p.adminId;
+    req.session.adminName = p.adminName;
+    req.session.adminRole = p.adminRole;
+    req.session.isUser    = p.isUser;
+    if (p.allowedEmployees) req.session.allowedEmployees = p.allowedEmployees;
+    delete req.session.pendingLogin;
+    res.json({ success: true, name: p.adminName, role: p.adminRole });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+// ---- END TOTP ----
+
+
+// System settings
+app.get('/api/admin/sys-settings', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const r = await pool.query("SELECT value FROM settings WHERE key='sys_settings' LIMIT 1");
+    if (r.rows.length) res.json(JSON.parse(r.rows[0].value));
+    else res.json({ timezone: 'Asia/Kolkata', company_name: 'WorkPulse', date_format: 'DD/MM/YYYY', default_theme: 'system' });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/admin/sys-settings', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    await pool.query("CREATE TABLE IF NOT EXISTS settings (key VARCHAR(100) PRIMARY KEY, value TEXT)");
+    const val = JSON.stringify(req.body);
+    await pool.query("INSERT INTO settings(key,value) VALUES('sys_settings',$1) ON CONFLICT(key) DO UPDATE SET value=$1", [val]);
+    await auditLog(req, 'System Settings Updated', '');
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+
+// ============================================================
+// ---- REPORT JOB QUEUE ----------------------------------
+// ============================================================
+
+// Create reports directory
+const reportsDir = path.join(__dirname, 'reports');
+if (!fs.existsSync(reportsDir)) fs.mkdirSync(reportsDir, { recursive: true });
+
+// Submit a report job
+app.post('/api/admin/report-job', requireLogin, requireAdmin, async (req, res) => {
+  const { employee_id, from, to } = req.body;
+  if (!from || !to) return res.status(400).json({ error: 'Date range required' });
+  try {
+    // Get employee name
+    let empName = 'All Employees';
+    if (employee_id) {
+      const er = await pool.query('SELECT name FROM employees WHERE id=$1', [employee_id]);
+      if (er.rows.length) empName = er.rows[0].name;
+    }
+    const job = await pool.query(
+      "INSERT INTO report_jobs (admin_id, admin_name, employee_id, employee_name, from_date, to_date, status, progress) VALUES ($1,$2,$3,$4,$5,$6,'queued',0) RETURNING id",
+      [req.session.adminId, req.session.adminName, employee_id||null, empName, from, to]
+    );
+    res.json({ success: true, job_id: job.rows[0].id });
+    // Trigger worker
+    processNextJob();
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Get all jobs for current admin
+app.get('/api/admin/report-jobs', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const jobs = await pool.query(
+      'SELECT id, admin_name, employee_name, from_date, to_date, status, progress, filename, error_msg, created_at, completed_at FROM report_jobs WHERE admin_id=$1 ORDER BY created_at DESC LIMIT 20',
+      [req.session.adminId]
+    );
+    res.json(jobs.rows);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Download a completed report
+app.get('/api/admin/report-download/:id', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const job = await pool.query('SELECT * FROM report_jobs WHERE id=$1 AND admin_id=$2', [req.params.id, req.session.adminId]);
+    if (!job.rows.length) return res.status(404).json({ error: 'Job not found' });
+    const j = job.rows[0];
+    if (j.status !== 'done') return res.status(400).json({ error: 'Report not ready' });
+    if (!fs.existsSync(j.file_path)) return res.status(404).json({ error: 'File not found' });
+    res.download(j.file_path, j.filename);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Delete a job
+app.delete('/api/admin/report-job/:id', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const job = await pool.query('SELECT * FROM report_jobs WHERE id=$1 AND admin_id=$2', [req.params.id, req.session.adminId]);
+    if (job.rows.length && job.rows[0].file_path && fs.existsSync(job.rows[0].file_path)) {
+      fs.unlinkSync(job.rows[0].file_path);
+    }
+    await pool.query('DELETE FROM report_jobs WHERE id=$1 AND admin_id=$2', [req.params.id, req.session.adminId]);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Background worker
+var jobWorkerRunning = false;
+async function processNextJob() {
+  if (jobWorkerRunning) return;
+  jobWorkerRunning = true;
+  try {
+    while (true) {
+      const next = await pool.query("SELECT * FROM report_jobs WHERE status='queued' ORDER BY created_at ASC LIMIT 1");
+      if (!next.rows.length) break;
+      const job = next.rows[0];
+      await pool.query("UPDATE report_jobs SET status='generating', progress=5 WHERE id=$1", [job.id]);
+      try {
+        await generateReportJob(job);
+      } catch(e) {
+        console.error('[Report Job] Error:', e.message);
+        await pool.query("UPDATE report_jobs SET status='failed', error_msg=$1 WHERE id=$2", [e.message, job.id]);
+      }
+    }
+  } finally {
+    jobWorkerRunning = false;
+  }
+}
+
+async function generateReportJob(job) {
+  const ExcelJS = require('exceljs');
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'WorkPulse';
+  wb.created = new Date();
+  const fromDate = job.from_date.toISOString().split('T')[0];
+  const toDate   = job.to_date.toISOString().split('T')[0];
+
+  const headerFill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FF0D1117' } };
+  const borderThin = { style:'thin', color:{ argb:'FF1E242E' } };
+  const allBorders = { top:borderThin, left:borderThin, bottom:borderThin, right:borderThin };
+  function styleHeader(row) {
+    row.eachCell(function(cell) {
+      cell.fill = headerFill;
+      cell.font = { bold:true, color:{ argb:'FFE2E8F0' }, size:10 };
+      cell.alignment = { vertical:'middle', horizontal:'center', wrapText:true };
+      cell.border = allBorders;
+    });
+    row.height = 22;
+  }
+  function styleData(row, even) {
+    row.eachCell(function(cell) {
+      cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb: even ? 'FF181C22' : 'FF111418' } };
+      cell.font = { color:{ argb:'FFE2E8F0' }, size:10 };
+      cell.alignment = { vertical:'middle' };
+      cell.border = allBorders;
+    });
+    row.height = 18;
+  }
+
+  // Employees
+  let empQuery = 'SELECT * FROM employees WHERE active=true';
+  const empParams = [];
+  if (job.employee_id) { empParams.push(job.employee_id); empQuery += ' AND id=$1'; }
+  const emps = await pool.query(empQuery, empParams);
+
+  await pool.query("UPDATE report_jobs SET progress=20 WHERE id=$1", [job.id]);
+
+  // Sheet 1: Summary
+  const ws1 = wb.addWorksheet('Summary');
+  ws1.columns = [
+    { header:'Employee', key:'name', width:22 },
+    { header:'Department', key:'dept', width:16 },
+    { header:'Screenshots', key:'ss', width:14 },
+    { header:'Web (min)', key:'web', width:14 },
+    { header:'Apps (min)', key:'apps', width:14 },
+    { header:'Top App', key:'topapp', width:20 },
+    { header:'Top Website', key:'topsite', width:24 },
+  ];
+  styleHeader(ws1.getRow(1));
+  for (const emp of emps.rows) {
+    const ss = await pool.query('SELECT COUNT(*) FROM screenshots WHERE employee_id=$1 AND recorded_at::date BETWEEN $2 AND $3', [emp.id, fromDate, toDate]);
+    const web = await pool.query(`SELECT COUNT(DISTINCT date_trunc('minute',recorded_at)) as mins, url FROM web_activity WHERE employee_id=$1 AND recorded_at::date BETWEEN $2 AND $3 GROUP BY url ORDER BY mins DESC LIMIT 1`, [emp.id, fromDate, toDate]);
+    const webTotal = await pool.query(`SELECT COUNT(DISTINCT date_trunc('minute',recorded_at)) as mins FROM web_activity WHERE employee_id=$1 AND recorded_at::date BETWEEN $2 AND $3`, [emp.id, fromDate, toDate]);
+    const apps = await pool.query(`SELECT app_name, COUNT(DISTINCT date_trunc('minute',recorded_at)) as mins FROM app_usage WHERE employee_id=$1 AND recorded_at::date BETWEEN $2 AND $3 GROUP BY app_name ORDER BY mins DESC LIMIT 1`, [emp.id, fromDate, toDate]);
+    const appsTotal = await pool.query(`SELECT COUNT(DISTINCT date_trunc('minute',recorded_at)) as mins FROM app_usage WHERE employee_id=$1 AND recorded_at::date BETWEEN $2 AND $3`, [emp.id, fromDate, toDate]);
+    const row = ws1.addRow({ name:emp.name, dept:emp.department||'—', ss:parseInt(ss.rows[0].count)||0, web:parseInt(webTotal.rows[0].mins)||0, apps:parseInt(appsTotal.rows[0].mins)||0, topapp:apps.rows[0]?.app_name||'—', topsite:web.rows[0]?.url||'—' });
+    styleData(row, ws1.rowCount%2===0);
+  }
+
+  await pool.query("UPDATE report_jobs SET progress=50 WHERE id=$1", [job.id]);
+
+  // Sheet 2: Web Activity
+  const ws2 = wb.addWorksheet('Web Activity');
+  ws2.columns = [{ header:'Employee', key:'name', width:20 },{ header:'Website', key:'url', width:30 },{ header:'Browser', key:'browser', width:14 },{ header:'Minutes', key:'mins', width:12 },{ header:'Date', key:'date', width:14 }];
+  styleHeader(ws2.getRow(1));
+  const empFilter2 = job.employee_id ? 'AND w.employee_id=$3' : '';
+  const params2 = [fromDate, toDate]; if (job.employee_id) params2.push(job.employee_id);
+  const webRows = await pool.query(`SELECT e.name as emp_name, w.url, w.browser, w.recorded_at::date as date, COUNT(DISTINCT date_trunc('minute',w.recorded_at)) as mins FROM web_activity w JOIN employees e ON w.employee_id=e.id WHERE w.recorded_at::date BETWEEN $1 AND $2 ${empFilter2} AND w.url NOT LIKE '[Incognito]%' AND w.url != 'Desktop' GROUP BY e.name, w.url, w.browser, w.recorded_at::date ORDER BY e.name, mins DESC`, params2);
+  webRows.rows.forEach(function(r,i){ const row=ws2.addRow({name:r.emp_name,url:r.url,browser:r.browser||'—',mins:parseInt(r.mins)||0,date:r.date}); styleData(row,i%2===0); });
+
+  await pool.query("UPDATE report_jobs SET progress=75 WHERE id=$1", [job.id]);
+
+  // Sheet 3: App Usage
+  const ws3 = wb.addWorksheet('App Usage');
+  ws3.columns = [{ header:'Employee', key:'name', width:20 },{ header:'App', key:'app', width:26 },{ header:'Minutes', key:'mins', width:12 },{ header:'Date', key:'date', width:14 }];
+  styleHeader(ws3.getRow(1));
+  const empFilter3 = job.employee_id ? 'AND a.employee_id=$3' : '';
+  const params3 = [fromDate, toDate]; if (job.employee_id) params3.push(job.employee_id);
+  const appRows = await pool.query(`SELECT e.name as emp_name, a.app_name, a.recorded_at::date as date, COUNT(DISTINCT date_trunc('minute',a.recorded_at)) as mins FROM app_usage a JOIN employees e ON a.employee_id=e.id WHERE a.recorded_at::date BETWEEN $1 AND $2 ${empFilter3} AND LOWER(a.app_name) NOT IN ('applicationframehost','desktop','unknown','','searchhost') GROUP BY e.name, a.app_name, a.recorded_at::date ORDER BY e.name, mins DESC`, params3);
+  appRows.rows.forEach(function(r,i){ const row=ws3.addRow({name:r.emp_name,app:r.app_name,mins:parseInt(r.mins)||0,date:r.date}); styleData(row,i%2===0); });
+
+  await pool.query("UPDATE report_jobs SET progress=90 WHERE id=$1", [job.id]);
+
+  // Save file
+  const filename = `workpulse-report-${fromDate}-to-${toDate}-${Date.now()}.xlsx`;
+  const filePath = path.join(reportsDir, filename);
+  await wb.xlsx.writeFile(filePath);
+  await pool.query("UPDATE report_jobs SET status='done', progress=100, filename=$1, file_path=$2, completed_at=NOW() WHERE id=$3", [filename, filePath, job.id]);
+  console.log('[Report Job] Done:', filename);
+
+  // Send email notification to admin
+  try {
+    const adminRow = await pool.query('SELECT email FROM admins WHERE id=$1', [job.admin_id]);
+    const adminEmail = adminRow.rows[0]?.email;
+    if (adminEmail) {
+      const mailer = await getMailer();
+      const fromDate2 = job.from_date.toISOString().split('T')[0];
+      const toDate2   = job.to_date.toISOString().split('T')[0];
+      await mailer.sendMail({
+        from: `"WorkPulse" <${(await pool.query('SELECT smtp_user FROM email_config LIMIT 1')).rows[0]?.smtp_user}>`,
+        to: adminEmail,
+        subject: `WorkPulse Report Ready — ${job.employee_name} (${fromDate2} to ${toDate2})`,
+        html: `<div style="font-family:sans-serif;padding:24px;max-width:500px">
+          <h2 style="color:#00e5ff;margin-bottom:8px">📊 Your Report is Ready</h2>
+          <p style="color:#555;margin-bottom:16px">Your WorkPulse report has been generated and is ready to download.</p>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
+            <tr><td style="padding:8px;color:#888;font-size:12px">Employee</td><td style="padding:8px;font-weight:600">${job.employee_name}</td></tr>
+            <tr style="background:#f9f9f9"><td style="padding:8px;color:#888;font-size:12px">Date Range</td><td style="padding:8px;font-weight:600">${fromDate2} → ${toDate2}</td></tr>
+            <tr><td style="padding:8px;color:#888;font-size:12px">File</td><td style="padding:8px;font-family:monospace;font-size:11px">${filename}</td></tr>
+          </table>
+          <p style="color:#888;font-size:12px">Log in to WorkPulse → Reports → Report Queue to download your file.</p>
+        </div>`
+      });
+      console.log('[Report Job] Email sent to:', adminEmail);
+    }
+  } catch(emailErr) {
+    console.error('[Report Job] Email notification failed:', emailErr.message);
+  }
+}
+
+// Start worker on boot for any queued jobs
+setTimeout(processNextJob, 5000);
+// ---- END REPORT JOB QUEUE ----
+
+
+// ============================================================
+// ---- REPORT JOB QUEUE ----------------------------------
+// ============================================================
+
+// Create reports directory
+
+// Submit a report job
+app.post('/api/admin/report-job', requireLogin, requireAdmin, async (req, res) => {
+  const { employee_id, from, to } = req.body;
+  if (!from || !to) return res.status(400).json({ error: 'Date range required' });
+  try {
+    // Get employee name
+    let empName = 'All Employees';
+    if (employee_id) {
+      const er = await pool.query('SELECT name FROM employees WHERE id=$1', [employee_id]);
+      if (er.rows.length) empName = er.rows[0].name;
+    }
+    const job = await pool.query(
+      "INSERT INTO report_jobs (admin_id, admin_name, employee_id, employee_name, from_date, to_date, status, progress) VALUES ($1,$2,$3,$4,$5,$6,'queued',0) RETURNING id",
+      [req.session.adminId, req.session.adminName, employee_id||null, empName, from, to]
+    );
+    res.json({ success: true, job_id: job.rows[0].id });
+    // Trigger worker
+    processNextJob();
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Get all jobs for current admin
+app.get('/api/admin/report-jobs', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const jobs = await pool.query(
+      'SELECT id, admin_name, employee_name, from_date, to_date, status, progress, filename, error_msg, created_at, completed_at FROM report_jobs WHERE admin_id=$1 ORDER BY created_at DESC LIMIT 20',
+      [req.session.adminId]
+    );
+    res.json(jobs.rows);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Download a completed report
+app.get('/api/admin/report-download/:id', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const job = await pool.query('SELECT * FROM report_jobs WHERE id=$1 AND admin_id=$2', [req.params.id, req.session.adminId]);
+    if (!job.rows.length) return res.status(404).json({ error: 'Job not found' });
+    const j = job.rows[0];
+    if (j.status !== 'done') return res.status(400).json({ error: 'Report not ready' });
+    if (!fs.existsSync(j.file_path)) return res.status(404).json({ error: 'File not found' });
+    res.download(j.file_path, j.filename);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Delete a job
+app.delete('/api/admin/report-job/:id', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const job = await pool.query('SELECT * FROM report_jobs WHERE id=$1 AND admin_id=$2', [req.params.id, req.session.adminId]);
+    if (job.rows.length && job.rows[0].file_path && fs.existsSync(job.rows[0].file_path)) {
+      fs.unlinkSync(job.rows[0].file_path);
+    }
+    await pool.query('DELETE FROM report_jobs WHERE id=$1 AND admin_id=$2', [req.params.id, req.session.adminId]);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Background worker
+var jobWorkerRunning = false;
+async function processNextJob() {
+  if (jobWorkerRunning) return;
+  jobWorkerRunning = true;
+  try {
+    while (true) {
+      const next = await pool.query("SELECT * FROM report_jobs WHERE status='queued' ORDER BY created_at ASC LIMIT 1");
+      if (!next.rows.length) break;
+      const job = next.rows[0];
+      await pool.query("UPDATE report_jobs SET status='generating', progress=5 WHERE id=$1", [job.id]);
+      try {
+        await generateReportJob(job);
+      } catch(e) {
+        console.error('[Report Job] Error:', e.message);
+        await pool.query("UPDATE report_jobs SET status='failed', error_msg=$1 WHERE id=$2", [e.message, job.id]);
+      }
+    }
+  } finally {
+    jobWorkerRunning = false;
+  }
+}
+
+
+// ---- END SCHEDULED REPORTS ----
+
+
+// ---- REPORT SCHEDULE ROUTES ----
+app.get('/api/admin/report-schedules', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const rows = await pool.query('SELECT * FROM report_schedules WHERE admin_id=$1 ORDER BY created_at DESC', [req.session.adminId]);
+    res.json(rows.rows);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/admin/report-schedules', requireLogin, requireAdmin, async (req, res) => {
+  const { employee_id, frequency, day_of_week, day_of_month, email, send_hour } = req.body;
+  try {
+    let empName = 'All Employees';
+    if (employee_id) {
+      const er = await pool.query('SELECT name FROM employees WHERE id=$1', [employee_id]);
+      if (er.rows.length) empName = er.rows[0].name;
+    }
+    const nextRun = calcNextRun(frequency, day_of_week, day_of_month, send_hour||8);
+    await pool.query(
+      'INSERT INTO report_schedules (admin_id, admin_name, employee_id, employee_name, frequency, day_of_week, day_of_month, email, next_run) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+      [req.session.adminId, req.session.adminName, employee_id||null, empName, frequency, day_of_week||null, day_of_month||null, email||null, nextRun]
+    );
+    await auditLog(req, 'Report Schedule Created', empName + ' - ' + frequency);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/admin/report-schedules/:id', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    await pool.query('UPDATE report_schedules SET active=$1 WHERE id=$2 AND admin_id=$3', [req.body.active, req.params.id, req.session.adminId]);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/admin/report-schedules/:id', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM report_schedules WHERE id=$1 AND admin_id=$2', [req.params.id, req.session.adminId]);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+// ---- END REPORT SCHEDULE ROUTES ----
+
+
+// System Activity Timeline
+app.get('/api/dashboard/system-timeline', requireLogin, async (req, res) => {
+  const { employee_id, date } = req.query;
+  const allowed = getAllowedEmployees(req);
+  try {
+    let empQ = `SELECT e.id, e.name, r.start_time as shift_start, r.end_time as shift_end, r.name as roster_name
+      FROM employees e LEFT JOIN duty_rosters r ON e.roster_id=r.id WHERE e.active=true`;
+    const empP = [];
+    if (employee_id) { empP.push(employee_id); empQ += ` AND e.id=$${empP.length}`; }
+    if (allowed) { empP.push(allowed); empQ += ` AND e.id=ANY($${empP.length}::int[])`; }
+    const emps = await pool.query(empQ, empP);
+
+    const results = [];
+    for (const emp of emps.rows) {
+      let evQ = `SELECT event_type, recorded_at FROM system_events WHERE employee_id=$1`;
+      const evP = [emp.id];
+      // Calculate window with 2hr grace period based on roster
+      if (date) {
+        const d = new Date(date);
+        let fromDt, toDt;
+        if (emp.shift_start && emp.shift_end) {
+          const [sh, sm] = emp.shift_start.split(':').map(Number);
+          const [eh, em] = emp.shift_end.split(':').map(Number);
+          const isOvernight = eh < sh || (eh === 0 && sh > 0);
+          // From: shift_start - 2hrs
+          fromDt = new Date(d);
+          fromDt.setHours(sh - 2, sm, 0, 0);
+          if (fromDt.getHours() < 0) { fromDt.setDate(fromDt.getDate()-1); fromDt.setHours(fromDt.getHours()+24); }
+          // To: shift_end + 2hrs (next day if overnight)
+          toDt = new Date(d);
+          if (isOvernight) toDt.setDate(toDt.getDate()+1);
+          toDt.setHours(eh + 2, em, 0, 0);
+        } else {
+          // No roster - full day
+          fromDt = new Date(d); fromDt.setHours(0,0,0,0);
+          toDt   = new Date(d); toDt.setHours(23,59,59,999);
+        }
+        evP.push(fromDt.toISOString()); evQ += ` AND recorded_at>=$${evP.length}`;
+        evP.push(toDt.toISOString());   evQ += ` AND recorded_at<=$${evP.length}`;
+      } else {
+        evQ += ` AND recorded_at::date=CURRENT_DATE`;
+      }
+      evQ += ' ORDER BY recorded_at ASC';
+      const evs = await pool.query(evQ, evP);
+      if (!evs.rows.length) continue;
+
+      const raw = evs.rows.map(r => ({ type: r.event_type, time: new Date(r.recorded_at) }));
+
+      // Step 1: Collapse rapid sleep/wakeup cycles (screen timeout) < 5 min into nothing
+      // Only keep sleep if it lasts more than 5 minutes before next wakeup
+      const filtered = [];
+      for (let i = 0; i < raw.length; i++) {
+        const ev = raw[i];
+        if (ev.type === 'sleep' || ev.type === 'idle_lock') {
+          // Find next wakeup/startup
+          let nextWake = null;
+          for (let j = i+1; j < raw.length; j++) {
+            if (raw[j].type === 'wakeup' || raw[j].type === 'startup') { nextWake = raw[j]; break; }
+            if (raw[j].type === 'shutdown') break;
+          }
+          // Only keep sleep if gap > 5 minutes
+          if (!nextWake || (nextWake.time - ev.time) > 5*60*1000) {
+            filtered.push(ev);
+          }
+          // else skip this sleep (screen timeout)
+        } else {
+          filtered.push(ev);
+        }
+      }
+
+      // Step 2: Deduplicate consecutive same-type within 2 min
+      const deduped = [];
+      for (const ev of filtered) {
+        const last = deduped[deduped.length-1];
+        if (last && last.type === ev.type && (ev.time - last.time) < 120000) continue;
+        deduped.push(ev);
+      }
+
+      // Step 3: Merge consecutive wakeups/sleeps + remove wakeup immediately after startup
+      const clean = [];
+      for (const ev of deduped) {
+        const last = clean[clean.length-1];
+        // Skip duplicate same type
+        if (last && last.type === ev.type && (ev.type === 'wakeup' || ev.type === 'sleep' || ev.type === 'idle_lock' || ev.type === 'startup')) continue;
+        // Skip wakeup within 60s of startup
+        if (ev.type === 'wakeup' && last && last.type === 'startup' && (ev.time - last.time) < 60000) continue;
+        // Skip startup within 60s of another startup
+        if (ev.type === 'startup' && last && last.type === 'startup' && (ev.time - last.time) < 60000) continue;
+        clean.push(ev);
+      }
+
+      // Step 4: Calculate active time — only wakeup/startup to sleep/shutdown gaps > 5min
+      let totalActiveMs = 0;
+      let activeStart = null;
+      for (const ev of clean) {
+        if (ev.type === 'startup' || ev.type === 'wakeup') {
+          activeStart = ev.time;
+        } else if ((ev.type === 'sleep' || ev.type === 'idle_lock' || ev.type === 'shutdown') && activeStart) {
+          const gap = ev.time - activeStart;
+          if (gap > 60000) totalActiveMs += gap; // only count gaps > 1 min
+          activeStart = null;
+        }
+      }
+      if (activeStart) totalActiveMs += new Date() - activeStart;
+
+      // Calculate productive time within roster hours only
+      let productiveMs = 0;
+      if (emp.shift_start && emp.shift_end && date) {
+        const [sh, sm] = emp.shift_start.split(':').map(Number);
+        const [eh, em] = emp.shift_end.split(':').map(Number);
+        const baseDate = new Date(date);
+        let shiftFrom = new Date(baseDate); shiftFrom.setHours(sh, sm, 0, 0);
+        let shiftTo   = new Date(baseDate);
+        const isOvernight = eh < sh;
+        if (isOvernight) shiftTo.setDate(shiftTo.getDate()+1);
+        shiftTo.setHours(eh, em, 0, 0);
+
+        let pStart = null;
+        for (const ev of clean) {
+          if (ev.type === 'startup' || ev.type === 'wakeup') {
+            pStart = ev.time < shiftFrom ? shiftFrom : ev.time;
+          } else if ((ev.type === 'sleep' || ev.type === 'idle_lock' || ev.type === 'shutdown') && pStart) {
+            const pEnd = ev.time > shiftTo ? shiftTo : ev.time;
+            if (pEnd > pStart) productiveMs += pEnd - pStart;
+            pStart = null;
+          }
+        }
+        if (pStart) {
+          const pEnd = new Date() > shiftTo ? shiftTo : new Date();
+          if (pEnd > pStart) productiveMs += pEnd - pStart;
+        }
+      } else {
+        productiveMs = totalActiveMs;
+      }
+
+      results.push({
+        employee_id: emp.id,
+        employee_name: emp.name,
+        roster_name: emp.roster_name,
+        shift_start: emp.shift_start,
+        shift_end: emp.shift_end,
+        events: clean.map(e => ({ type: e.type, time: e.time.toISOString() })),
+        total_active_ms: totalActiveMs,
+        productive_ms: productiveMs
+      });
+    }
+    res.json(results);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
 
 app.listen(PORT, () => {
   console.log(`WorkPulse server running on port ${PORT}`);

@@ -150,6 +150,27 @@ input.error{border-color:var(--red);}
       </div>
     </div>
 
+    <!-- ═══ SCREEN 2b: TOTP AUTHENTICATOR ═══ -->
+    <div class="screen" id="screen-totp">
+      <div class="card-header">
+        <div class="hicon amber">📱</div>
+        <div><div class="card-title">Authenticator Code</div><div class="card-sub">Open your authenticator app</div></div>
+      </div>
+      <div class="card-body">
+        <div class="otp-hint">Enter the 6-digit code from your<br><strong>Authenticator App</strong></div>
+        <div class="field">
+          <label>6-Digit Code</label>
+          <input type="text" id="totp-code" class="mono" placeholder="000000" maxlength="6" autocomplete="one-time-code" oninput="this.value=this.value.replace(/\D/g,'')">
+        </div>
+        <div class="alert" id="totp-alert"></div>
+        <button class="btn btn-accent" id="totpLoginBtn" onclick="verifyTOTPLogin()">
+          <div class="spinner" id="totpLoginSpin"></div>
+          <span id="totpLoginBtnText">Verify & Sign In →</span>
+        </button>
+        <button class="btn btn-ghost" onclick="goScreen('screen-login')" style="margin-top:10px">← Back to login</button>
+      </div>
+    </div>
+
     <!-- ═══ SCREEN 3: FORGOT PASSWORD ═══ -->
     <div class="screen" id="screen-forgot">
       <div class="card-header">
@@ -277,7 +298,10 @@ async function doLogin() {
   try {
     var res  = await fetch('/api/user-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password:pass})});
     var data = await res.json();
-    if (data.mfa_required) {
+    if (data.totp_required) {
+      document.getElementById('totp-code').value = '';
+      goScreen('screen-totp');
+    } else if (data.mfa_required) {
       currentEmail = data.email;
       document.getElementById('mfa-email-display').textContent = data.email;
       startResendTimer('mfaTimer','resendMfaLink');
@@ -307,6 +331,24 @@ async function verifyMFA() {
     }
   } catch(e) { setAlert('mfa-alert','error','Network error.'); }
   setBusy('mfaBtn','mfaSpin','mfaBtnText', false, 'Verify & Sign In →');
+}
+
+// ── TOTP LOGIN VERIFY ────────────────────────────────────────────────────────
+async function verifyTOTPLogin() {
+  var code = document.getElementById('totp-code').value.trim();
+  clearAlert('totp-alert');
+  if (code.length !== 6) { setAlert('totp-alert','error','Enter the 6-digit code from your authenticator app.'); return; }
+  setBusy('totpLoginBtn','totpLoginSpin','totpLoginBtnText', true, 'Verifying…');
+  try {
+    var res  = await fetch('/api/auth/totp/verify-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:code})});
+    var data = await res.json();
+    if (data.success) {
+      window.location.href = '/dashboard.html';
+    } else {
+      setAlert('totp-alert','error', data.error || 'Invalid code. Try again.');
+    }
+  } catch(e) { setAlert('totp-alert','error','Network error.'); }
+  setBusy('totpLoginBtn','totpLoginSpin','totpLoginBtnText', false, 'Verify & Sign In →');
 }
 
 // ── FORGOT PASSWORD ───────────────────────────────────────────────────────────
@@ -395,6 +437,7 @@ document.addEventListener('keydown', function(e) {
   if (!active) return;
   var id = active.id;
   if (id === 'screen-login')     doLogin();
+  if (id === 'screen-totp')      verifyTOTPLogin();
   if (id === 'screen-mfa')       verifyMFA();
   if (id === 'screen-forgot')    sendForgotOTP();
   if (id === 'screen-reset-otp') verifyResetOTP();

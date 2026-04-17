@@ -526,6 +526,10 @@ tr.emp-row:hover{background:var(--card-hover)}
     <div class="panel-header">
       <div class="panel-title">⚡ System Activity Log</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <div style="display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <button id="sysLogViewBtn" onclick="setSysView('log')" style="padding:6px 14px;font-size:11px;font-weight:700;background:var(--accent);color:#0a0c10;border:none;cursor:pointer">📋 Log</button>
+          <button id="sysTimelineViewBtn" onclick="setSysView('timeline')" style="padding:6px 14px;font-size:11px;font-weight:700;background:transparent;color:var(--text3);border:none;cursor:pointer">⏱ Timeline</button>
+        </div>
         <select id="sys-emp" class="filter-select" onchange="onSysEmpChange()">
           <option value="">All Employees</option>
         </select>
@@ -550,6 +554,7 @@ tr.emp-row:hover{background:var(--card-hover)}
       </div>
     </div>
     <div id="sysActivityList"></div>
+    <div id="sysTimelineList" style="display:none;padding:16px 22px"></div>
     <div id="sysPaginationWrap"></div>
   </div>
 </div>
@@ -635,44 +640,65 @@ tr.emp-row:hover{background:var(--card-hover)}
   <!-- SCREENSHOT BACKUP & RESTORE -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
     <div class="panel">
-      <div class="panel-header"><div class="panel-title">📷 Backup Screenshots</div></div>
+      <div class="panel-header"><div class="panel-title">📷 Screenshot Backup</div></div>
       <div style="padding:20px 22px">
-        <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:16px">
-          Downloads all screenshot image files as a <code style="color:var(--accent)">.tar.gz</code> archive. Use together with the DB backup for a complete system backup.
+        <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:14px">
+          <strong style="color:var(--text)">Step 1 — Download</strong> a backup of all screenshots to your PC.
         </div>
-        <button class="btn btn-accent" id="ssBackupBtn" onclick="doScreenshotBackup()" style="width:100%">
-          <span id="ssBackupBtnText">📷 Download Screenshots Backup</span>
+        <button class="btn btn-accent" id="ssBackupBtn" onclick="doScreenshotBackup()" style="width:100%;margin-bottom:18px">
+          <span id="ssBackupBtnText">⤓ Download Screenshots Backup</span>
         </button>
-        <div id="ssBackupStatus" style="display:none;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:12px;align-items:center;gap:8px"></div>
+        <div style="height:1px;background:var(--border);margin-bottom:18px"></div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:14px">
+          <strong style="color:var(--text)">Step 2 — Upload</strong> a backup file to the server backups folder. Then restore from the right panel.
+        </div>
+        <div id="ssUploadDropZone" onclick="document.getElementById('ssUploadInput').click()"
+             ondragover="ssUpDragOver(event)" ondragleave="ssUpDragLeave(event)" ondrop="ssUpDrop(event)"
+             style="border:2px dashed var(--border2);border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:10px">
+          <div style="font-size:20px;margin-bottom:4px">📤</div>
+          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:2px">Click or drag to upload to server</div>
+          <div style="font-size:10px;color:var(--text3)">.tar.gz file → saved to backups folder</div>
+        </div>
+        <input type="file" id="ssUploadInput" accept=".gz,.tar.gz" style="display:none" onchange="ssUpFileChosen(this)">
+        <div id="ssUploadFileInfo" style="display:none;padding:7px 11px;background:rgba(0,229,255,0.06);border:1px solid rgba(0,229,255,0.2);border-radius:6px;font-size:11px;color:var(--accent);font-family:monospace;margin-bottom:10px"></div>
+        <button class="btn" id="ssUploadBtn" onclick="doUploadToServer()" disabled
+                style="width:100%;border-color:rgba(0,229,255,0.4);color:var(--accent);background:rgba(0,229,255,0.05)">
+          <span id="ssUploadBtnText">⬆ Upload to Server</span>
+        </button>
+        <div id="ssUploadStatus" style="display:none;margin-top:10px;padding:9px 13px;border-radius:8px;font-size:12px"></div>
+        <div id="ssBackupStatus" style="display:none;margin-top:10px;padding:9px 13px;border-radius:8px;font-size:12px;align-items:center;gap:8px"></div>
       </div>
     </div>
     <div class="panel">
-      <div class="panel-header"><div class="panel-title">📷 Restore Screenshots</div></div>
-      <div style="padding:20px 22px">
-        <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:16px">
-          Upload a <code style="color:var(--accent)">.tar.gz</code> screenshots archive to restore all image files.
+      <div class="panel-header">
+        <div class="panel-title">📷 Restore Screenshots</div>
+        <button class="btn" onclick="loadSsServerFiles()" style="font-size:10px">↻ Refresh</button>
+      </div>
+      <div style="padding:16px 22px">
+        <div style="font-size:12px;color:var(--text2);margin-bottom:14px">
+          Select a backup from the server backups folder and restore it.
+          <span style="color:var(--text3);font-size:10px;display:block;margin-top:4px">Upload a file first using Step 2 on the left if it's not listed.</span>
         </div>
-        <div id="ssRestoreDropZone" onclick="document.getElementById('ssRestoreInput').click()"
-             ondragover="ssDragOver(event)" ondragleave="ssDragLeave(event)" ondrop="ssDrop(event)"
-             style="border:2px dashed var(--border2);border-radius:10px;padding:20px 16px;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:12px">
-          <div style="font-size:22px;margin-bottom:6px">📂</div>
-          <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:3px">Click or drag & drop</div>
-          <div style="font-size:11px;color:var(--text3)">.tar.gz screenshots archive</div>
+        <div id="ssServerFileList" style="max-height:280px;overflow-y:auto;margin-bottom:14px">
+          <div style="color:var(--text3);font-size:12px">Loading...</div>
         </div>
-        <input type="file" id="ssRestoreInput" accept=".gz,.tar.gz" style="display:none" onchange="ssFileChosen(this)">
-        <div id="ssRestoreFileInfo" style="display:none;padding:7px 11px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);border-radius:6px;font-size:11px;color:#10b981;font-family:monospace;margin-bottom:12px"></div>
-        <button class="btn" id="ssRestoreBtn" onclick="doScreenshotRestore()" disabled
+        <button class="btn" id="ssServerRestoreBtn" onclick="doScreenshotRestoreFromServer()" disabled
                 style="width:100%;border-color:rgba(16,185,129,0.4);color:#10b981;background:rgba(16,185,129,0.05)">
-          <span id="ssRestoreBtnText">📷 Restore Screenshots</span>
+          <span id="ssServerRestoreBtnText">📷 Restore Selected</span>
         </button>
+        <div id="ssServerRestoreStatus" style="display:none;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:12px"></div>
       </div>
     </div>
   </div>
 
-  <!-- SCREENSHOT RESTORE LOG -->
+
+  <!-- SCREENSHOT RESTORE LOG - minimisable -->
   <div class="panel" id="ssRestoreLogPanel" style="display:none;margin-bottom:18px">
-    <div class="panel-header"><div class="panel-title">📷 Screenshot Restore Progress</div></div>
-    <div style="padding:16px 22px">
+    <div class="panel-header" style="cursor:pointer" onclick="toggleSsLog()">
+      <div class="panel-title">📷 Screenshot Restore Progress</div>
+      <button class="btn" id="ssLogToggleBtn" style="font-size:10px;padding:3px 10px">— Minimise</button>
+    </div>
+    <div id="ssRestoreLogBody" style="padding:16px 22px">
       <div style="display:flex;justify-content:space-between;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">
         <span id="ssRestoreLabel">Starting…</span><span id="ssRestorePct">0%</span>
       </div>
@@ -695,12 +721,14 @@ tr.emp-row:hover{background:var(--card-hover)}
 
 <!-- REPORTS PAGE -->
 <div class="page" id="page-reports">
+
+  <!-- UNIFIED REPORT PANEL -->
   <div class="panel" style="margin-bottom:18px">
-    <div class="panel-header">
-      <div class="panel-title">📊 Export Report</div>
-    </div>
+    <div class="panel-header"><div class="panel-title">📊 Create Report</div></div>
     <div style="padding:20px 24px">
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:flex-end">
+
+      <!-- Row 1: Employee + Date Range + Buttons -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto auto;gap:12px;align-items:flex-end;margin-bottom:16px">
         <div>
           <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Employee</label>
           <select id="report-emp" class="filter-select" style="width:100%;padding:9px 12px">
@@ -709,20 +737,109 @@ tr.emp-row:hover{background:var(--card-hover)}
         </div>
         <div>
           <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Date From</label>
-          <input type="date" id="report-from" class="filter-select" style="width:100%;padding:9px 12px">
+          <div style="position:relative">
+            <button class="btn filter-select" id="rptFromBtn" onclick="toggleRptCal('from',event)" style="width:100%;padding:9px 12px;text-align:left;justify-content:flex-start">
+              📅 <span id="rptFromLabel">Select date</span>
+            </button>
+            <div id="rptFromDropdown" style="display:none;position:fixed;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px;z-index:300;width:280px;box-shadow:0 8px 32px rgba(0,0,0,0.7)">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                <button class="btn" style="padding:4px 12px" onclick="changeRptMonth('from',-1);event.stopPropagation()">‹</button>
+                <span id="rptFromMonthLabel" style="font-size:13px;color:#fff;font-weight:700"></span>
+                <button class="btn" style="padding:4px 12px" onclick="changeRptMonth('from',1);event.stopPropagation()">›</button>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;margin-bottom:4px">
+                <div style="font-size:9px;color:#64748b">Su</div><div style="font-size:9px;color:#64748b">Mo</div><div style="font-size:9px;color:#64748b">Tu</div><div style="font-size:9px;color:#64748b">We</div><div style="font-size:9px;color:#64748b">Th</div><div style="font-size:9px;color:#64748b">Fr</div><div style="font-size:9px;color:#64748b">Sa</div>
+              </div>
+              <div id="rptFromGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px"></div>
+            </div>
+          </div>
+          <input type="hidden" id="report-from">
         </div>
         <div>
           <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Date To</label>
-          <input type="date" id="report-to" class="filter-select" style="width:100%;padding:9px 12px">
+          <div style="position:relative">
+            <button class="btn filter-select" id="rptToBtn" onclick="toggleRptCal('to',event)" style="width:100%;padding:9px 12px;text-align:left;justify-content:flex-start">
+              📅 <span id="rptToLabel">Select date</span>
+            </button>
+            <div id="rptToDropdown" style="display:none;position:fixed;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px;z-index:300;width:280px;box-shadow:0 8px 32px rgba(0,0,0,0.7)">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                <button class="btn" style="padding:4px 12px" onclick="changeRptMonth('to',-1);event.stopPropagation()">‹</button>
+                <span id="rptToMonthLabel" style="font-size:13px;color:#fff;font-weight:700"></span>
+                <button class="btn" style="padding:4px 12px" onclick="changeRptMonth('to',1);event.stopPropagation()">›</button>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;margin-bottom:4px">
+                <div style="font-size:9px;color:#64748b">Su</div><div style="font-size:9px;color:#64748b">Mo</div><div style="font-size:9px;color:#64748b">Tu</div><div style="font-size:9px;color:#64748b">We</div><div style="font-size:9px;color:#64748b">Th</div><div style="font-size:9px;color:#64748b">Fr</div><div style="font-size:9px;color:#64748b">Sa</div>
+              </div>
+              <div id="rptToGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px"></div>
+            </div>
+          </div>
+          <input type="hidden" id="report-to">
         </div>
-        <button class="btn btn-accent" onclick="exportReport()" id="exportReportBtn" style="padding:9px 20px;margin-top:0;white-space:nowrap">
-          <span id="exportReportText">⤓ Export Excel</span>
+        <button class="btn btn-accent" id="exportReportBtn" onclick="queueReport()" style="padding:9px 18px;white-space:nowrap">
+          <span id="exportReportText">⤓ Queue Report</span>
         </button>
+        <button class="btn" onclick="showScheduleForm()" style="padding:9px 14px;white-space:nowrap">🗓 Schedule</button>
       </div>
-      <div id="reportStatus" style="display:none;margin-top:14px;padding:10px 14px;border-radius:8px;font-size:12px"></div>
+
+      <!-- Quick Range Presets -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <span style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);padding-top:6px">Quick:</span>
+        <button class="btn" onclick="setRptRange(1)" style="font-size:11px;padding:4px 12px">Yesterday</button>
+        <button class="btn" onclick="setRptRange(7)" style="font-size:11px;padding:4px 12px">Last 7 Days</button>
+        <button class="btn" onclick="setRptRange(30)" style="font-size:11px;padding:4px 12px">Last 30 Days</button>
+        <button class="btn" onclick="setRptRange(90)" style="font-size:11px;padding:4px 12px">Last 3 Months</button>
+        <button class="btn" onclick="setRptRange(180)" style="font-size:11px;padding:4px 12px">Last 6 Months</button>
+      </div>
+
+      <div id="reportStatus" style="display:none;margin-top:8px;padding:10px 14px;border-radius:8px;font-size:12px"></div>
+
+      <!-- Schedule Form (hidden by default) -->
+      <div id="scheduleForm" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin-top:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:14px">🗓 Schedule Automatic Report</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:10px;align-items:flex-end">
+          <div>
+            <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Employee</label>
+            <select id="sched-emp" class="filter-select" style="width:100%;padding:9px 12px">
+              <option value="">All Employees</option>
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Frequency</label>
+            <select id="sched-freq" class="filter-select" style="width:100%;padding:9px 12px" onchange="onSchedFreqChange()">
+              <option value="daily">Daily (8 AM)</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+          <div id="sched-dow-wrap" style="display:none">
+            <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Day</label>
+            <select id="sched-dow" class="filter-select" style="width:100%;padding:9px 12px">
+              <option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option>
+            </select>
+          </div>
+          <div id="sched-dom-wrap" style="display:none">
+            <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Day of Month</label>
+            <select id="sched-dom" class="filter-select" style="width:100%;padding:9px 12px">
+              <option value="1">1st</option><option value="2">2nd</option><option value="3">3rd</option><option value="4">4th</option><option value="5">5th</option><option value="7">7th</option><option value="10">10th</option><option value="15">15th</option><option value="20">20th</option><option value="25">25th</option><option value="28">28th</option>
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Send Time</label>
+            <select id="sched-hour" class="filter-select" style="width:100%;padding:9px 12px">
+              <option value="6">6:00 AM</option><option value="7">7:00 AM</option><option value="8" selected>8:00 AM</option><option value="9">9:00 AM</option><option value="10">10:00 AM</option><option value="12">12:00 PM</option><option value="18">6:00 PM</option><option value="20">8:00 PM</option>
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Email (optional)</label>
+            <input type="email" id="sched-email" class="filter-select" placeholder="Override email" style="width:100%;padding:9px 12px">
+          </div>
+          <button class="btn btn-accent" onclick="createSchedule()" style="padding:9px 16px;white-space:nowrap">+ Add</button>
+        </div>
+      </div>
     </div>
   </div>
 
+  <!-- WHAT'S IN THE REPORT -->
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px">
     <div class="stat-card c1"><div class="stat-label">Sheets Included</div><div class="stat-val" style="font-size:28px">4</div><div class="stat-sub">per export</div></div>
     <div class="stat-card c3"><div class="stat-label">Web Activity</div><div class="stat-val" style="font-size:28px">✓</div><div class="stat-sub">URL + browser + time</div></div>
@@ -730,30 +847,30 @@ tr.emp-row:hover{background:var(--card-hover)}
     <div class="stat-card c4"><div class="stat-label">System Events</div><div class="stat-val" style="font-size:28px">✓</div><div class="stat-sub">login/logout/lock</div></div>
   </div>
 
-  <div class="panel">
-    <div class="panel-header"><div class="panel-title">What's in the Report?</div></div>
-    <div style="padding:18px 24px;display:grid;grid-template-columns:1fr 1fr;gap:18px">
-      <div>
-        <div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px">📋 Sheet 1 — Summary</div>
-        <div style="font-size:12px;color:var(--text2);line-height:1.8">Employee name, email, department, roster assignment, total screenshots, web records, app records, system events</div>
+  <!-- REPORT QUEUE + SCHEDULES side by side -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">📋 Report Queue</div>
+        <button class="btn" onclick="loadReportJobs()" style="font-size:10px">↻ Refresh</button>
       </div>
-      <div>
-        <div style="font-size:12px;font-weight:700;color:#10b981;margin-bottom:8px">🌐 Sheet 2 — Web Activity</div>
-        <div style="font-size:12px;color:var(--text2);line-height:1.8">Every URL visited with browser, duration in seconds, and timestamp (up to 10,000 rows)</div>
+      <div id="reportJobList" style="padding:16px 22px;max-height:400px;overflow-y:auto">
+        <div style="color:var(--text3);font-size:12px">No reports queued yet.</div>
       </div>
-      <div>
-        <div style="font-size:12px;font-weight:700;color:#7c3aed;margin-bottom:8px">💻 Sheet 3 — App Usage</div>
-        <div style="font-size:12px;color:var(--text2);line-height:1.8">App name, total time in HH:MM, number of sessions, first and last seen timestamps</div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">🗓 Scheduled Reports</div>
+        <button class="btn" onclick="loadReportSchedules()" style="font-size:10px">↻ Refresh</button>
       </div>
-      <div>
-        <div style="font-size:12px;font-weight:700;color:#f59e0b;margin-bottom:8px">⚡ Sheet 4 — System Events</div>
-        <div style="font-size:12px;color:var(--text2);line-height:1.8">Startup, shutdown, lock, unlock, sleep, wakeup events with full timestamps and day of week</div>
+      <div id="scheduleList" style="padding:16px 22px;max-height:400px;overflow-y:auto">
+        <div style="color:var(--text3);font-size:12px">No schedules yet.</div>
       </div>
     </div>
   </div>
+
 </div>
 
-<!-- EMAIL CONFIG PAGE -->
 <div class="page" id="page-emailconfig">
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
     <div class="panel">
@@ -770,7 +887,7 @@ tr.emp-row:hover{background:var(--card-hover)}
           </div>
           <div style="display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:2px">
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2)">
-              <input type="checkbox" id="smtp-secure" style="width:auto;accent-color:var(--accent)"> Use SSL/TLS (port 465)
+              <input type="checkbox" id="smtp-tls" style="width:auto;accent-color:var(--accent)"> Use SSL/TLS (port 465)
             </label>
           </div>
         </div>
@@ -784,16 +901,16 @@ tr.emp-row:hover{background:var(--card-hover)}
         </div>
         <div style="margin-bottom:14px">
           <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">From Address</label>
-          <input type="text" id="smtp-from" placeholder="WorkPulse &lt;noreply@company.com&gt;" class="filter-select" style="width:100%;padding:9px 12px">
+          <input type="text" id="smtp-from-name" placeholder="WorkPulse &lt;noreply@company.com&gt;" class="filter-select" style="width:100%;padding:9px 12px">
         </div>
         <div style="margin-bottom:18px;display:flex;align-items:center;gap:10px">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2)">
-            <input type="checkbox" id="smtp-enabled" style="width:auto;accent-color:var(--accent)"> Enable email sending
+            <input type="checkbox" id="smtp-enable" style="width:auto;accent-color:var(--accent)"> Enable email sending
           </label>
         </div>
         <div style="display:flex;gap:10px">
           <button class="btn btn-accent" onclick="saveEmailConfig()" style="flex:1">Save Config</button>
-          <button class="btn" onclick="testEmail()" style="flex:1">Send Test Email</button>
+          <button class="btn" onclick="testEmailConfig()" id="testEmailBtn" style="flex:1">Send Test Email</button>
         </div>
         <div id="emailConfigStatus" style="display:none;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:12px"></div>
       </div>
@@ -929,6 +1046,80 @@ tr.emp-row:hover{background:var(--card-hover)}
           </select>
         </div>
         <button class="btn btn-accent" onclick="saveSysSettings()" style="width:100%">💾 Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- UNIFIED MFA SECTION -->
+  <div class="panel admin-only" style="margin-bottom:18px">
+    <div class="panel-header"><div class="panel-title">🔐 Multi-Factor Authentication (MFA)</div></div>
+    <div style="padding:20px 24px">
+      <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:18px">
+        Control all login verification methods. These settings apply to all admins globally.
+      </div>
+      <label style="display:flex;align-items:center;gap:12px;cursor:pointer;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:10px">
+        <input type="checkbox" id="mfa-enabled" style="width:18px;height:18px;accent-color:var(--accent)">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600;color:var(--text)">📧 Email OTP</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Send a 6-digit code to user's email on every login</div>
+        </div>
+      </label>
+      <label style="display:flex;align-items:center;gap:12px;cursor:pointer;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:14px">
+        <input type="checkbox" id="totp-global-enabled" style="width:18px;height:18px;accent-color:var(--accent)">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600;color:var(--text)">📱 Authenticator App (TOTP)</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Require Google/Microsoft Authenticator or any TOTP app on login</div>
+        </div>
+      </label>
+      <div style="font-size:11px;color:#f59e0b;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:10px 12px;margin-bottom:16px">
+        ⚠️ Test email (Email Config page) before enabling Email OTP. For TOTP, each user sets up their own app below. Disabling TOTP globally removes all users' authenticator setup.
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-accent" onclick="saveAllMfaSettings()" style="width:200px">💾 Save MFA Settings</button>
+        <div id="mfaSettingsStatus" style="display:none;padding:9px 13px;border-radius:8px;font-size:12px;flex:1"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOTP PERSONAL SETUP -->
+  <div class="panel" style="margin-bottom:18px">
+    <div class="panel-header"><div class="panel-title">📱 Your Authenticator App</div></div>
+    <div style="padding:20px 24px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+        <div>
+          <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:14px">
+            Set up a personal authenticator app for your own login. Works with <strong style="color:var(--text)">Google Authenticator</strong>, <strong style="color:var(--text)">Microsoft Authenticator</strong>, <strong style="color:var(--text)">Authy</strong> and any TOTP app.
+          </div>
+          <div id="totpStatus" style="padding:10px 14px;border-radius:8px;font-size:12px;margin-bottom:14px;background:var(--bg3);border:1px solid var(--border);color:var(--text2)">Checking status...</div>
+          <div id="totpSetupArea" style="display:none">
+            <div style="font-size:11px;color:var(--text2);margin-bottom:10px">1. Scan this QR code with your authenticator app</div>
+            <div style="text-align:center;margin-bottom:12px"><img id="totpQR" style="width:180px;height:180px;border-radius:8px;border:1px solid var(--border)"></div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Or enter this key manually:</div>
+            <div id="totpSecret" style="font-family:monospace;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px 12px;letter-spacing:2px;margin-bottom:14px;word-break:break-all;color:var(--accent)"></div>
+            <div style="font-size:11px;color:var(--text2);margin-bottom:8px">2. Enter the 6-digit code from your app to verify:</div>
+            <input type="text" id="totpVerifyCode" placeholder="000000" maxlength="6" oninput="this.value=this.value.replace(/\D/g,'')"
+              style="width:100%;padding:10px 12px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-size:16px;font-family:monospace;letter-spacing:4px;text-align:center;margin-bottom:10px">
+            <button class="btn btn-accent" onclick="activateTOTP()" style="width:100%">✓ Verify & Activate</button>
+            <button class="btn" onclick="cancelTOTPSetup()" style="width:100%;margin-top:8px">Cancel</button>
+          </div>
+          <div id="totpActions" style="display:none">
+            <button class="btn btn-accent" onclick="setupTOTP()" style="width:100%">📱 Setup Authenticator</button>
+          </div>
+          <div id="totpDisableArea" style="display:none">
+            <div style="font-size:11px;color:#f59e0b;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:10px 12px;margin-bottom:10px">✓ Authenticator app is active for your account.</div>
+            <button class="btn" onclick="disableTOTP()" style="width:100%;border-color:rgba(239,68,68,0.4);color:#ef4444;background:rgba(239,68,68,0.05)">🗑 Remove Authenticator</button>
+          </div>
+          <div id="totpStatusMsg" style="display:none;margin-top:10px;padding:9px 13px;border-radius:8px;font-size:12px"></div>
+        </div>
+        <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:16px 18px">
+          <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:10px">How it works</div>
+          <div style="font-size:11px;color:var(--text2);line-height:1.8">
+            <div style="margin-bottom:8px">🔐 After your password, you'll enter a 6-digit code from your app.</div>
+            <div style="margin-bottom:8px">⏱ Codes refresh every 30 seconds — no email or internet needed.</div>
+            <div style="margin-bottom:8px">📱 Works with any TOTP app:</div>
+            <div style="padding-left:12px;color:var(--text3)">• Google Authenticator<br>• Microsoft Authenticator<br>• Authy<br>• 1Password, Bitwarden, etc.</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -1168,10 +1359,10 @@ function showPage(name,el){
   if(name==='roster'){loadRosters();loadRosterAssign();}
   if(name==='sysactivity'){populateDropdown('sys-emp');initSysCalendar();loadSysActivity();}
   if(name==='auditlog'){loadAuditLog();}
-  if(name==='syssettings'){loadSysSettings();}
+  if(name==='syssettings'){loadSysSettings();loadAllMfaSettings();loadSsServerFiles();}
   if(name==='departments'){loadDepartments();}
-  if(name==='backup'){loadBackupHistory();}
-  if(name==='reports'){loadReportsPage();}
+  if(name==='backup'){loadBackupHistory();loadSsServerFiles();}
+  if(name==='reports'){loadReportsPage();initReportCal();loadReportJobs();loadReportSchedules();populateDropdown('report-emp');}
   if(name==='emailconfig'){loadEmailConfig();}
 }
 
@@ -1360,7 +1551,7 @@ async function loadCalendarDates(){
     var url='/api/dashboard/screenshot-dates'+(emp?'?employee_id='+emp:'');
     var rows=await fetch(url).then(function(r){return r.json();});
     calDates={};
-    rows.forEach(function(r){var d=r.date.split("T")[0];calDates[d]=parseInt(r.count);});
+    rows.forEach(function(r){var d=(r.date||'').split('T')[0].split(' ')[0];if(d)calDates[d]=(calDates[d]||0)+parseInt(r.count||0);});
     renderCalendar();
   }catch(e){renderCalendar();}
 }
@@ -2103,7 +2294,7 @@ async function loadAppUsage(page){
           '<div style="position:absolute;top:0;left:0;right:0;height:3px;background:'+col+';border-radius:10px 10px 0 0"></div>'+
           '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:2px">'+
             '<div style="width:36px;height:36px;background:#181c22;border-radius:8px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border)">'+iconHtml+'</div>'+
-            '<span style="font-size:10px;font-weight:700;color:'+col+';background:'+col+'22;padding:2px 7px;border-radius:20px">'+sharePct+'%</span>'+
+  
           '</div>'+
           '<div>'+
             '<div style="color:#fff;font-size:22px;font-weight:900;font-family:monospace;line-height:1;letter-spacing:-0.5px">'+timeStr+'</div>'+
@@ -2118,9 +2309,17 @@ async function loadAppUsage(page){
       var rosterBadge = hasRoster
         ? '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(0,229,255,0.1);color:#00e5ff;margin-left:8px">\u23f0 '+grp.rosterName+'</span>'
         : '';
-      var shiftTotal = hasRoster ? 540*60 : realTotal;
-      var prodPct = shiftTotal>0 ? Math.min(100,((shiftActiveSecs/shiftTotal)*100)).toFixed(0) : 0;
-      var browsPct = shiftActiveSecs>0 ? Math.min(100,((browserSecs/shiftActiveSecs)*100)).toFixed(0) : 0;
+      // Calculate actual shift duration from roster times
+      var shiftDurSecs = 0;
+      if(hasRoster && grp.shiftStart && grp.shiftEnd){
+        var toS=function(t){var p=t.split(':');return parseInt(p[0])*3600+parseInt(p[1])*60;};
+        var ss=toS(grp.shiftStart),se=toS(grp.shiftEnd);
+        shiftDurSecs=se>ss?(se-ss):(86400-ss+se);
+      }
+      var shiftTotal = shiftDurSecs>0 ? shiftDurSecs : realTotal;
+      var prodPct = shiftTotal>0 ? Math.min(100,Math.round(shiftActiveSecs/shiftTotal*100)) : 0;
+      // Off-shift: total time minus in-shift time
+      var offShiftSecs = Math.max(0, realTotal - shiftActiveSecs);
 
       // Top 3 apps for summary box
       var top3Html = items.slice(0,3).map(function(a,i){
@@ -2150,9 +2349,9 @@ async function loadAppUsage(page){
               '<div style="font-size:12px;color:#64748b;margin-top:4px">'+prodPct+'% of shift</div>'+
             '</div>'+
             '<div style="padding:20px;text-align:center;display:flex;flex-direction:column;justify-content:center">'+
-              '<div style="font-size:9px;color:#475569;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Browsing</div>'+
-              '<div style="font-size:14px;font-weight:700;color:#7c3aed">'+appFmtTime(browserSecs)+'</div>'+
-              '<div style="font-size:12px;color:#64748b;margin-top:4px">'+browsPct+'% of shift time</div>'+
+              '<div style="font-size:9px;color:#475569;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">'+(hasRoster?'Off Shift':'Total Active')+'</div>'+
+              '<div style="font-size:14px;font-weight:700;color:#f59e0b">'+(hasRoster?appFmtTime(offShiftSecs):appFmtTime(realTotal))+'</div>'+
+              '<div style="font-size:12px;color:#64748b;margin-top:4px">'+(hasRoster&&shiftDurSecs>0?Math.min(100,Math.round(offShiftSecs/shiftDurSecs*100))+'% outside shift':'all day')+'</div>'+
             '</div>'+
           '</div>'+
         '</div>'+
@@ -2232,7 +2431,7 @@ async function loadWebCalendarDates(){
     var url = '/api/dashboard/web-activity-dates' + (emp ? '?employee_id=' + emp : '');
     var rows = await fetch(url).then(function(r){ return r.json(); });
     webCalDates = {};
-    rows.forEach(function(r){ var d = r.date.split('T')[0]; webCalDates[d] = parseInt(r.count); });
+    rows.forEach(function(r){ var d=(r.date||'').split('T')[0].split(' ')[0]; if(d) webCalDates[d]=(webCalDates[d]||0)+parseInt(r.count||0); });
     renderWebCalendar();
   }catch(e){ renderWebCalendar(); }
 }
@@ -2343,7 +2542,7 @@ async function loadAppCalendarDates(){
     var url = '/api/dashboard/app-usage-dates' + (emp ? '?employee_id=' + emp : '');
     var rows = await fetch(url).then(function(r){ return r.json(); });
     appCalDates = {};
-    rows.forEach(function(r){ var d = r.date.split('T')[0]; appCalDates[d] = parseInt(r.count); });
+    rows.forEach(function(r){ var d=(r.date||'').split('T')[0].split(' ')[0]; if(d) appCalDates[d]=(appCalDates[d]||0)+parseInt(r.count||0); });
     renderAppCalendar();
   }catch(e){ renderAppCalendar(); }
 }
@@ -3338,10 +3537,10 @@ var SYS_EVENT_ICONS={startup:{icon:'🟢',label:'System ON',color:'#10b981'},shu
 function initSysCalendar(){sysCalYear=new Date().getFullYear();sysCalMonth=new Date().getMonth();sysSelectedDate='';sysCurrentPage=1;var lbl=document.getElementById('sysCalBtnLabel');if(lbl)lbl.textContent='All Dates';var cal=document.getElementById('sysCalDropdown');if(cal)cal.style.display='none';loadSysCalendarDates();}
 function toggleSysCal(event){event.stopPropagation();var d=document.getElementById('sysCalDropdown');var isHidden=d.style.display==='none'||!d.style.display;d.style.display=isHidden?'block':'none';if(isHidden){setTimeout(function(){document.addEventListener('click',function h(e){if(!document.getElementById('sysCalDropdown').contains(e.target)&&e.target.id!=='sysCalBtn'){document.getElementById('sysCalDropdown').style.display='none';document.removeEventListener('click',h);}});},50);}}
 function changeSysMonth(dir){sysCalMonth+=dir;if(sysCalMonth>11){sysCalMonth=0;sysCalYear++;}if(sysCalMonth<0){sysCalMonth=11;sysCalYear--;}renderSysCalendar();}
-async function loadSysCalendarDates(){try{var emp=document.getElementById('sys-emp')?document.getElementById('sys-emp').value:'';var url='/api/dashboard/system-activity-dates'+(emp?'?employee_id='+emp:'');var rows=await fetch(url).then(function(r){return r.json();});sysCalDates={};rows.forEach(function(r){var d=r.date.split('T')[0];sysCalDates[d]=parseInt(r.count);});renderSysCalendar();}catch(e){renderSysCalendar();}}
+async function loadSysCalendarDates(){try{var emp=document.getElementById('sys-emp')?document.getElementById('sys-emp').value:'';var url='/api/dashboard/system-activity-dates'+(emp?'?employee_id='+emp:'');var rows=await fetch(url).then(function(r){return r.json();});sysCalDates={};rows.forEach(function(r){var d=(r.date||'').split('T')[0].split(' ')[0];if(d)sysCalDates[d]=(sysCalDates[d]||0)+parseInt(r.count||0);});renderSysCalendar();}catch(e){renderSysCalendar();}}
 function renderSysCalendar(){var el=document.getElementById('sysCalGrid');if(!el)return;var months=['January','February','March','April','May','June','July','August','September','October','November','December'];var lbl=document.getElementById('sysCalMonthLabel');if(lbl)lbl.textContent=months[sysCalMonth]+' '+sysCalYear;var firstDay=new Date(sysCalYear,sysCalMonth,1).getDay();var daysInMonth=new Date(sysCalYear,sysCalMonth+1,0).getDate();var today=(function(){var _d=new Date();return _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');})();var html='';for(var i=0;i<firstDay;i++)html+='<div></div>';for(var d=1;d<=daysInMonth;d++){var ds=sysCalYear+'-'+String(sysCalMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');var has=sysCalDates[ds]?true:false;var isSel=ds===sysSelectedDate,isToday=ds===today;var bg=isSel?'#00e5ff':isToday?'rgba(0,229,255,0.15)':'transparent';var col=isSel?'#0a0c10':isToday?'#00e5ff':'#e2e8f0';var bdr=isSel?'1px solid #00e5ff':isToday?'1px solid rgba(0,229,255,0.4)':'1px solid transparent';html+='<div onclick="selectSysDate(\''+ds+'\');event.stopPropagation()" style="padding:3px 1px;border-radius:4px;cursor:pointer;background:'+bg+';color:'+col+';font-size:11px;border:'+bdr+';text-align:center;min-height:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px"><span>'+d+'</span>'+(has?'<div style="width:5px;height:5px;border-radius:50%;background:'+(isSel?'#000':'#00e5ff')+'"></div>':'<div style="width:5px;height:5px"></div>')+'</div>';}el.innerHTML=html;}
-function selectSysDate(ds){sysSelectedDate=(sysSelectedDate===ds)?'':ds;sysCurrentPage=1;var lbl=document.getElementById('sysCalBtnLabel');if(lbl)lbl.textContent=sysSelectedDate||'All Dates';var drop=document.getElementById('sysCalDropdown');if(drop)drop.style.display='none';renderSysCalendar();loadSysActivity(1);}
-function onSysEmpChange(){sysCurrentPage=1;loadSysCalendarDates();loadSysActivity(1);}
+function selectSysDate(ds){sysSelectedDate=(sysSelectedDate===ds)?'':ds;sysCurrentPage=1;var lbl=document.getElementById('sysCalBtnLabel');if(lbl)lbl.textContent=sysSelectedDate||'All Dates';var drop=document.getElementById('sysCalDropdown');if(drop)drop.style.display='none';renderSysCalendar();if(sysCurrentView==='timeline')loadSysTimeline();else loadSysActivity(1);}
+function onSysEmpChange(){sysCurrentPage=1;loadSysCalendarDates();if(sysCurrentView==='timeline')loadSysTimeline();else loadSysActivity(1);}
 function clearSysFilters(){var emp=document.getElementById('sys-emp');if(emp)emp.value='';sysSelectedDate='';sysCurrentPage=1;var lbl=document.getElementById('sysCalBtnLabel');if(lbl)lbl.textContent='All Dates';var cal=document.getElementById('sysCalDropdown');if(cal)cal.style.display='none';loadSysCalendarDates();loadSysActivity(1);}
 async function loadSysActivity(page){page=page||sysCurrentPage;sysCurrentPage=page;var list=document.getElementById('sysActivityList');list.innerHTML='<div class="empty">Loading...</div>';var emp=document.getElementById('sys-emp')?document.getElementById('sys-emp').value:'';var url='/api/dashboard/system-activity?page='+page+'&';if(emp)url+='employee_id='+emp+'&';if(sysSelectedDate)url+='date='+sysSelectedDate;try{var data=await fetch(url).then(function(r){return r.json();});sysTotalPages=data.pages||1;sysTotalCount=data.total||0;var rows=data.rows||[];if(!rows.length){list.innerHTML='<div class="empty">No system events found.</div>';renderSysPagination();return;}list.innerHTML='<table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--bg3)"><th style="padding:10px 18px;text-align:left;font-size:9px;color:#64748b;letter-spacing:2px;text-transform:uppercase;width:180px">Employee</th><th style="padding:10px 18px;text-align:left;font-size:9px;color:#64748b;letter-spacing:2px;text-transform:uppercase;width:160px">Event</th><th style="padding:10px 18px;text-align:left;font-size:9px;color:#64748b;letter-spacing:2px;text-transform:uppercase">Date & Time</th><th style="padding:10px 18px;text-align:left;font-size:9px;color:#64748b;letter-spacing:2px;text-transform:uppercase;width:100px">Day</th></tr></thead><tbody>'+rows.map(function(r){var ev=SYS_EVENT_ICONS[r.event_type]||{icon:'❓',label:r.event_type,color:'#64748b'};var dt=new Date(r.recorded_at);return '<tr style="border-bottom:1px solid rgba(30,36,46,0.5);transition:background 0.15s" onmouseover="this.style.background=\'rgba(0,229,255,0.03)\'" onmouseout="this.style.background=\'\'"><td style="padding:11px 18px"><div style="display:flex;align-items:center;gap:8px">'+avatarHTML(r.employee_name)+'<span style="color:#e2e8f0;font-size:12px;font-weight:500">'+r.employee_name+'</span></div></td><td style="padding:11px 18px"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">'+ev.icon+'</span><span style="background:'+ev.color+'22;color:'+ev.color+';border:1px solid '+ev.color+'44;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600">'+ev.label+'</span></div></td><td style="padding:11px 18px;color:#e2e8f0;font-size:12px;font-family:monospace">'+dt.toLocaleString()+'</td><td style="padding:11px 18px;color:#64748b;font-size:11px">'+['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dt.getDay()]+'</td></tr>';}).join('')+'</tbody></table>';renderSysPagination();}catch(e){list.innerHTML='<div class="empty">Error loading.</div>';console.error(e);}}
 function renderSysPagination(){var wrap=document.getElementById('sysPaginationWrap');if(!wrap)return;if(sysTotalPages<=1){wrap.innerHTML='';return;}wrap.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-top:1px solid #1e242e"><span style="color:#64748b;font-size:11px">Total: '+sysTotalCount+' events · Page '+sysCurrentPage+' of '+sysTotalPages+'</span><div style="display:flex;gap:6px"><button class="btn" '+(sysCurrentPage===1?'disabled style="opacity:0.4"':'')+' onclick="loadSysActivity('+(sysCurrentPage-1)+')">← Prev</button><span style="color:#fff;font-size:12px;padding:6px 12px;background:#181c22;border:1px solid var(--border);border-radius:4px">'+sysCurrentPage+' / '+sysTotalPages+'</span><button class="btn" '+(sysCurrentPage===sysTotalPages?'disabled style="opacity:0.4"':'')+' onclick="loadSysActivity('+(sysCurrentPage+1)+')">Next →</button></div></div>';}
@@ -3776,13 +3975,25 @@ async function testEmailConfig(){
   btn.disabled=false; btn.textContent='📨 Send Test Email';
 }
 
+async function loadMfaSetting(){
+  try{
+    var data=await fetch('/api/admin/email-config').then(function(r){return r.json();});
+    var el=document.getElementById('mfa-enabled');
+    if(el) el.checked=data.mfa_enabled===true;
+  }catch(e){}
+}
 async function saveMfaSettings(){
   var enabled = document.getElementById('mfa-enabled').checked;
   try{
-    var res = await fetch('/api/admin/email-config/mfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mfa_enabled:enabled})});
-    var data = await res.json();
-    if(data.success) toast('✓ MFA settings saved','#10b981');
-    else toast('Error: '+(data.error||'Failed'),'#ef4444');
+    var res=await fetch('/api/admin/email-config/mfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mfa_enabled:enabled})});
+    var data=await res.json();
+    var statusEl=document.getElementById('mfaSettingsStatus');
+    if(data.success){
+      toast('✓ MFA '+(enabled?'enabled':'disabled'),'#10b981');
+      if(statusEl){statusEl.style.cssText='display:block;padding:10px 14px;border-radius:8px;font-size:12px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.25);color:#10b981';statusEl.textContent='✓ MFA '+(enabled?'enabled':'disabled')+'!';}
+    } else {
+      toast('Error: '+(data.error||'Failed'),'#ef4444');
+    }
   }catch(e){ toast('Error saving MFA settings','#ef4444'); }
 }
 
@@ -3892,6 +4103,732 @@ setInterval(function(){
     updateLocalTimeDisplay(_sysSettings.timezone);
   }
 }, 60000);
+
+
+// ---- SCREENSHOT RESTORE TABS ----
+function ssSwitchTab(tab){
+  var isUpload = tab==='upload';
+  document.getElementById('ssUploadTab').style.display = isUpload?'block':'none';
+  document.getElementById('ssServerTab').style.display = isUpload?'none':'block';
+  document.getElementById('ssTabUpload').style.cssText = isUpload
+    ? 'flex:1;padding:8px;border-radius:8px;border:1px solid #10b981;background:rgba(16,185,129,0.12);color:#10b981;font-size:12px;font-weight:700;cursor:pointer'
+    : 'flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-weight:700;cursor:pointer';
+  document.getElementById('ssTabServer').style.cssText = isUpload
+    ? 'flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-weight:700;cursor:pointer'
+    : 'flex:1;padding:8px;border-radius:8px;border:1px solid #10b981;background:rgba(16,185,129,0.12);color:#10b981;font-size:12px;font-weight:700;cursor:pointer';
+  if(!isUpload) loadSsServerFiles();
+}
+
+function toggleSsLog(){
+  var body=document.getElementById('ssRestoreLogBody');
+  var btn=document.getElementById('ssLogToggleBtn');
+  var hidden=body.style.display==='none';
+  body.style.display=hidden?'block':'none';
+  btn.textContent=hidden?'— Minimise':'+ Maximise';
+}
+
+var ssSelectedServerFile=null;
+
+async function loadSsServerFiles(){
+  var list=document.getElementById('ssServerFileList');
+  list.innerHTML='<div style="color:var(--text3);font-size:12px">Loading...</div>';
+  try{
+    var files=await fetch('/api/admin/backup/screenshots/list').then(function(r){return r.json();});
+    if(!files.length){list.innerHTML='<div style="color:var(--text3);font-size:12px">No .tar.gz backups found in backups folder.</div>';return;}
+    list.innerHTML=files.map(function(f){
+      var sid='ssfile_'+f.filename.replace(/[^a-z0-9]/gi,'_');
+      return '<div onclick="selectSsFile(this)" data-filename="'+f.filename+'" id="'+sid+'"'+
+        ' style="padding:10px 12px;border-radius:8px;border:1px solid var(--border);margin-bottom:8px;cursor:pointer;transition:all 0.15s">'+
+        '<div style="font-weight:600;color:var(--text);font-size:12px">'+f.filename+'</div>'+
+        '<div style="color:var(--text3);font-size:10px;margin-top:2px">'+f.size_mb+' MB &nbsp;·&nbsp; '+new Date(f.created_at).toLocaleString()+'</div>'+
+        '</div>';
+    }).join('');
+  }catch(e){list.innerHTML='<div style="color:#ef4444;font-size:12px">Error: '+e.message+'</div>';}
+}
+
+function selectSsFile(el){
+  ssSelectedServerFile=el.getAttribute('data-filename');
+  document.querySelectorAll('#ssServerFileList > div').forEach(function(d){
+    d.style.borderColor='var(--border)';d.style.background='transparent';
+  });
+  el.style.borderColor='#10b981';el.style.background='rgba(16,185,129,0.08)';
+  document.getElementById('ssServerRestoreBtn').disabled=false;
+}
+
+async function doScreenshotRestoreFromServer(){
+  if(!ssSelectedServerFile){toast('Please select a file first','#ef4444');return;}
+  if(!confirm('Restore screenshots from:\n'+ssSelectedServerFile+'\n\nThis will overwrite existing screenshot files.')) return;
+  var btn=document.getElementById('ssServerRestoreBtn');
+  var btnText=document.getElementById('ssServerRestoreBtnText');
+  var statusEl=document.getElementById('ssServerRestoreStatus');
+  btn.disabled=true; btnText.textContent='⏳ Restoring...';
+  statusEl.style.cssText='display:block;padding:10px 14px;border-radius:8px;font-size:12px;background:rgba(0,229,255,0.06);border:1px solid rgba(0,229,255,0.2);color:var(--accent)';
+  statusEl.textContent='Extracting screenshots on server...';
+  try{
+    var res=await fetch('/api/admin/restore/screenshots/frompath',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:ssSelectedServerFile})});
+    var data=await res.json();
+    if(data.success){
+      statusEl.style.cssText='display:block;padding:10px 14px;border-radius:8px;font-size:12px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.25);color:#10b981';
+      statusEl.textContent='✓ Screenshots restored successfully!';
+      toast('✓ Screenshots restored!','#10b981');
+      btnText.textContent='✓ Done';
+    }else{
+      statusEl.style.cssText='display:block;padding:10px 14px;border-radius:8px;font-size:12px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.25);color:#ef4444';
+      statusEl.textContent='✗ '+(data.error||'Failed');
+      toast('Error: '+(data.error||'Failed'),'#ef4444');
+      btn.disabled=false; btnText.textContent='📷 Restore Selected';
+    }
+  }catch(e){
+    statusEl.style.cssText='display:block;padding:10px 14px;border-radius:8px;font-size:12px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.25);color:#ef4444';
+    statusEl.textContent='✗ '+e.message;
+    btn.disabled=false; btnText.textContent='📷 Restore Selected';
+  }
+}
+// ---- END SCREENSHOT RESTORE TABS ----
+
+
+// ---- SCREENSHOT UPLOAD TO SERVER ----
+var ssUploadFile = null;
+function ssUpDragOver(e){e.preventDefault();document.getElementById('ssUploadDropZone').style.borderColor='var(--accent)';document.getElementById('ssUploadDropZone').style.background='rgba(0,229,255,0.04)';}
+function ssUpDragLeave(e){document.getElementById('ssUploadDropZone').style.borderColor='var(--border2)';document.getElementById('ssUploadDropZone').style.background='';}
+function ssUpDrop(e){e.preventDefault();ssUpDragLeave(e);if(e.dataTransfer.files[0])ssUpApply(e.dataTransfer.files[0]);}
+function ssUpFileChosen(input){if(input.files[0])ssUpApply(input.files[0]);}
+function ssUpApply(f){
+  ssUploadFile=f;
+  var info=document.getElementById('ssUploadFileInfo');
+  info.style.display='block';
+  info.textContent='📤 '+f.name+' ('+(f.size/1024/1024).toFixed(1)+' MB)';
+  document.getElementById('ssUploadBtn').disabled=false;
+}
+function doUploadToServer(){
+  if(!ssUploadFile){toast('Select a file first','#ef4444');return;}
+  var btn=document.getElementById('ssUploadBtn');
+  var btnText=document.getElementById('ssUploadBtnText');
+  var statusEl=document.getElementById('ssUploadStatus');
+  btn.disabled=true; btnText.textContent='⏳ Uploading...';
+  statusEl.style.cssText='display:block;padding:9px 13px;border-radius:8px;font-size:12px;background:rgba(0,229,255,0.06);border:1px solid rgba(0,229,255,0.2);color:var(--accent)';
+  statusEl.innerHTML='<div style="display:flex;justify-content:space-between;margin-bottom:6px"><span id="ssUpPct">Uploading... 0%</span></div>'+
+    '<div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">'+
+    '<div id="ssUpBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),#0891b2);border-radius:2px;transition:width 0.3s"></div></div>';
+  var fd=new FormData();
+  fd.append('screenshots', ssUploadFile);
+  var xhr=new XMLHttpRequest();
+  xhr.upload.onprogress=function(e){
+    if(e.lengthComputable){
+      var pct=Math.round(e.loaded/e.total*100);
+      var bar=document.getElementById('ssUpBar');
+      var lbl=document.getElementById('ssUpPct');
+      if(bar) bar.style.width=pct+'%';
+      if(lbl) lbl.textContent='Uploading... '+pct+'%';
+      btnText.textContent='⏳ '+pct+'%';
+    }
+  };
+  xhr.onload=function(){
+    try{
+      var data=JSON.parse(xhr.responseText);
+      if(data.success){
+        statusEl.style.cssText='display:block;padding:9px 13px;border-radius:8px;font-size:12px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.25);color:#10b981';
+        statusEl.textContent='✓ Uploaded: '+data.filename+' — Select it from Restore panel →';
+        toast('✓ Uploaded to server!','#10b981');
+        btnText.textContent='✓ Uploaded';
+        loadSsServerFiles();
+      } else {
+        statusEl.style.cssText='display:block;padding:9px 13px;border-radius:8px;font-size:12px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.25);color:#ef4444';
+        statusEl.textContent='✗ '+(data.error||'Upload failed');
+        btn.disabled=false; btnText.textContent='⬆ Upload to Server';
+      }
+    }catch(e){
+      statusEl.style.cssText='display:block;padding:9px 13px;border-radius:8px;font-size:12px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.25);color:#ef4444';
+      statusEl.textContent='✗ Invalid response from server';
+      btn.disabled=false; btnText.textContent='⬆ Upload to Server';
+    }
+  };
+  xhr.onerror=function(){
+    statusEl.style.cssText='display:block;padding:9px 13px;border-radius:8px;font-size:12px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.25);color:#ef4444';
+    statusEl.textContent='✗ Network error during upload';
+    btn.disabled=false; btnText.textContent='⬆ Upload to Server';
+  };
+  xhr.open('POST','/api/admin/backup/screenshots/upload');
+  xhr.send(fd);
+}
+
+var ssSelectedServerFile=null;
+async function loadSsServerFiles(){
+  var list=document.getElementById('ssServerFileList');
+  if(!list) return;
+  list.innerHTML='<div style="color:var(--text3);font-size:12px">Loading...</div>';
+  try{
+    var files=await fetch('/api/admin/backup/screenshots/list').then(function(r){return r.json();});
+    if(!files.length){list.innerHTML='<div style="color:var(--text3);font-size:12px">No .tar.gz backups found in backups folder.</div>';return;}
+    list.innerHTML=files.map(function(f){
+      return '<div onclick="selectSsFile(this)" data-filename="'+f.filename+'"'+
+        ' style="padding:10px 12px;border-radius:8px;border:1px solid var(--border);margin-bottom:8px;cursor:pointer;transition:all 0.15s">'+
+        '<div style="font-weight:600;color:var(--text);font-size:12px">'+f.filename+'</div>'+
+        '<div style="color:var(--text3);font-size:10px;margin-top:2px">'+f.size_mb+' MB &nbsp;&middot;&nbsp; '+new Date(f.created_at).toLocaleString()+'</div>'+
+        '</div>';
+    }).join('');
+  }catch(e){list.innerHTML='<div style="color:#ef4444;font-size:12px">Error: '+e.message+'</div>';}
+}
+function selectSsFile(el){
+  ssSelectedServerFile=el.getAttribute('data-filename');
+  document.querySelectorAll('#ssServerFileList > div').forEach(function(d){
+    d.style.borderColor='var(--border)';d.style.background='transparent';
+  });
+  el.style.borderColor='#10b981';el.style.background='rgba(16,185,129,0.08)';
+  document.getElementById('ssServerRestoreBtn').disabled=false;
+}
+async function doScreenshotRestoreFromServer(){
+  if(!ssSelectedServerFile){toast('Please select a file','#ef4444');return;}
+  if(!confirm('Restore screenshots from:\n'+ssSelectedServerFile+'\n\nThis will overwrite existing screenshot files.')) return;
+  var btn=document.getElementById('ssServerRestoreBtn');
+  var btnText=document.getElementById('ssServerRestoreBtnText');
+  var statusEl=document.getElementById('ssServerRestoreStatus');
+  btn.disabled=true; btnText.textContent='⏳ Restoring...';
+  statusEl.style.cssText='display:block;padding:10px 14px;border-radius:8px;font-size:12px;background:rgba(0,229,255,0.06);border:1px solid rgba(0,229,255,0.2);color:var(--accent)';
+  statusEl.textContent='Extracting on server... please wait.';
+  try{
+    var res=await fetch('/api/admin/restore/screenshots/frompath',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:ssSelectedServerFile})});
+    var data=await res.json();
+    if(data.success){
+      statusEl.style.cssText='display:block;padding:10px 14px;border-radius:8px;font-size:12px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.25);color:#10b981';
+      statusEl.textContent='✓ Screenshots restored successfully!';
+      toast('✓ Screenshots restored!','#10b981');
+      btnText.textContent='✓ Done';
+    }else{
+      statusEl.style.cssText='display:block;padding:10px 14px;border-radius:8px;font-size:12px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.25);color:#ef4444';
+      statusEl.textContent='✗ '+(data.error||'Failed');
+      btn.disabled=false; btnText.textContent='📷 Restore Selected';
+    }
+  }catch(e){
+    statusEl.style.cssText='display:block;padding:10px 14px;border-radius:8px;font-size:12px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.25);color:#ef4444';
+    statusEl.textContent='✗ '+e.message;
+    btn.disabled=false; btnText.textContent='📷 Restore Selected';
+  }
+}
+// ---- END SCREENSHOT UPLOAD ----
+
+
+// ---- TOTP + MFA SETTINGS ----
+async function loadAllMfaSettings(){
+  try{
+    var cfg=await fetch('/api/admin/email-config').then(function(r){return r.json();});
+    var mfaEl=document.getElementById('mfa-enabled');
+    var totpEl=document.getElementById('totp-global-enabled');
+    if(mfaEl) mfaEl.checked=cfg.mfa_enabled===true;
+    if(totpEl) totpEl.checked=cfg.totp_global_enabled===true;
+    loadTotpStatus();
+  }catch(e){}
+}
+
+async function saveAllMfaSettings(){
+  var mfaEl=document.getElementById('mfa-enabled');
+  var totpEl=document.getElementById('totp-global-enabled');
+  var statusEl=document.getElementById('mfaSettingsStatus');
+  var mfaEnabled=mfaEl?mfaEl.checked:false;
+  var totpEnabled=totpEl?totpEl.checked:false;
+  try{
+    var res=await fetch('/api/admin/email-config/mfa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mfa_enabled:mfaEnabled,totp_global_enabled:totpEnabled})});
+    var data=await res.json();
+    if(data.success){
+      if(statusEl){statusEl.style.cssText='display:block;padding:9px 13px;border-radius:8px;font-size:12px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.25);color:#10b981';statusEl.textContent='✓ MFA settings saved!';}
+      toast('✓ MFA settings saved','#10b981');
+      loadTotpStatus();
+    } else { toast('Error: '+(data.error||'Failed'),'#ef4444'); }
+  }catch(e){toast('Error: '+e.message,'#ef4444');}
+}
+
+async function loadTotpStatus(){
+  try{
+    var res=await fetch('/api/auth/totp/status');
+    var data=await res.json();
+    var enabled=(data.totp_enabled===true);
+    var statusEl=document.getElementById('totpStatus');
+    var actionsEl=document.getElementById('totpActions');
+    var disableEl=document.getElementById('totpDisableArea');
+    var setupArea=document.getElementById('totpSetupArea');
+    if(setupArea) setupArea.style.display='none';
+    if(enabled){
+      if(statusEl) statusEl.style.display='none';
+      if(actionsEl) actionsEl.style.display='none';
+      if(disableEl) disableEl.style.display='block';
+    } else {
+      if(statusEl){statusEl.style.cssText='padding:10px 14px;border-radius:8px;font-size:12px;margin-bottom:14px;background:var(--bg3);border:1px solid var(--border);color:var(--text3);display:block';statusEl.textContent='No authenticator app set up for your account';}
+      if(actionsEl) actionsEl.style.display='flex';
+      if(disableEl) disableEl.style.display='none';
+    }
+  }catch(e){
+    var el=document.getElementById('totpStatus');
+    if(el){el.style.display='block';el.textContent='Error loading status';}
+  }
+}
+
+async function setupTOTP(){
+  try{
+    var res=await fetch('/api/auth/totp/setup',{method:'POST'});
+    var data=await res.json();
+    if(!data.success){toast('Error: '+(data.error||'Failed'),'#ef4444');return;}
+    document.getElementById('totpQR').src=data.qr;
+    document.getElementById('totpSecret').textContent=data.secret;
+    document.getElementById('totpSetupArea').style.display='block';
+    document.getElementById('totpActions').style.display='none';
+    document.getElementById('totpVerifyCode').value='';
+    document.getElementById('totpVerifyCode').focus();
+  }catch(e){toast('Error: '+e.message,'#ef4444');}
+}
+
+function cancelTOTPSetup(){
+  document.getElementById('totpSetupArea').style.display='none';
+  document.getElementById('totpActions').style.display='flex';
+}
+
+async function activateTOTP(){
+  var code=document.getElementById('totpVerifyCode').value.trim();
+  if(code.length!==6){toast('Enter the 6-digit code from your app','#ef4444');return;}
+  try{
+    var res=await fetch('/api/auth/totp/activate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:code})});
+    var data=await res.json();
+    if(data.success){
+      toast('✓ Authenticator activated!','#10b981');
+      document.getElementById('totpSetupArea').style.display='none';
+      loadTotpStatus();
+    } else { toast('✗ '+(data.error||'Invalid code'),'#ef4444'); }
+  }catch(e){toast('Error: '+e.message,'#ef4444');}
+}
+
+async function disableTOTP(){
+  if(!confirm('Remove authenticator app from your account?')) return;
+  try{
+    var res=await fetch('/api/auth/totp/disable',{method:'POST'});
+    var data=await res.json();
+    if(data.success){ toast('✓ Authenticator removed','#f59e0b'); loadTotpStatus(); }
+    else { toast('Error: '+(data.error||'Failed'),'#ef4444'); }
+  }catch(e){toast('Error: '+e.message,'#ef4444');}
+}
+// ---- END TOTP ----
+
+
+// ---- REPORT DATE CALENDARS ----
+var rptFromYear=new Date().getFullYear(), rptFromMonth=new Date().getMonth();
+var rptToYear=new Date().getFullYear(), rptToMonth=new Date().getMonth();
+var rptCalDates={};
+
+async function initReportCal(){
+  // Load dates that have data
+  try{
+    var rows=await fetch('/api/dashboard/screenshot-dates').then(function(r){return r.json();});
+    rptCalDates={};
+    rows.forEach(function(r){var d=(r.date||'').split('T')[0].split(' ')[0];if(d)rptCalDates[d]=true;});
+  }catch(e){}
+  // Default: last 30 days
+  var today=new Date();
+  var from=new Date(); from.setDate(from.getDate()-30);
+  var fmt=function(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+  document.getElementById('report-from').value=fmt(from);
+  document.getElementById('report-to').value=fmt(today);
+  document.getElementById('rptFromLabel').textContent=fmt(from);
+  document.getElementById('rptToLabel').textContent=fmt(today);
+  renderRptCal('from'); renderRptCal('to');
+  checkReportData();
+}
+
+function toggleRptCal(which, event){
+  event.stopPropagation();
+  var fromD=document.getElementById('rptFromDropdown');
+  var toD=document.getElementById('rptToDropdown');
+  var btn=document.getElementById(which==='from'?'rptFromBtn':'rptToBtn');
+  var rect=btn.getBoundingClientRect();
+  var drop=which==='from'?fromD:toD;
+  var other=which==='from'?toD:fromD;
+  other.style.display='none';
+  var isHidden=drop.style.display==='none'||drop.style.display==='';
+  drop.style.display=isHidden?'block':'none';
+  if(isHidden){
+    drop.style.left=rect.left+'px';
+    drop.style.top=(rect.bottom+4)+'px';
+    renderRptCal(which);
+    setTimeout(function(){
+      document.addEventListener('click',function rptHandler(e){
+        if(!drop.contains(e.target)&&e.target.id!==btn.id){
+          drop.style.display='none';
+          document.removeEventListener('click',rptHandler);
+        }
+      });
+    },50);
+  }
+}
+
+function changeRptMonth(which, dir){
+  if(which==='from'){ rptFromMonth+=dir; if(rptFromMonth>11){rptFromMonth=0;rptFromYear++;} if(rptFromMonth<0){rptFromMonth=11;rptFromYear--;} }
+  else { rptToMonth+=dir; if(rptToMonth>11){rptToMonth=0;rptToYear++;} if(rptToMonth<0){rptToMonth=11;rptToYear--;} }
+  renderRptCal(which);
+}
+
+function renderRptCal(which){
+  var year=which==='from'?rptFromYear:rptToYear;
+  var month=which==='from'?rptFromMonth:rptToMonth;
+  var gridId=which==='from'?'rptFromGrid':'rptToGrid';
+  var lblId=which==='from'?'rptFromMonthLabel':'rptToMonthLabel';
+  var selVal=document.getElementById(which==='from'?'report-from':'report-to').value;
+  var months=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var lbl=document.getElementById(lblId);
+  if(lbl) lbl.textContent=months[month]+' '+year;
+  var el=document.getElementById(gridId);
+  if(!el) return;
+  var firstDay=new Date(year,month,1).getDay();
+  var daysInMonth=new Date(year,month+1,0).getDate();
+  var today=(function(){var _d=new Date();return _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');})();
+  var html='';
+  for(var i=0;i<firstDay;i++) html+='<div></div>';
+  for(var d=1;d<=daysInMonth;d++){
+    var ds=year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    var hasData=rptCalDates[ds]?true:false;
+    var isSel=ds===selVal, isToday=ds===today;
+    var bg=isSel?'#00e5ff':isToday?'rgba(0,229,255,0.15)':'transparent';
+    var col=isSel?'#0a0c10':isToday?'#00e5ff':'#e2e8f0';
+    var bdr=isSel?'1px solid #00e5ff':isToday?'1px solid rgba(0,229,255,0.4)':'1px solid transparent';
+    var dotColor='#00e5ff';
+    html+='<div onclick="selectRptDate(\'' +which+ '\',\'' +ds+ '\');event.stopPropagation()" style="padding:3px 1px;border-radius:4px;cursor:pointer;background:'+bg+';color:'+col+';font-size:11px;border:'+bdr+';text-align:center;min-height:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px">'+
+      '<span>'+d+'</span>'+
+      (hasData?'<div style="width:5px;height:5px;border-radius:50%;background:'+dotColor+'"></div>':'<div style="width:5px;height:5px"></div>')+
+      '</div>';
+  }
+  el.innerHTML=html;
+}
+
+function selectRptDate(which, ds){
+  document.getElementById(which==='from'?'report-from':'report-to').value=ds;
+  document.getElementById(which==='from'?'rptFromLabel':'rptToLabel').textContent=ds;
+  document.getElementById(which==='from'?'rptFromDropdown':'rptToDropdown').style.display='none';
+  if(which==='from'){ rptFromYear=parseInt(ds.split('-')[0]); rptFromMonth=parseInt(ds.split('-')[1])-1; }
+  else { rptToYear=parseInt(ds.split('-')[0]); rptToMonth=parseInt(ds.split('-')[1])-1; }
+  checkReportData();
+}
+
+async function checkReportData(){
+  var from=document.getElementById('report-from').value;
+  var to=document.getElementById('report-to').value;
+  var btn=document.getElementById('exportReportBtn');
+  var statusEl=document.getElementById('reportStatus');
+  if(!from||!to||!btn) return;
+  // Check if any data exists in range
+  try{
+    var hasData=Object.keys(rptCalDates).some(function(d){return d>=from&&d<=to;});
+    if(hasData){
+      btn.disabled=false;
+      btn.style.opacity='1';
+      if(statusEl) statusEl.style.display='none';
+    } else {
+      btn.disabled=true;
+      btn.style.opacity='0.4';
+      if(statusEl){
+        statusEl.style.cssText='display:block;padding:10px 14px;border-radius:8px;font-size:12px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.25);color:#ef4444';
+        statusEl.textContent='No data found for selected date range.';
+      }
+    }
+  }catch(e){}
+}
+// ---- END REPORT CALENDARS ----
+
+
+// ---- REPORT JOB QUEUE ----
+var reportJobInterval = null;
+
+async function queueReport(){
+  var from = document.getElementById('report-from').value;
+  var to   = document.getElementById('report-to').value;
+  var empId = document.getElementById('report-emp') ? document.getElementById('report-emp').value : '';
+  if(!from||!to){ toast('Please select a date range','#ef4444'); return; }
+  try{
+    var res = await fetch('/api/admin/report-job',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({employee_id:empId||null,from:from,to:to})});
+    var data = await res.json();
+    if(data.success){
+      toast('✓ Report queued! Job #'+data.job_id,'#10b981');
+      loadReportJobs();
+      startJobPolling();
+    } else { toast('Error: '+(data.error||'Failed'),'#ef4444'); }
+  }catch(e){ toast('Error: '+e.message,'#ef4444'); }
+}
+
+async function loadReportJobs(){
+  var list = document.getElementById('reportJobList');
+  if(!list) return;
+  try{
+    var jobs = await fetch('/api/admin/report-jobs').then(function(r){return r.json();});
+    if(!jobs.length){ list.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px 0">No reports queued yet.</div>'; return; }
+    list.innerHTML = jobs.map(function(j){
+      var statusColor = j.status==='done'?'#10b981':j.status==='failed'?'#ef4444':j.status==='generating'?'#00e5ff':'#f59e0b';
+      var statusLabel = j.status==='done'?'✓ Ready':j.status==='failed'?'✗ Failed':j.status==='generating'?'⏳ Generating...':'🕐 Queued';
+      var from = (j.from_date||'').split('T')[0];
+      var to   = (j.to_date||'').split('T')[0];
+      var created = new Date(j.created_at).toLocaleString();
+      var progressBar = (j.status==='generating'||j.status==='queued') ?
+        '<div style="height:3px;background:var(--border);border-radius:2px;margin-top:8px;overflow:hidden">'+
+        '<div style="height:100%;width:'+j.progress+'%;background:linear-gradient(90deg,var(--accent),#0891b2);border-radius:2px;transition:width 0.5s"></div></div>' : '';
+      var actions = j.status==='done' ?
+        '<button class="btn btn-accent" onclick="downloadJob('+j.id+')" style="font-size:10px;padding:3px 10px">⤓ Download</button> ' : '';
+      actions += '<button class="btn" onclick="deleteJob('+j.id+')" style="font-size:10px;padding:3px 10px;border-color:rgba(239,68,68,0.3);color:#ef4444">🗑</button>';
+      return '<div style="padding:12px 14px;border:1px solid var(--border);border-radius:8px;margin-bottom:10px">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'+
+          '<div>'+
+            '<div style="font-size:12px;font-weight:600;color:var(--text)">'+j.employee_name+' &nbsp;·&nbsp; '+from+' → '+to+'</div>'+
+            '<div style="font-size:10px;color:var(--text3);margin-top:2px">Queued: '+created+(j.completed_at?' &nbsp;·&nbsp; Done: '+new Date(j.completed_at).toLocaleString():'')+'</div>'+
+            (j.error_msg?'<div style="font-size:10px;color:#ef4444;margin-top:2px">'+j.error_msg+'</div>':'')+
+          '</div>'+
+          '<div style="display:flex;align-items:center;gap:8px">'+
+            '<span style="font-size:11px;font-weight:700;color:'+statusColor+'">'+statusLabel+(j.status==='generating'?' ('+j.progress+'%)':'')+'</span>'+
+            actions+
+          '</div>'+
+        '</div>'+
+        progressBar+
+      '</div>';
+    }).join('');
+    // Stop polling if no active jobs
+    var hasActive = jobs.some(function(j){ return j.status==='queued'||j.status==='generating'; });
+    if(!hasActive && reportJobInterval){ clearInterval(reportJobInterval); reportJobInterval=null; }
+  }catch(e){ list.innerHTML='<div style="color:#ef4444;font-size:12px">Error loading jobs</div>'; }
+}
+
+function startJobPolling(){
+  if(reportJobInterval) return;
+  reportJobInterval = setInterval(loadReportJobs, 3000);
+}
+
+async function downloadJob(id){
+  window.location.href = '/api/admin/report-download/'+id;
+}
+
+async function deleteJob(id){
+  if(!confirm('Delete this report job?')) return;
+  try{
+    await fetch('/api/admin/report-job/'+id, {method:'DELETE'});
+    loadReportJobs();
+  }catch(e){ toast('Error deleting job','#ef4444'); }
+}
+// ---- END REPORT JOB QUEUE ----
+
+
+// ---- SCHEDULED REPORTS JS ----
+function setRptRange(days){
+  var today=new Date();
+  var from=new Date();
+  if(days===1){
+    // Yesterday only
+    from.setDate(from.getDate()-1);
+    today.setDate(today.getDate()-1);
+  } else {
+    from.setDate(from.getDate()-days);
+  }
+  var fmt=function(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+  var fromStr=fmt(from);
+  var toStr=fmt(today);
+  document.getElementById('report-from').value=fromStr;
+  document.getElementById('report-to').value=toStr;
+  document.getElementById('rptFromLabel').textContent=fromStr;
+  document.getElementById('rptToLabel').textContent=toStr;
+  rptFromYear=from.getFullYear(); rptFromMonth=from.getMonth();
+  rptToYear=today.getFullYear(); rptToMonth=today.getMonth();
+  checkReportData();
+}
+
+function showScheduleForm(){
+  var form=document.getElementById('scheduleForm');
+  if(!form) return;
+  form.style.display=form.style.display==='none'?'block':'none';
+  if(form.style.display==='block') populateDropdown('sched-emp');
+}
+
+function onSchedFreqChange(){
+  var freq=document.getElementById('sched-freq').value;
+  document.getElementById('sched-dow-wrap').style.display=freq==='weekly'?'block':'none';
+  document.getElementById('sched-dom-wrap').style.display=freq==='monthly'?'block':'none';
+}
+
+async function createSchedule(){
+  var empId=document.getElementById('sched-emp').value;
+  var freq=document.getElementById('sched-freq').value;
+  var dow=document.getElementById('sched-dow')?document.getElementById('sched-dow').value:null;
+  var dom=document.getElementById('sched-dom')?document.getElementById('sched-dom').value:null;
+  var email=document.getElementById('sched-email').value.trim();
+  var hour=document.getElementById('sched-hour')?parseInt(document.getElementById('sched-hour').value):8;
+  try{
+    var res=await fetch('/api/admin/report-schedules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({employee_id:empId||null,frequency:freq,day_of_week:dow||null,day_of_month:dom||null,email:email||null,send_hour:hour})});
+    var data=await res.json();
+    if(data.success){ toast('✓ Schedule created','#10b981'); loadReportSchedules(); }
+    else { toast('Error: '+(data.error||'Failed'),'#ef4444'); }
+  }catch(e){ toast('Error: '+e.message,'#ef4444'); }
+}
+
+async function loadReportSchedules(){
+  var list=document.getElementById('scheduleList');
+  if(!list) return;
+  try{
+    var schedules=await fetch('/api/admin/report-schedules').then(function(r){return r.json();});
+    if(!schedules.length){ list.innerHTML='<div style="color:var(--text3);font-size:12px">No schedules yet.</div>'; return; }
+    var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    list.innerHTML=schedules.map(function(s){
+      var freqLabel=s.frequency==='daily'?'Daily':s.frequency==='weekly'?'Weekly ('+days[s.day_of_week||1]+')':'Monthly (day '+s.day_of_month+')';
+      var nextRun=s.next_run?new Date(s.next_run).toLocaleString():'—';
+      var lastRun=s.last_run?new Date(s.last_run).toLocaleString():'Never';
+      return '<div style="padding:12px 14px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'+
+        '<div>'+
+          '<div style="font-size:12px;font-weight:600;color:var(--text)">'+s.employee_name+' &nbsp;·&nbsp; <span style="color:var(--accent)">'+freqLabel+'</span></div>'+
+          '<div style="font-size:10px;color:var(--text3);margin-top:3px">Next: '+nextRun+' &nbsp;·&nbsp; Last: '+lastRun+(s.email?' &nbsp;·&nbsp; Email: '+s.email:'')+'</div>'+
+        '</div>'+
+        '<div style="display:flex;align-items:center;gap:8px">'+
+          '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;color:var(--text2)">'+
+            '<input type="checkbox" '+(s.active?'checked':'')+' onchange="toggleSchedule('+s.id+',this.checked)" style="accent-color:var(--accent)"> Active'+
+          '</label>'+
+          '<button class="btn" onclick="deleteSchedule('+s.id+')" style="font-size:10px;padding:3px 10px;border-color:rgba(239,68,68,0.3);color:#ef4444">🗑</button>'+
+        '</div>'+
+      '</div>';
+    }).join('');
+  }catch(e){ list.innerHTML='<div style="color:#ef4444;font-size:12px">Error loading schedules</div>'; }
+}
+
+async function toggleSchedule(id, active){
+  try{
+    await fetch('/api/admin/report-schedules/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({active:active})});
+    toast(active?'✓ Schedule activated':'Schedule paused','#10b981');
+  }catch(e){ toast('Error','#ef4444'); }
+}
+
+async function deleteSchedule(id){
+  if(!confirm('Delete this schedule?')) return;
+  try{
+    await fetch('/api/admin/report-schedules/'+id,{method:'DELETE'});
+    toast('✓ Schedule deleted','#f59e0b');
+    loadReportSchedules();
+  }catch(e){ toast('Error','#ef4444'); }
+}
+// ---- END SCHEDULED REPORTS JS ----
+
+
+// ---- SYSTEM ACTIVITY TIMELINE ----
+var sysCurrentView = 'log';
+
+function setSysView(view){
+  sysCurrentView = view;
+  var logBtn = document.getElementById('sysLogViewBtn');
+  var tlBtn = document.getElementById('sysTimelineViewBtn');
+  var logDiv = document.getElementById('sysActivityList');
+  var tlDiv = document.getElementById('sysTimelineList');
+  if(view === 'log'){
+    if(logBtn){logBtn.style.background='var(--accent)';logBtn.style.color='#0a0c10';}
+    if(tlBtn){tlBtn.style.background='transparent';tlBtn.style.color='var(--text3)';}
+    if(logDiv) logDiv.style.display='block';
+    if(tlDiv) tlDiv.style.display='none';
+    loadSysActivity();
+  } else {
+    if(logBtn){logBtn.style.background='transparent';logBtn.style.color='var(--text3)';}
+    if(tlBtn){tlBtn.style.background='var(--accent)';tlBtn.style.color='#0a0c10';}
+    if(logDiv) logDiv.style.display='none';
+    if(tlDiv) tlDiv.style.display='block';
+    loadSysTimeline();
+  }
+}
+
+async function loadSysTimeline(){
+  var tlDiv = document.getElementById('sysTimelineList');
+  if(!tlDiv) return;
+  tlDiv.innerHTML = '<div class="empty">Loading...</div>';
+  var emp = document.getElementById('sys-emp') ? document.getElementById('sys-emp').value : '';
+  var url = '/api/dashboard/system-timeline?';
+  if(emp) url += 'employee_id='+emp+'&';
+  if(sysSelectedDate) url += 'date='+sysSelectedDate;
+  try{
+    var data = await fetch(url).then(function(r){return r.json();});
+    if(!data.length){tlDiv.innerHTML='<div class="empty">No system events found for selected date/employee.</div>';return;}
+
+    var EVENT_MAP = {
+      startup:  { icon:'🟢', label:'System ON',  color:'#10b981' },
+      shutdown: { icon:'🔴', label:'Shutdown',    color:'#ef4444' },
+      wakeup:   { icon:'☀️',  label:'Wake Up',    color:'#f59e0b' },
+      sleep:    { icon:'💤', label:'Sleep',        color:'#6366f1' },
+      idle_lock:{ icon:'🔒', label:'Idle Lock',   color:'#64748b' },
+    };
+
+    function fmtDur(ms){
+      if(ms<0) return '';
+      var m=Math.round(ms/60000);
+      var h=Math.floor(m/60); m=m%60;
+      return h>0?h+'h '+m+'m':m+'m';
+    }
+
+    tlDiv.innerHTML = data.map(function(d){
+      var shiftLabel = d.roster_name ?
+        '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(0,229,255,0.1);color:#00e5ff;margin-left:8px">⏰ '+d.roster_name+'</span>' : '';
+
+      // Format times
+      var totalMins=Math.round(d.total_active_ms/60000);
+      var totalH=Math.floor(totalMins/60),totalM=totalMins%60;
+      var totalStr=(totalH>0?totalH+'h ':'')+totalM+'m';
+      var prodMins=Math.round((d.productive_ms||0)/60000);
+      var prodH=Math.floor(prodMins/60),prodM=prodMins%60;
+      var prodStr=(prodH>0?prodH+'h ':'')+prodM+'m';
+
+      // Check if session was closed
+      var lastEv = d.events[d.events.length-1];
+      var sessionClosed = lastEv && lastEv.type==='shutdown';
+
+      var evHtml = d.events.map(function(ev, i){
+        var cfg = EVENT_MAP[ev.type] || {icon:'❓', label:ev.type, color:'#64748b'};
+        var dt = new Date(ev.time);
+        var timeStr = dt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+        var isLast = i === d.events.length-1;
+
+        // Duration between this and next event
+        var durStr = '';
+        if(!isLast){
+          var nextDt = new Date(d.events[i+1].time);
+          var dur = nextDt - dt;
+          if(dur > 60000){
+            var isActive = (ev.type==='startup'||ev.type==='wakeup');
+            var durColor = isActive ? '#10b981' : '#64748b';
+            durStr = '<span style="font-size:10px;color:'+durColor+';margin-left:8px;background:'+durColor+'18;padding:1px 6px;border-radius:10px">'+(isActive?'active ':'')+fmtDur(dur)+'</span>';
+          }
+        }
+
+        return '<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:2px">'+
+          '<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:32px">'+
+            '<div style="width:30px;height:30px;border-radius:50%;background:'+cfg.color+'18;border:2px solid '+cfg.color+';display:flex;align-items:center;justify-content:center;font-size:14px">'+cfg.icon+'</div>'+
+            (!isLast?'<div style="width:2px;background:var(--border);flex:1;min-height:18px;margin-top:2px"></div>':'')+
+          '</div>'+
+          '<div style="padding-top:5px;padding-bottom:'+(isLast?'0':'10px')+';flex:1">'+
+            '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+              '<span style="font-size:13px;font-weight:700;color:'+cfg.color+'">'+cfg.label+'</span>'+
+              '<span style="font-size:11px;font-family:monospace;color:var(--text2)">'+timeStr+'</span>'+
+              durStr+
+            '</div>'+
+          '</div>'+
+        '</div>';
+      }).join('');
+
+      // Add "session not closed" warning if last event is not shutdown
+      if(!sessionClosed && d.events.length){
+        evHtml += '<div style="display:flex;align-items:center;gap:8px;margin-top:8px;padding:8px 12px;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);border-radius:8px">'+
+          '<span style="font-size:14px">⚠️</span>'+
+          '<span style="font-size:11px;color:#f59e0b">Session not closed — no shutdown recorded</span>'+
+        '</div>';
+      }
+
+      return '<div style="border:1px solid var(--border);border-radius:10px;margin-bottom:16px;overflow:hidden">'+
+        '<div style="padding:12px 18px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'+
+          '<div style="display:flex;align-items:center;gap:8px">'+
+            avatarHTML(d.employee_name)+
+            '<span style="font-weight:700;color:var(--text);font-size:13px">'+d.employee_name+'</span>'+
+            shiftLabel+
+          '</div>'+
+          '<div style="display:flex;gap:12px;font-size:11px;color:var(--text3);flex-wrap:wrap;align-items:center">'+
+            (d.shift_start?'<span style="color:var(--text3)">📋 '+d.shift_start.slice(0,5)+'–'+d.shift_end.slice(0,5)+'</span>':'')+
+            (d.shift_start?'<span>🎯 Productive in Shift: <strong style="color:var(--accent)">'+prodStr+'</strong></span>':'<span>⏱ Active: <strong style="color:#10b981">'+totalStr+'</strong></span>')+
+          '</div>'+
+        '</div>'+
+        '<div style="padding:16px 20px">'+evHtml+'</div>'+
+      '</div>';
+    }).join('');
+  }catch(e){tlDiv.innerHTML='<div class="empty">Error loading timeline: '+e.message+'</div>';console.error(e);}
+}
+// ---- END SYSTEM ACTIVITY TIMELINE ----
 
 loadStats();
 loadEmployees();
