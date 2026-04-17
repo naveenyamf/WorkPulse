@@ -10,3 +10,4 @@ dist/
 *.wpbackup
 wp-extension/
 browser-extension/
+reports/
