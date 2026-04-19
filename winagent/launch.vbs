@@ -1,2 +1,9 @@
 Set oShell = CreateObject("WScript.Shell")
-oShell.Run "cmd /c """ & "C:\WorkPulse\WorkPulse-Agent.exe" & """ >> C:\WorkPulse\agent.log 2>nul", 0, False
+Set oFSO = CreateObject("Scripting.FileSystemObject")
+strDir = "C:\WorkPulse"
+strExe = strDir & "\WorkPulse-Agent.exe"
+strLog = strDir & "\agent.log"
+If oFSO.FileExists(strExe) Then
+    If oFSO.FileExists(strLog) Then oFSO.DeleteFile strLog
+    oShell.Run "cmd /c cd /d " & strDir & " && WorkPulse-Agent.exe >> agent.log", 0, False
+End If

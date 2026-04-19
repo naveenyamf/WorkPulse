@@ -7,18 +7,23 @@
 ## Features
 
 - **Live Dashboard** — Real-time employee status, active app, idle detection
-- **Screenshots** — Automatic periodic screenshots with flagging system
-- **Web Activity** — Tracks URLs visited per browser with productivity scoring
-- **App Usage** — Time spent per application with donut chart visualization
-- **System Events** — Startup, shutdown, lock, unlock, sleep, wakeup events
+- **Screenshots** — Automatic periodic screenshots with flagging system; skipped when screen is locked
+- **Web Activity** — Tracks URLs visited per browser with on/off shift breakdown and productivity scoring
+- **App Usage** — Time spent per application within shift hours, with donut chart visualization
+- **System Activity** — Session-based view: Startup → Shutdown, Wake → Sleep, Lock → Unlock with durations
+- **Win+L Detection** — Detects screen lock via LockApp.exe process (no admin rights required)
 - **Duty Roster** — Shift assignment with in-shift vs off-shift time tracking
-- **Reports** — Export Excel reports (Summary, Web Activity, App Usage, Daily Breakdown)
+- **Temporary Shift Override** — Set a one-day temp shift for any employee; reflected instantly in all calculations
+- **Reports** — Export Excel reports: Employee Summary, Web Activity, App Usage, System Activity — all shift-aware
+- **Scheduled Reports** — Auto-generate and email reports daily/weekly/monthly
+- **Offline Queue** — Agent stores failed heartbeats locally and retries when internet reconnects
+- **Machine Binding** — Each employee email locked to one PC; uninstaller releases the binding
 - **Backup & Restore** — Full PostgreSQL DB backup + screenshot archive backup/restore
 - **Multi-User** — Admin and Monitor (view-only) roles with employee assignment
 - **MFA Support** — Email OTP login verification
 - **Audit Log** — Full admin action logging
 - **Dark / Light Mode** — System-aware theme with manual override
-- **Timezone Settings** — Configurable timezone for all date displays
+- **Timezone Settings** — Configurable timezone for all date displays and reports
 
 ---
 
@@ -95,6 +100,29 @@ GRANT ALL ON SCHEMA public TO workpulse_user;
 \q
 ```
 
+> ⚠️ **Important:** After the app creates its tables (Step 11), you must transfer table ownership to `workpulse_user` so the app can run migrations. Run this once after first startup:
+
+```bash
+sudo -u postgres psql -d workpulse -c "
+ALTER TABLE employees OWNER TO workpulse_user;
+ALTER TABLE admins OWNER TO workpulse_user;
+ALTER TABLE duty_rosters OWNER TO workpulse_user;
+ALTER TABLE web_activity OWNER TO workpulse_user;
+ALTER TABLE app_usage OWNER TO workpulse_user;
+ALTER TABLE system_events OWNER TO workpulse_user;
+ALTER TABLE screenshots OWNER TO workpulse_user;
+ALTER TABLE heartbeats OWNER TO workpulse_user;
+ALTER TABLE alerts OWNER TO workpulse_user;
+ALTER TABLE report_schedules OWNER TO workpulse_user;
+ALTER TABLE temp_shift_overrides OWNER TO workpulse_user;
+"
+```
+
+Then restart the app:
+```bash
+pm2 restart workpulse --update-env
+```
+
 ---
 
 ### Step 6 — Install Nginx
@@ -117,7 +145,7 @@ sudo npm install -g pm2
 
 ### Step 8 — Clone the repository
 
-> Make sure you are logged in as `workpulse` user (`sudo su - workpulse`) before running:
+> Make sure you are logged in as `workpulse` user before running:
 
 ```bash
 cd ~
@@ -148,9 +176,9 @@ DB_PASS=YourStrongPassword
 NODE_ENV=development
 ```
 
-> ⚠️ Keep `NODE_ENV=development` until you set up HTTPS/SSL. With `production`, session cookies require HTTPS and you will be signed out immediately on plain HTTP. Switch to `production` only after SSL is configured.
+> ⚠️ Keep `NODE_ENV=development` until you set up HTTPS/SSL.
 
-> 💡 For `SESSION_SECRET`, use any long random string — e.g. open a new terminal and run: `openssl rand -hex 48`
+> 💡 Generate a strong session secret: `openssl rand -hex 48`
 
 ---
 
@@ -220,7 +248,7 @@ The wizard will walk you through:
 3. Create your root admin account (name, email, password)
 4. All tables and default data are created automatically
 
-After the wizard completes, restart the server to load the new `.env`:
+After the wizard completes, restart the server:
 
 ```bash
 pm2 restart workpulse --update-env
@@ -228,42 +256,28 @@ pm2 restart workpulse --update-env
 
 Then open `http://your-server-ip` and sign in with the admin account you just created.
 
+> ⚠️ Now run the table ownership fix from Step 5 if you haven't already.
+
 ---
 
 ### Step 13 — Build the Windows Agent
 
-The agent installer must be compiled on the server before employees can download it.
-
 ```bash
-# Install required tools
 sudo apt install -y zip
 
-# Compile the agent executable
 cd ~/workpulse-app/winagent
 npm install
 npx pkg . --targets node18-win-x64 --output ~/workpulse-app/winagent/dist/WorkPulse-Agent.exe
 
-# Copy EXE to home directory
 cp ~/workpulse-app/winagent/dist/WorkPulse-Agent.exe ~/WorkPulse-Agent.exe
 
-# Package into ZIP using full paths (prevents "file not found" errors)
-zip -j ~/WorkPulse-Agent-Windows.zip \
-    ~/WorkPulse-Agent.exe \
-    ~/workpulse-app/winagent/installer.bat \
-    ~/workpulse-app/winagent/updater.bat \
-    ~/workpulse-app/winagent/uninstall.bat
+cd ~/workpulse-app/winagent/dist
+zip WorkPulse-Agent-Windows.zip WorkPulse-Agent.exe installer.bat updater.bat uninstaller.bat
+cp WorkPulse-Agent-Windows.zip ~/WorkPulse-Agent-Windows.zip
 
 echo "✓ Agent built successfully"
 ls -lh ~/WorkPulse-Agent-Windows.zip
 ```
-
-> ✅ If you created the `workpulse` user in Step 2 and ran all commands as that user, no path changes are needed — the server will find the ZIP automatically at `/home/workpulse/`.
-
-> ⚠️ If you are running as a user other than `workpulse` (e.g. `novel`, `ubuntu`), update the agent path in `server.js`:
-> ```bash
-> sed -i "s|/home/workpulse/|${HOME}/|g" ~/workpulse-app/server.js
-> pm2 restart workpulse --update-env
-> ```
 
 ---
 
@@ -271,37 +285,45 @@ ls -lh ~/WorkPulse-Agent-Windows.zip
 
 ### Step 1 — Add the employee in dashboard
 
-1. Login to dashboard at `http://your-server-ip`
-2. Go to **Admin → Add Agents to Monitor**
-3. Fill in employee name and email → Click **Add Employee**
+1. Login to the dashboard
+2. Go to **Admin → Add Employee for Monitoring**
+3. Fill in name, email, department and duty roster → Click **Add Employee**
+4. Copy the agent token shown
 
 ### Step 2 — Download the agent
 
 From the dashboard sidebar, click **⤓ Download Agent** — downloads `WorkPulse-Agent-Windows.zip`.
 
-### Step 3 — Run on employee PC
+### Step 3 — Install on employee PC
 
 1. Extract the ZIP on the employee's Windows PC
 2. **Right-click** `installer.bat` → **Run as Administrator**
-3. Enter the WorkPulse server URL when prompted (e.g. `http://your-server-ip`)
+3. Enter the WorkPulse server URL (e.g. `https://monitoring.company.com`)
 4. Enter the employee's email address
-5. The installer automatically:
-   - Fetches the agent token from the server
-   - Installs to `C:\WorkPulse\`
-   - Adds to Windows startup (runs silently on every login)
-   - Starts the agent immediately
+5. The installer will:
+   - Fetch the agent token from the server
+   - Check if the email is already registered on another PC (blocked if so)
+   - Install to `C:\WorkPulse\`
+   - Unblock the EXE and add Windows Defender exclusion
+   - Register with Task Scheduler for silent startup
+   - Start the agent immediately (no visible window)
 
 ### Step 4 — Verify in dashboard
 
-Within 1–2 minutes the employee appears as **Active** in the dashboard.
+Within 1–2 minutes the employee appears as **Active** in the Employees list with their agent version.
 
 ### Updating the agent
 
-Run `updater.bat` as Administrator on the employee PC.
+Run `updater.bat` as Administrator on the employee PC. It reads the server URL from config automatically and downloads the latest agent.
 
 ### Uninstalling the agent
 
-Run `uninstall.bat` as Administrator.
+Run `uninstaller.bat` as Administrator. Type **YES** to confirm. This:
+- Stops the agent
+- Removes Task Scheduler entry and startup registry keys
+- Removes Windows Defender exclusion
+- **Releases the machine binding** on the server (employee can be reinstalled on a new PC)
+- Deletes all files from `C:\WorkPulse\`
 
 ---
 
@@ -309,36 +331,61 @@ Run `uninstall.bat` as Administrator.
 
 > Without this extension, only page titles are captured instead of real URLs.
 
-### Install on Chrome
+### Install on Chrome / Edge
 
 [URL in Title — Chrome Web Store](https://chromewebstore.google.com/detail/url-in-title/ignpacbgnbnkaiooknalneoeladjnfgb)
 
-### Install on Edge
-
-Visit the same link in Microsoft Edge. Click **Allow extensions from other stores** if prompted.
-
 ### Configure the extension
 
-1. Click the extension icon in the browser toolbar
-2. Go to **Options**
-3. Set the title format to: `{url} | {title}`
-4. Click **Save**
+1. Click the extension icon → **Options**
+2. Set the title format to: `{url} | {title}`
+3. Click **Save**
+
+---
+
+## Key Features Guide
+
+### Duty Roster & Shift Tracking
+
+Go to **Admin → Duty Roster** to create shifts. Assign a roster to each employee when adding them. All web, app and system activity is split into **On Shift** and **Off Shift** automatically.
+
+### Temporary Shift Override
+
+Open any employee profile → click **⚡ Set Temp Shift for [date]** → select a roster. This overrides the shift for that date only. An orange dot appears on the calendar for dates with temp overrides. All calculations update instantly.
+
+### Machine Binding
+
+Each employee email is bound to one PC on first install. If an employee changes PC:
+1. Run `uninstaller.bat` on the old PC (releases binding automatically)
+2. Run `installer.bat` on the new PC
+
+If the old PC is unavailable, an admin can reset the binding via the employee Settings panel.
+
+### Offline Queue
+
+If the employee's PC loses internet, the agent queues all heartbeats, events and screenshots locally in `C:\WorkPulse\`. When connection is restored, everything syncs automatically.
+
+### Reports
+
+Go to **Reports** to generate or schedule Excel exports. Each report contains 4 sheets:
+- **Employee Summary** — Roster, shift hours, first/last seen, web and app on/off shift totals
+- **Web Activity** — Per-URL time spent with on/off shift and productivity labels
+- **App Usage** — Per-app time spent within shift hours
+- **System Activity** — Session-based (Start → End event, duration, in-shift indicator)
+
+Temp shift overrides are reflected in all report sheets with amber highlighting.
 
 ---
 
 ## Dashboard Configuration
 
-### Timezone
-Go to **Admin → System Settings** → select timezone → **Save**.
-
-### Email / MFA
-Go to **Admin → Email Configuration** to set up SMTP for forgot password and MFA login.
-
-### Screenshot Interval
-Go to **Employees** → **⚙ Settings** on any employee.
-
-### Duty Roster
-Go to **Admin → Duty Roster** to create shifts and assign employees.
+| Setting | Location |
+|---------|----------|
+| Timezone | Admin → System Settings |
+| Email / SMTP | Admin → Email Configuration |
+| Screenshot interval | Employees → ⚙ Settings |
+| Duty Roster | Admin → Duty Roster |
+| Temp shift override | Employee Profile → Set Temp Shift |
 
 ---
 
@@ -362,7 +409,7 @@ Go to **Admin → Backup & Restore**:
 | Backend | Node.js + Express |
 | Database | PostgreSQL |
 | Frontend | Vanilla JS + CSS |
-| Agent | Node.js + PowerShell + BAT |
+| Agent | Node.js + PowerShell + BAT (v2.6.5) |
 | Web Server | Nginx |
 | Process Manager | PM2 |
 | Auth | express-session + bcryptjs |
@@ -377,11 +424,13 @@ Go to **Admin → Backup & Restore**:
 workpulse-app/
 ├── public/            # Dashboard HTML, login page, installer page
 ├── winagent/          # Windows agent source
-│   ├── agent.js       # Main agent script
-│   ├── installer.bat  # Agent installer for employee PCs
-│   ├── uninstall.bat  # Agent uninstaller
-│   ├── updater.bat    # Agent updater
-│   └── launch.vbs     # Silent launcher
+│   ├── agent.js       # Main agent script (v2.6.5)
+│   ├── dist/          # Compiled agent + installer files
+│   │   ├── WorkPulse-Agent.exe
+│   │   ├── installer.bat
+│   │   ├── updater.bat
+│   │   └── uninstaller.bat
+│   └── launch.vbs     # Silent launcher with log redirect
 ├── screenshots/       # Screenshot storage (gitignored)
 ├── backups/           # Backups (gitignored)
 ├── db.js              # PostgreSQL connection pool
@@ -395,45 +444,33 @@ workpulse-app/
 ## Troubleshooting
 
 ### Signed out immediately after login
-
-**Cause:** `NODE_ENV=production` requires HTTPS for session cookies. On plain HTTP it drops the session.
-
-**Fix:**
-```bash
-sed -i 's/NODE_ENV=production/NODE_ENV=development/' ~/workpulse-app/.env
-pm2 restart workpulse --update-env
-```
-
-Switch back to `production` only after HTTPS/SSL is configured.
-
----
+**Cause:** `NODE_ENV=production` requires HTTPS. **Fix:** Set `NODE_ENV=development` in `.env` until SSL is configured.
 
 ### Database connection error: client password must be a string
+**Fix:** Ensure both `DB_PASSWORD` and `DB_PASS` are in `.env`.
 
-**Cause:** `db.js` reads `DB_PASS` but `.env` only has `DB_PASSWORD`.
-
-**Fix:** Ensure both are in `.env`:
-```bash
-echo "DB_PASS=YourStrongPassword" >> ~/workpulse-app/.env
-pm2 restart workpulse --update-env
-```
-
----
+### DutyRoster Init error: must be owner of table employees
+**Fix:** Run the table ownership commands from Step 5.
 
 ### Download Agent shows "File not found"
-
-**Cause:** Agent ZIP not built yet. Follow Step 12 above to build it.
-
-Make sure you built the agent as the `workpulse` user (Step 13). If you used a different user, fix the path:
+**Fix:** Build the agent (Step 13). If using a non-`workpulse` user:
 ```bash
 sed -i "s|/home/workpulse/|${HOME}/|g" ~/workpulse-app/server.js
 pm2 restart workpulse --update-env
 ```
 
----
+### Agent shows "This app can't run on your PC"
+**Fix:** Run as Administrator on the employee PC:
+```cmd
+powershell -Command "Unblock-File -Path 'C:\WorkPulse\WorkPulse-Agent.exe'"
+powershell -Command "Add-MpPreference -ExclusionPath 'C:\WorkPulse\'"
+```
+New installs via `installer.bat` handle this automatically.
+
+### Employee email blocked: "already monitored on another PC"
+**Fix:** Run `uninstaller.bat` on the old PC first. If unavailable, reset via employee Settings in the dashboard.
 
 ### Bad Gateway (502)
-
 ```bash
 pm2 logs workpulse --lines 30
 pm2 restart workpulse --update-env
@@ -441,33 +478,26 @@ pm2 restart workpulse --update-env
 
 ---
 
-### Cannot connect to database
-
-```bash
-sudo systemctl status postgresql
-sudo -u postgres psql -c "\l"
-```
-
----
-
-### PM2 restarts keep signing everyone out
-
-Sessions are in memory — every restart signs everyone out. This is expected during setup. Once the server is stable it won't happen.
-
-```bash
-pm2 show workpulse | grep restart
-```
-
----
-
 ## Changelog
 
+### v2.7.0 (April 2026)
+- **Temporary Shift Override** — Set a one-day shift override per employee; all calculations update instantly; orange calendar dot indicator
+- **Machine Binding** — Employee email locked to one PC on install; uninstaller releases binding automatically
+- **Session-based System Activity** — Events grouped into Start→End sessions with duration; shown on dashboard and in reports
+- **Win+L Lock Detection** — Detects screen lock via LockApp.exe process polling (no admin rights required); skips screenshots and URL tracking while locked
+- **Offline Queue** — Failed heartbeats/events queued locally; pending screenshots retried on reconnect
+- **Redesigned Reports** — 4-sheet Excel export: Employee Summary, Web Activity, App Usage, System Activity; all shift-aware with temp override support; amber highlighting for temp shift rows
+- **Scheduled Reports** — Configurable report range (Yesterday/Last 7 Days/Last 30 Days/Last 3 Months/Last 6 Months/1 Year)
+- **Agent v2.6.5** — DPI-aware screenshots (fixes laptop scaling), 24hr event backfill on startup, 6-hour periodic backfill, silent startup via Task Scheduler
+- **Add Employee form** — Mandatory fields: name, email, department, duty roster; email format validation; duplicate email/machine checks
+- **Web/App Activity default to today** — All monitoring pages default to current date on load
+- **All-employees view** — When a date is selected, all employees shown on one page (no pagination)
+
 ### v2.2 (April 2026)
-- System Settings page (timezone, company name, date format, theme)
+- System Settings page (timezone, theme)
 - All calendars timezone-aware
 - URL tracking via URL in Title extension
 - Admin users separated from Monitor users
-- GitHub cleanup
 
 ### v2.1 (April 2026)
 - Screenshot backup and restore

@@ -116,10 +116,20 @@ if exist "%~dp0updater.bat"   copy /Y "%~dp0updater.bat"   "C:\WorkPulse\updater
 if exist "%~dp0uninstall.bat" copy /Y "%~dp0uninstall.bat" "C:\WorkPulse\uninstall.bat" >nul
 
 reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\Run" /v "WorkPulse" /t REG_SZ /d "wscript.exe \"C:\WorkPulse\launch.vbs\"" /f >nul
+echo  Trusting agent executable...
+powershell -NoProfile -Command "Unblock-File -Path 'C:\WorkPulse\WorkPulse-Agent.exe'" >nul 2>&1
+powershell -NoProfile -Command "Add-MpPreference -ExclusionPath 'C:\WorkPulse\'" >nul 2>&1
 
 echo  Starting agent...
 start "" wscript.exe "C:\WorkPulse\launch.vbs"
-
+timeout /t 3 /nobreak >nul
+tasklist /FI "IMAGENAME eq WorkPulse-Agent.exe" 2>nul | find /I "WorkPulse-Agent.exe" >nul
+if %errorlevel% neq 0 (
+    echo  VBS blocked, switching to Task Scheduler...
+    schtasks /create /tn "WorkPulseAgent" /tr "wscript.exe //B \"C:\WorkPulse\launch.vbs\"" /sc onlogon /rl highest /f >nul 2>&1
+    schtasks /run /tn "WorkPulseAgent" >nul 2>&1
+    echo  Task Scheduler started
+)
 echo.
 echo  ================================================
 echo   Installation Complete!

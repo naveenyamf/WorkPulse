@@ -223,7 +223,7 @@ tr.emp-row:hover{background:var(--card-hover)}
 
     <div class="nav-section">Admin</div>
     <div class="nav-item admin-only" onclick="showPage('addemployee',this)" id="nav-addemployee">
-      <span class="nav-icon">＋</span><span>Add Agents to Monitor</span>
+      <span class="nav-icon">＋</span><span>Add Employee for Monitoring</span>
     </div>
     <div class="nav-item admin-only" onclick="showPage('users',this)" id="nav-users">
       <span class="nav-icon">👤</span><span>Admin / Monitor Users</span>
@@ -303,30 +303,43 @@ tr.emp-row:hover{background:var(--card-hover)}
 
     <!-- ADD EMPLOYEE PAGE -->
     <div class="page" id="page-addemployee">
-      <div class="panel" style="max-width:500px">
-        <div class="panel-header"><div class="panel-title">Add New Employee</div></div>
-        <div style="padding:20px 22px">
+      <div class="panel" style="max-width:520px">
+        <div class="panel-header"><div class="panel-title">➕ Add New Employee</div></div>
+        <div style="padding:22px 24px">
+
           <div style="margin-bottom:16px">
-            <label style="display:block;font-size:11px;color:#64748b;margin-bottom:6px;letter-spacing:1px;text-transform:uppercase">Full Name</label>
-            <input type="text" id="emp-name" placeholder="John Smith" style="width:100%;background:#181c22;border:1px solid var(--border);color:#e2e8f0;font-size:13px;padding:10px 12px;border-radius:4px;outline:none">
+            <label style="display:block;font-size:10px;font-weight:700;color:var(--text3);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase">Full Name <span style="color:#ef4444">*</span></label>
+            <input type="text" id="emp-name" placeholder="John Smith" class="filter-select" style="width:100%;padding:10px 12px;font-size:13px">
           </div>
+
           <div style="margin-bottom:16px">
-            <label style="display:block;font-size:11px;color:#64748b;margin-bottom:6px;letter-spacing:1px;text-transform:uppercase">Email Address</label>
-            <input type="email" id="emp-email" placeholder="john@company.com" style="width:100%;background:#181c22;border:1px solid var(--border);color:#e2e8f0;font-size:13px;padding:10px 12px;border-radius:4px;outline:none">
+            <label style="display:block;font-size:10px;font-weight:700;color:var(--text3);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase">Email Address <span style="color:#ef4444">*</span></label>
+            <input type="email" id="emp-email" placeholder="john@company.com" class="filter-select" style="width:100%;padding:10px 12px;font-size:13px">
+            <div id="emp-email-err" style="display:none;font-size:11px;color:#ef4444;margin-top:4px">⚠ Please enter a valid email address (e.g. name@domain.com)</div>
           </div>
+
           <div style="margin-bottom:16px">
-            <label style="display:block;font-size:11px;color:#64748b;margin-bottom:6px;letter-spacing:1px;text-transform:uppercase">Department</label>
+            <label style="display:block;font-size:10px;font-weight:700;color:var(--text3);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase">Department <span style="color:#ef4444">*</span></label>
             <select id="emp-dept" class="filter-select" style="width:100%;padding:10px 12px">
-              <option value="">Select Department</option>
+              <option value="">— Select Department —</option>
             </select>
           </div>
-          <div id="newTokenBox" style="display:none;margin-bottom:16px">
-            <div style="color:#10b981;font-size:12px;margin-bottom:8px">✓ Employee added! Copy this agent token:</div>
-            <div style="background:#181c22;border:1px solid var(--border);border-radius:4px;padding:10px 14px;font-size:11px;color:#00e5ff;word-break:break-all;font-family:monospace" id="newToken"></div>
-            <div style="font-size:11px;color:#64748b;margin-top:8px">Use this token when installing the agent on their PC.</div>
+
+          <div style="margin-bottom:20px">
+            <label style="display:block;font-size:10px;font-weight:700;color:var(--text3);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase">Duty Roster <span style="color:#ef4444">*</span></label>
+            <select id="emp-roster" class="filter-select" style="width:100%;padding:10px 12px">
+              <option value="">— Select Duty Roster —</option>
+            </select>
           </div>
+
+          <div id="newTokenBox" style="display:none;margin-bottom:16px;padding:14px 16px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.25);border-radius:8px">
+            <div style="color:#10b981;font-size:12px;font-weight:600;margin-bottom:8px">✓ Employee added! Copy this agent token:</div>
+            <div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:11px;color:#00e5ff;word-break:break-all;font-family:monospace" id="newToken"></div>
+            <div style="font-size:11px;color:var(--text3);margin-top:8px">Use this token when installing the agent on their PC.</div>
+          </div>
+
           <div style="display:flex;gap:10px">
-            <button class="btn btn-accent" onclick="addEmployee()">Add Employee</button>
+            <button class="btn btn-accent" onclick="addEmployee()" style="padding:10px 24px">Add Employee</button>
             <button class="btn" onclick="showPage('employees',null)">Cancel</button>
           </div>
         </div>
@@ -381,8 +394,6 @@ tr.emp-row:hover{background:var(--card-hover)}
         <select id="flag-emp2" class="filter-select" onchange="loadFlaggedPage(1)">
           <option value="">All Employees</option>
         </select>
-        <input type="date" id="flag-date2" class="filter-select" onchange="loadFlaggedPage(1)">
-        <button class="btn" onclick="document.getElementById('flag-emp2').value='';document.getElementById('flag-date2').value='';loadFlaggedPage(1)">Clear</button>
       </div>
     </div>
     <div id="flaggedGrid2" class="ss-grid" style="grid-template-columns:repeat(4,1fr)"></div>
@@ -524,21 +535,17 @@ tr.emp-row:hover{background:var(--card-hover)}
 <div class="page" id="page-sysactivity">
   <div class="panel">
     <div class="panel-header">
-      <div class="panel-title">⚡ System Activity Log</div>
+      <div class="panel-title">⚡ System Activity</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <div style="display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden">
-          <button id="sysLogViewBtn" onclick="setSysView('log')" style="padding:6px 14px;font-size:11px;font-weight:700;background:var(--accent);color:#0a0c10;border:none;cursor:pointer">📋 Log</button>
-          <button id="sysTimelineViewBtn" onclick="setSysView('timeline')" style="padding:6px 14px;font-size:11px;font-weight:700;background:transparent;color:var(--text3);border:none;cursor:pointer">⏱ Timeline</button>
-        </div>
         <select id="sys-emp" class="filter-select" onchange="onSysEmpChange()">
           <option value="">All Employees</option>
         </select>
         <div style="position:relative;display:inline-block">
-          <button class="btn" id="sysCalBtn" onclick="toggleSysCal(event)">📅 <span id="sysCalBtnLabel">All Dates</span></button>
+          <button class="btn" id="sysCalBtn" onclick="toggleSysCal(event)">📅 <span id="sysCalBtnLabel">Today</span></button>
           <div id="sysCalDropdown" style="display:none;position:fixed;right:20px;top:80px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px;z-index:200;width:290px;box-shadow:0 8px 32px rgba(0,0,0,0.7)">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
               <button class="btn" style="padding:4px 12px" onclick="changeSysMonth(-1);event.stopPropagation()">‹</button>
-              <span id="sysCalMonthLabel" style="font-size:13px;color:#fff;font-weight:700"></span>
+              <span id="sysCalMonthLabel" style="font-size:13px;color:var(--text);font-weight:700"></span>
               <button class="btn" style="padding:4px 12px" onclick="changeSysMonth(1);event.stopPropagation()">›</button>
             </div>
             <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;margin-bottom:4px">
@@ -551,11 +558,10 @@ tr.emp-row:hover{background:var(--card-hover)}
             <button class="btn" style="width:100%;margin-top:10px" onclick="clearSysFilters();event.stopPropagation()">Clear Filter</button>
           </div>
         </div>
+        <button class="btn" onclick="loadSysActivity()">↻ Refresh</button>
       </div>
     </div>
-    <div id="sysActivityList"></div>
-    <div id="sysTimelineList" style="display:none;padding:16px 22px"></div>
-    <div id="sysPaginationWrap"></div>
+    <div id="sysActivityList" style="padding:16px 20px"></div>
   </div>
 </div>
 
@@ -778,7 +784,6 @@ tr.emp-row:hover{background:var(--card-hover)}
         <button class="btn btn-accent" id="exportReportBtn" onclick="queueReport()" style="padding:9px 18px;white-space:nowrap">
           <span id="exportReportText">⤓ Queue Report</span>
         </button>
-        <button class="btn" onclick="showScheduleForm()" style="padding:9px 14px;white-space:nowrap">🗓 Schedule</button>
       </div>
 
       <!-- Quick Range Presets -->
@@ -793,58 +798,74 @@ tr.emp-row:hover{background:var(--card-hover)}
 
       <div id="reportStatus" style="display:none;margin-top:8px;padding:10px 14px;border-radius:8px;font-size:12px"></div>
 
-      <!-- Schedule Form (hidden by default) -->
-      <div id="scheduleForm" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin-top:14px">
-        <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:14px">🗓 Schedule Automatic Report</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:10px;align-items:flex-end">
-          <div>
-            <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Employee</label>
-            <select id="sched-emp" class="filter-select" style="width:100%;padding:9px 12px">
-              <option value="">All Employees</option>
-            </select>
-          </div>
-          <div>
-            <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Frequency</label>
-            <select id="sched-freq" class="filter-select" style="width:100%;padding:9px 12px" onchange="onSchedFreqChange()">
-              <option value="daily">Daily (8 AM)</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-            </select>
-          </div>
-          <div id="sched-dow-wrap" style="display:none">
-            <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Day</label>
-            <select id="sched-dow" class="filter-select" style="width:100%;padding:9px 12px">
-              <option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option>
-            </select>
-          </div>
-          <div id="sched-dom-wrap" style="display:none">
-            <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Day of Month</label>
-            <select id="sched-dom" class="filter-select" style="width:100%;padding:9px 12px">
-              <option value="1">1st</option><option value="2">2nd</option><option value="3">3rd</option><option value="4">4th</option><option value="5">5th</option><option value="7">7th</option><option value="10">10th</option><option value="15">15th</option><option value="20">20th</option><option value="25">25th</option><option value="28">28th</option>
-            </select>
-          </div>
-          <div>
-            <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Send Time</label>
-            <select id="sched-hour" class="filter-select" style="width:100%;padding:9px 12px">
-              <option value="6">6:00 AM</option><option value="7">7:00 AM</option><option value="8" selected>8:00 AM</option><option value="9">9:00 AM</option><option value="10">10:00 AM</option><option value="12">12:00 PM</option><option value="18">6:00 PM</option><option value="20">8:00 PM</option>
-            </select>
-          </div>
-          <div>
-            <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Email (optional)</label>
-            <input type="email" id="sched-email" class="filter-select" placeholder="Override email" style="width:100%;padding:9px 12px">
-          </div>
-          <button class="btn btn-accent" onclick="createSchedule()" style="padding:9px 16px;white-space:nowrap">+ Add</button>
-        </div>
-      </div>
     </div>
   </div>
 
   <!-- WHAT'S IN THE REPORT -->
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px">
     <div class="stat-card c1"><div class="stat-label">Sheets Included</div><div class="stat-val" style="font-size:28px">4</div><div class="stat-sub">per export</div></div>
-    <div class="stat-card c3"><div class="stat-label">Web Activity</div><div class="stat-val" style="font-size:28px">✓</div><div class="stat-sub">URL + browser + time</div></div>
-    <div class="stat-card c2"><div class="stat-label">App Usage</div><div class="stat-val" style="font-size:28px">✓</div><div class="stat-sub">app + duration</div></div>
-    <div class="stat-card c4"><div class="stat-label">System Events</div><div class="stat-val" style="font-size:28px">✓</div><div class="stat-sub">login/logout/lock</div></div>
+    <div class="stat-card c3"><div class="stat-label">Web Activity</div><div class="stat-val" style="font-size:28px">✓</div><div class="stat-sub">URL + On/Off Shift + Productivity</div></div>
+    <div class="stat-card c2"><div class="stat-label">App Usage</div><div class="stat-val" style="font-size:28px">✓</div><div class="stat-sub">App + On/Off Shift + Duration</div></div>
+    <div class="stat-card c4"><div class="stat-label">System Events</div><div class="stat-val" style="font-size:28px">✓</div><div class="stat-sub">Sessions + In-Shift + Duration</div></div>
+  </div>
+
+  <!-- SCHEDULE PANEL -->
+  <div class="panel" style="margin-bottom:18px">
+    <div class="panel-header">
+      <div class="panel-title">🗓 Schedule Automatic Report</div>
+    </div>
+    <div style="padding:20px 24px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr auto;gap:10px;align-items:flex-end;margin-bottom:16px">
+        <div>
+          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Employee</label>
+          <select id="sched-emp" class="filter-select" style="width:100%;padding:9px 12px">
+            <option value="">All Employees</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Frequency</label>
+          <select id="sched-freq" class="filter-select" style="width:100%;padding:9px 12px" onchange="onSchedFreqChange()">
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </select>
+        </div>
+        <div id="sched-dow-wrap" style="display:none">
+          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Day of Week</label>
+          <select id="sched-dow" class="filter-select" style="width:100%;padding:9px 12px">
+            <option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option>
+          </select>
+        </div>
+        <div id="sched-dom-wrap" style="display:none">
+          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Day of Month</label>
+          <select id="sched-dom" class="filter-select" style="width:100%;padding:9px 12px">
+            <option value="1">1st</option><option value="2">2nd</option><option value="3">3rd</option><option value="5">5th</option><option value="7">7th</option><option value="10">10th</option><option value="15">15th</option><option value="20">20th</option><option value="25">25th</option><option value="28">28th</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Send Time</label>
+          <select id="sched-hour" class="filter-select" style="width:100%;padding:9px 12px">
+            <option value="6">6:00 AM</option><option value="7">7:00 AM</option><option value="8" selected>8:00 AM</option><option value="9">9:00 AM</option><option value="10">10:00 AM</option><option value="12">12:00 PM</option><option value="18">6:00 PM</option><option value="20">8:00 PM</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Report Covers</label>
+          <select id="sched-range" class="filter-select" style="width:100%;padding:9px 12px">
+            <option value="yesterday">Yesterday</option>
+            <option value="7days">Last 7 Days</option>
+            <option value="30days">Last 30 Days</option>
+            <option value="3months">Last 3 Months</option>
+            <option value="6months">Last 6 Months</option>
+            <option value="1year">1 Year</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Email (optional)</label>
+          <input type="email" id="sched-email" class="filter-select" placeholder="Override email" style="width:100%;padding:9px 12px">
+        </div>
+        <button class="btn btn-accent" onclick="createSchedule()" style="padding:9px 16px;white-space:nowrap;align-self:flex-end">+ Add</button>
+      </div>
+    </div>
   </div>
 
   <!-- REPORT QUEUE + SCHEDULES side by side -->
@@ -1314,7 +1335,8 @@ function toggleNavGroup(groupId, parentEl, pageName){
 
 function filterWebProductivity(filter){
   webProductivityFilter = filter;
-  // Re-render with filter applied — loadWebActivity reads webProductivityFilter
+  webCurrentPage = 1;
+  webFilterSearchPage = 1; // track search start to avoid infinite loop
   loadWebActivity();
   // Highlight correct sub-nav
   document.querySelectorAll('#nav-webactivity,#nav-web-productive,#nav-web-neutral,#nav-web-nonprod').forEach(function(el){
@@ -1344,7 +1366,7 @@ function showPage(name,el){
     var p=document.getElementById('nav-webactivity-parent');
     if(g){g.style.display='block';if(a)a.style.transform='rotate(90deg)';if(p)p.classList.add('open');}
   }
-  var titles={dashboard:'Dashboard',employees:'Employees',addemployee:'Add Agents to Monitor',screenshots:'Screenshots',webactivity:'Web Activity',appusage:'App Usage',alerts:'Alerts',flagged:'Flagged Screenshots',deleted:'Deleted Users',users:'Admin / Monitor Users',roster:'Duty Roster',sysactivity:'System Activity',auditlog:'Audit Log',syssettings:'System Settings',departments:'Departments',backup:'Backup & Restore',reports:'Reports',emailconfig:'Email Configuration'};
+  var titles={dashboard:'Dashboard',employees:'Employees',addemployee:'Add Employee for Monitoring',screenshots:'Screenshots',webactivity:'Web Activity',appusage:'App Usage',alerts:'Alerts',flagged:'Flagged Screenshots',deleted:'Deleted Users',users:'Admin / Monitor Users',roster:'Duty Roster',sysactivity:'System Activity',auditlog:'Audit Log',syssettings:'System Settings',departments:'Departments',backup:'Backup & Restore',reports:'Reports',emailconfig:'Email Configuration'};
   document.getElementById('pageTitle').textContent=titles[name]||name;
   if(name==='dashboard'){loadStats();loadEmployees();}
   if(name==='employees'){loadEmployeesFull();}
@@ -1354,7 +1376,7 @@ function showPage(name,el){
   if(name==='alerts'){loadAlerts();}
   if(name==='deleted'){loadDeleted();}
   if(name==='users'){loadDashboardUsers();loadAdminUsers();}
-  if(name==='flagged'){populateDropdown('flag-emp2');loadFlaggedPage(1);}
+  if(name==='flagged'){populateDropdown('flag-emp2');flagCalYear=new Date().getFullYear();flagCalMonth=new Date().getMonth();loadFlagCalendarDates();loadFlaggedPage(1);}
   if(name==='addemployee'){document.getElementById('newTokenBox').style.display='none';loadDeptDropdown();}
   if(name==='roster'){loadRosters();loadRosterAssign();}
   if(name==='sysactivity'){populateDropdown('sys-emp');initSysCalendar();loadSysActivity();}
@@ -1362,13 +1384,26 @@ function showPage(name,el){
   if(name==='syssettings'){loadSysSettings();loadAllMfaSettings();loadSsServerFiles();}
   if(name==='departments'){loadDepartments();}
   if(name==='backup'){loadBackupHistory();loadSsServerFiles();}
-  if(name==='reports'){loadReportsPage();initReportCal();loadReportJobs();loadReportSchedules();populateDropdown('report-emp');}
+  if(name==='reports'){loadReportsPage();initReportCal();loadReportJobs();loadReportSchedules();populateDropdown('report-emp');populateDropdown('sched-emp');}
   if(name==='emailconfig'){loadEmailConfig();}
 }
 
 function refreshPage(){
   var active=document.querySelector('.page.active');
-  if(active) showPage(active.id.replace('page-',''),null);
+  if(!active) return;
+  var name=active.id.replace('page-','');
+  // Reload data without resetting filters
+  if(name==='dashboard'){loadStats();loadEmployees();}
+  else if(name==='screenshots'){loadScreenshots(1);}
+  else if(name==='webactivity'){loadWebActivity(1);}
+  else if(name==='appusage'){loadAppUsage(1);}
+  else if(name==='sysactivity'){if(sysCurrentView==='timeline')loadSysTimeline();else loadSysActivity(1);}
+  else if(name==='alerts'){loadAlerts();}
+  else if(name==='flagged'){loadFlaggedPage(1);}
+  else if(name==='reports'){loadReportJobs();loadReportSchedules();}
+  else if(name==='auditlog'){loadAuditLog();}
+  else if(name==='employees'){loadEmployeesFull();}
+  else { showPage(name,null); }
 }
 
 function setToday(id){
@@ -1434,7 +1469,7 @@ async function loadEmployees(){
     if(!rows.length){wrap.innerHTML='<div class="empty">No employees yet.</div>';return;}
     wrap.innerHTML='<table><thead><tr><th>Employee</th><th>Department</th><th>Status</th><th>Current App</th><th>Last Seen</th></tr></thead><tbody>'+
       rows.map(function(e){return '<tr class="emp-row"><td><div style="display:flex;align-items:center;gap:10px">'+avatarHTML(e.name)+
-        '<div><div style="color:#fff">'+e.name+'</div><div style="font-size:10px;color:#64748b">'+e.email+'</div></div></div></td>'+
+        '<div><div style="color:#fff;cursor:pointer;text-decoration:underline dotted" onclick="openEmpProfile('+e.id+',this.dataset.n)" data-n="'+e.name+'">'+e.name+'</div></div></div></td>'+
         '<td style="color:#64748b">'+( e.department||'—')+'</td><td>'+empStatus(e)+'</td>'+
         '<td style="color:#e2e8f0">'+(e.current_app||'—')+'</td>'+
         '<td style="color:#64748b">'+(e.last_seen?new Date(e.last_seen).toLocaleTimeString():'Never')+'</td></tr>';
@@ -1450,12 +1485,15 @@ async function loadEmployeesFull(){
     if(!rows.length){wrap.innerHTML='<div class="empty">No employees yet.</div>';return;}
     wrap.innerHTML='<table style="width:100%"><thead><tr>'+
       '<th style="width:35%">Employee</th><th style="width:15%">Department</th>'+
-      '<th style="width:12%">Status</th><th style="width:22%">Agent Token</th><th style="width:16%">Action</th>'+
+      '<th style="width:12%">Status</th><th style="width:22%">Agent Token / Version</th><th style="width:16%">Action</th>'+
       '</tr></thead><tbody>'+
       rows.map(function(e){return '<tr class="emp-row"><td><div style="display:flex;align-items:center;gap:10px">'+avatarHTML(e.name)+
         '<div><div style="color:var(--text);font-weight:600">'+e.name+'</div><div style="font-size:10px;color:var(--text3)">'+e.email+'</div></div></div></td>'+
         '<td style="color:var(--text2)">'+(e.department||'—')+'</td><td>'+empStatus(e)+'</td>'+
-        '<td><span style="font-family:monospace;font-size:10px;color:var(--accent)">'+e.agent_token.slice(0,16)+'...</span></td>'+
+        '<td>'+
+  '<span style="font-family:monospace;font-size:10px;color:var(--accent)">'+e.agent_token.slice(0,16)+'...</span>'+
+  (e.agent_version?'<span style="margin-left:8px;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:rgba(16,185,129,0.1);color:#10b981">v'+e.agent_version+'</span>':'<span style="margin-left:8px;font-size:10px;color:#64748b">no agent</span>')+
+'</td>'+
         '<td><div style="display:flex;gap:6px">'+
         '<button class="btn" style="font-size:10px;padding:5px 10px" onclick="openSettings('+e.id+',\''+e.name+'\','+(e.screenshot_interval||5)+','+(e.data_retention_days||0)+','+(e.roster_id||'null')+',\''+encodeURIComponent(e.department||'')+'\')">⚙ Settings</button>'+
         '<button class="btn btn-danger" style="font-size:10px;padding:5px 10px" onclick="removeEmployee('+e.id+',\''+e.name+'\')" >Remove</button>'+
@@ -1468,16 +1506,37 @@ async function addEmployee(){
   var name=document.getElementById('emp-name').value.trim();
   var email=document.getElementById('emp-email').value.trim();
   var dept=document.getElementById('emp-dept').value;
-  if(!name||!email){toast('Please fill name and email','#ef4444');return;}
+  var roster=document.getElementById('emp-roster')?document.getElementById('emp-roster').value:'';
+  var emailErrEl=document.getElementById('emp-email-err');
+
+  // Validate all fields
+  if(!name){ toast('Full name is required','#ef4444'); document.getElementById('emp-name').focus(); return; }
+
+  // Email format validation
+  var emailRegex=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if(!email){ toast('Email address is required','#ef4444'); document.getElementById('emp-email').focus(); return; }
+  if(!emailRegex.test(email)){
+    if(emailErrEl) emailErrEl.style.display='block';
+    toast('Please enter a valid email address','#ef4444');
+    document.getElementById('emp-email').focus();
+    return;
+  }
+  if(emailErrEl) emailErrEl.style.display='none';
+
+  if(!dept){ toast('Please select a department','#ef4444'); document.getElementById('emp-dept').focus(); return; }
+  if(!roster){ toast('Please select a duty roster','#ef4444'); document.getElementById('emp-roster').focus(); return; }
+
   try{
-    var res=await fetch('/api/employees',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,email:email,department:dept})});
+    var res=await fetch('/api/employees',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,email:email,department:dept,roster_id:roster})});
     var data=await res.json();
     if(data.agent_token){
       document.getElementById('newToken').textContent=data.agent_token;
       document.getElementById('newTokenBox').style.display='block';
       document.getElementById('emp-name').value='';
       document.getElementById('emp-email').value='';
-      toast('Employee added!','#10b981');
+      document.getElementById('emp-dept').value='';
+      document.getElementById('emp-roster').value='';
+      toast('✓ Employee added!','#10b981');
     }else{toast('Error: '+(data.error||'Failed'),'#ef4444');}
   }catch(e){toast('Error adding employee','#ef4444');}
 }
@@ -1511,9 +1570,9 @@ var calDates={};
 function initCalendar(){
   calYear=new Date().getFullYear();
   calMonth=new Date().getMonth();
-  selectedDate='';
+  selectedDate=(function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
   var lbl=document.getElementById('calBtnLabel');
-  if(lbl) lbl.textContent='All Dates';
+  if(lbl) lbl.textContent=selectedDate;
   var cal=document.getElementById('calDropdown');
   if(cal) cal.style.display='none';
   loadCalendarDates();
@@ -1640,7 +1699,7 @@ async function loadScreenshots(page){
     grid.innerHTML=rows.map(function(s){
       return '<div class="ss-card'+(s.flagged?' flagged':'')+'" onclick="viewScreenshot('+s.id+')" oncontextmenu="showCtxMenu(event,'+s.id+')">'+
         '<div style="height:130px;position:relative;background:var(--bg);overflow:hidden">'+
- '<img src="/screenshots/'+s.filename+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display=\'none\'"/>'+
+ '<img src="/screenshots/'+s.filename+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.onerror=null;this.style.display=\'none\'"/>'+
         (s.flagged?'<div style="position:absolute;top:6px;right:6px;background:#ef4444;color:#fff;font-size:9px;padding:2px 6px;border-radius:3px;font-weight:700">FLAGGED</div>':'')+
         '</div>'+
         '<div style="padding:8px 10px;background:#111418">'+
@@ -1676,6 +1735,15 @@ function renderSSPagination(){
 
 
 // ---- SCREENSHOT VIEWER & CONTEXT MENU ----
+function dlScreenshot(url, filename){
+  var a=document.createElement('a');
+  a.href=url;
+  a.download=filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 function viewScreenshot(id){
   var idx=ssCache.findIndex(function(x){return x.id===id;});
   if(idx<0) return;
@@ -1704,7 +1772,7 @@ function showSSOverlay(idx){
     '</div>'+
     '<div style="display:flex;gap:8px">'+
     '<button id="ovFlagBtn" onclick="toggleFlagSS('+s.id+','+idx+')" class="btn" style="border-color:'+(s.flagged?'#10b981':'#ef4444')+';color:'+(s.flagged?'#10b981':'#ef4444')+'">'+(s.flagged?'✓ Unflag':'🚩 Flag')+'</button>'+
-    '<button onclick="window.location.href=\'/screenshots/'+s.filename+'\'" class="btn">⤓ Download</button>'+
+    '<button onclick="dlScreenshot(\'/screenshots/'+s.filename+'\',\'' +s.filename+ '\')" class="btn">⤓ Download</button>'+
     '<button onclick="document.getElementById(\'ssOverlay\').remove();document.onkeydown=null;" class="btn">✕ Close</button>'+
     '</div></div>'+
     '<div style="position:relative">'+
@@ -1713,6 +1781,27 @@ function showSSOverlay(idx){
     '<button onclick="'+(hasNext?'showSSOverlay('+(idx+1)+')':currentSSPage<totalSSPages?'loadScreenshots('+(currentSSPage+1)+').then(function(){setTimeout(function(){showSSOverlay(0);},300);})':'')+'" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.7);border:1px solid var(--border);color:#fff;font-size:24px;width:44px;height:44px;border-radius:50%;cursor:pointer;'+(hasNext||currentSSPage<totalSSPages?'':'opacity:0.2;pointer-events:none')+'">&rsaquo;</button>'+
     '</div></div>';
   ov.addEventListener('click',function(e){if(e.target===ov)ov.remove();});
+
+  // Touch/swipe support for mobile
+  var touchStartX=0, touchStartY=0;
+  ov.addEventListener('touchstart',function(e){
+    touchStartX=e.touches[0].clientX;
+    touchStartY=e.touches[0].clientY;
+  },{passive:true});
+  ov.addEventListener('touchend',function(e){
+    var dx=e.changedTouches[0].clientX-touchStartX;
+    var dy=e.changedTouches[0].clientY-touchStartY;
+    if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>50){
+      if(dx<0){
+        if(hasNext) showSSOverlay(idx+1);
+        else if(currentSSPage<totalSSPages) loadScreenshots(currentSSPage+1).then(function(){setTimeout(function(){showSSOverlay(0);},300);});
+      } else {
+        if(hasPrev) showSSOverlay(idx-1);
+        else if(currentSSPage>1) loadScreenshots(currentSSPage-1).then(function(){setTimeout(function(){showSSOverlay(ssCache.length-1);},300);});
+      }
+    }
+  },{passive:true});
+
   document.body.appendChild(ov);
 
   // Keyboard navigation
@@ -1809,13 +1898,13 @@ function extractDomain(rawUrl) {
   if (!rawUrl) return '';
   var u = rawUrl.trim();
   // Internal WorkPulse server
-  if (u.match(/^10\.10\.11\.251/) || u.indexOf('WorkPulse') === 0) return '10.10.11.251';
-  // Full URL in title
-  var urlMatch = u.match(/https?:\/\/(?:www\.)?([a-zA-Z0-9][a-zA-Z0-9\-]*\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2})?)/i);
-  if (urlMatch) return urlMatch[1].toLowerCase();
-  // Plain domain (contains dot, no spaces before dot)
-  var domainMatch = u.match(/^(?:www\.)?([a-zA-Z0-9][a-zA-Z0-9\-]*\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2})?)/i);
-  if (domainMatch) return domainMatch[1].toLowerCase();
+  if (u.indexOf('WorkPulse') === 0) return 'workpulse';
+  // Full URL in title - capture full domain including subdomains
+  var urlMatch = u.match(/https?:\/\/([a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,})/i);
+  if (urlMatch) return urlMatch[1].replace(/^www\./, '').toLowerCase();
+  // Page title with domain pattern - get longest domain-like string
+  var domainMatch = u.match(/([a-zA-Z0-9][a-zA-Z0-9\-]+(?:\.[a-zA-Z0-9\-]+)+\.[a-zA-Z]{2,})/i);
+  if (domainMatch) return domainMatch[1].replace(/^www\./, '').toLowerCase();
   // Known title→domain map
   var known = {
     'WhatsApp': 'web.whatsapp.com', 'Instagram': 'instagram.com',
@@ -1838,7 +1927,7 @@ function extractDomain(rawUrl) {
 function getFaviconUrl(rawUrl) {
   var d = extractDomain(rawUrl);
   if (!d) return '';
-  if (d === '10.10.11.251') return WP_FAVICON_SVG;
+  if (d === 'workpulse') return WP_FAVICON_SVG;
   // Primary: Google favicon service. Fallback handled by onerror in HTML.
   return 'https://www.google.com/s2/favicons?domain=' + encodeURIComponent(d) + '&sz=64';
 }
@@ -1871,7 +1960,7 @@ function getFriendlyName(rawUrl) {
     'tiktok.com':'TikTok','snapchat.com':'Snapchat',
     'pinterest.com':'Pinterest','amazon.com':'Amazon',
     'flipkart.com':'Flipkart','paytm.com':'Paytm',
-    '10.10.11.251':'WorkPulse'
+    'workpulse':'WorkPulse'
   };
   return friendlyMap[d] || d;
 }
@@ -1880,7 +1969,7 @@ function isIncognito(url) { return url && url.indexOf('New Incognito Tab') >= 0;
 
 function getProductivity(url) {
   var u = (extractDomain(url) || url).toLowerCase();
-  var productive = ['github','gitlab','jira','confluence','notion','slack','teams','zoom','docs.google','sheets','gmail','outlook','office','sharepoint','figma','linear','asana','trello','monday','clickup','code','stackoverflow','aws','azure','cloudflare','vercel','netlify','jenkins','docker','kubernetes','noveloffice','novelteam','workpulse','10.10.11.251','claude','chatgpt','gemini','groww'];
+  var productive = ['github','gitlab','jira','confluence','notion','slack','teams','zoom','docs.google','sheets','gmail','outlook','office','sharepoint','figma','linear','asana','trello','monday','clickup','code','stackoverflow','aws','azure','cloudflare','vercel','netlify','jenkins','docker','kubernetes','workpulse','claude','chatgpt','gemini','groww'];
   var nonproductive = ['youtube','facebook','instagram','twitter','tiktok','netflix','reddit','whatsapp','telegram','snapchat','pinterest','tumblr','twitch','pornhub','xvideos','9gag','buzzfeed','dailymotion','vimeo','spotify','soundcloud','casino','bet','yts','torrent','tamilmv','tamilgun','moviesda','isaimini','kuttymovies'];
   if (nonproductive.some(function(k){return u.includes(k);})) return 'Non-productive';
   if (productive.some(function(k){return u.includes(k);})) return 'Productive';
@@ -1896,6 +1985,7 @@ function fmtActive(secs) {
 var webCurrentPage = 1;
 var webTotalPages = 1;
 var webTotalEmps = 0;
+var webFilterSearchPage = 1;
 
 function isDutyHours(recordedAt, shiftStart, shiftEnd) {
   // Returns true if time falls within shift
@@ -1920,13 +2010,13 @@ async function loadWebActivity(page){
   if(emp) url+='employee_id='+emp+'&';
   if(date) url+='date='+date;
   try{
-    var data=await fetch(url).then(function(r){return r.json();});
+    var res=await fetch(url); if(!res.ok){list.innerHTML='<div class="empty">Error: '+res.status+'</div>';return;}
+    var data=await res.json();
     var rows = data.rows || data; // backward compat
     webTotalPages = data.pages || 1;
     webTotalEmps = data.total || 0;
-
-    if(!rows || !rows.length){list.innerHTML='<div class="empty">No web activity found.</div>';renderWebPagination();return;}
-
+    console.log("[Web] pages="+webTotalPages+" rows="+(rows?rows.length:0)+" url="+url);
+    console.log("[Web] Starting grouping...");
     // Group by employee, merge same domain+browser
     var grouped={};
     rows.forEach(function(w){
@@ -1948,13 +2038,18 @@ async function loadWebActivity(page){
       grouped[w.employee_name].totalSecs += secs;
     });
 
+    console.log("[Web] Grouped:", Object.keys(grouped).length, "employees", JSON.stringify(Object.keys(grouped)));
+    var firstEmp = Object.values(grouped)[0]; console.log("[Web] First emp rows:", firstEmp ? firstEmp.rows.length : 0);
     var webHtml = Object.entries(grouped).map(function(entry){
+    console.log("[Web] webHtml built, length="+(webHtml?webHtml.length:0));
       var name = entry[0];
       var data = entry[1];
       var hasRoster = !!(data.shiftStart && data.shiftEnd);
       var filteredRows = webProductivityFilter
         ? data.rows.filter(function(w){ return getProductivity(w.url) === webProductivityFilter; })
         : data.rows;
+      console.log("[Web] emp rows type:", typeof data.rows, Array.isArray(data.rows), data.rows ? data.rows.length : "null");
+      console.log("[Web] filteredRows.length="+filteredRows.length+" rows="+(data.rows?data.rows.length:"null"));
       if(!filteredRows.length) return '';
 
       filteredRows.sort(function(a,b){ return parseInt(b.total_seconds||0)-parseInt(a.total_seconds||0); });
@@ -2025,10 +2120,10 @@ async function loadWebActivity(page){
           '<td style="padding:10px 8px 10px 16px;color:var(--text3);font-size:11px;font-weight:700;font-family:monospace;width:32px;text-align:right">'+(idx+1)+'</td>'+
           '<td style="padding:10px 6px;width:36px">'+
             '<div style="width:32px;height:32px;border-radius:8px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center">'+
-              '<img src="'+favicon+'" style="width:18px;height:18px;object-fit:contain" onerror="this.style.display=\'none\'" />'+
+              '<img src="'+favicon+'" style="width:18px;height:18px;object-fit:contain" onerror="this.onerror=null;this.style.display=\'none\'" />'+
             '</div>'+
           '</td>'+
-          '<td style="padding:10px 12px;max-width:0">'+
+          '<td style="padding:10px 12px;max-width:0" title="'+w.url+'">'+
             '<div style="color:var(--text);font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+
               displayUrl+(isIncognito(w.url)?'<span style="font-size:9px;margin-left:5px;background:rgba(124,58,237,0.15);color:#a78bfa;padding:1px 5px;border-radius:6px">🕵️</span>':'')+
             '</div>'+
@@ -2106,15 +2201,13 @@ async function loadWebActivity(page){
         '</div>'+
       '</div>';
     }).join('');
-
     if (!webHtml.trim() && webProductivityFilter) {
-      list.innerHTML = '<div class="empty">No <strong>' + webProductivityFilter + '</strong> activity on this page. Try another page or clear the filter.</div>';
+      list.innerHTML = '<div class="empty">No ' + webProductivityFilter + ' activity found for today.</div>';
     } else {
       list.innerHTML = webHtml;
     }
-
     renderWebPagination();
-  }catch(e){list.innerHTML='<div class="empty">Error loading web activity.</div>';console.error(e);}
+  }catch(e){list.innerHTML='<div class="empty">Error: '+e.message+'</div>';console.error("WEB ERROR:",e);}
 }
 
 function renderWebPagination(){
@@ -2388,13 +2481,15 @@ var webSelectedDate = '';
 var webCalYear = new Date().getFullYear();
 var webCalMonth = new Date().getMonth();
 var webCalDates = {};
+var webTempShiftDates = {};
 
 function initWebCalendar(){
   webCalYear = new Date().getFullYear();
   webCalMonth = new Date().getMonth();
-  webSelectedDate = '';
+  webProductivityFilter = "";
+  webSelectedDate = (function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
   var lbl = document.getElementById('webCalBtnLabel');
-  if(lbl) lbl.textContent = 'All Dates';
+  if(lbl) lbl.textContent = webSelectedDate;
   var cal = document.getElementById('webCalDropdown');
   if(cal) cal.style.display = 'none';
   loadWebCalendarDates();
@@ -2432,6 +2527,14 @@ async function loadWebCalendarDates(){
     var rows = await fetch(url).then(function(r){ return r.json(); });
     webCalDates = {};
     rows.forEach(function(r){ var d=(r.date||'').split('T')[0].split(' ')[0]; if(d) webCalDates[d]=(webCalDates[d]||0)+parseInt(r.count||0); });
+    // Load temp shift dates if single employee selected
+    webTempShiftDates = {};
+    if(emp) {
+      try {
+        var tdates = await fetch('/api/employees/'+emp+'/temp-shift-dates').then(function(r){return r.json();});
+        tdates.forEach(function(d){ webTempShiftDates[d]=true; });
+      } catch(e) {}
+    }
     renderWebCalendar();
   }catch(e){ renderWebCalendar(); }
 }
@@ -2456,7 +2559,9 @@ function renderWebCalendar(){
     var col = isSel ? '#0a0c10' : isToday ? '#00e5ff' : '#e2e8f0';
     var bdr = isSel ? '1px solid #00e5ff' : isToday ? '1px solid rgba(0,229,255,0.4)' : '1px solid transparent';
     var dotColor = isSel ? '#000' : '#00e5ff';
-    html += '<div onclick="selectWebDate(\'' + ds + '\');event.stopPropagation()" style="padding:3px 1px;border-radius:4px;cursor:pointer;background:' + bg + ';color:' + col + ';font-size:11px;border:' + bdr + ';text-align:center;min-height:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px">' +
+    var hasTempShift = webTempShiftDates[ds] ? true : false;
+    html += '<div onclick="selectWebDate(\'' + ds + '\');event.stopPropagation()" style="padding:3px 1px;border-radius:4px;cursor:pointer;background:' + bg + ';color:' + col + ';font-size:11px;border:' + bdr + ';text-align:center;min-height:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;position:relative">' +
+      (hasTempShift ? '<div style="position:absolute;top:2px;right:2px;width:5px;height:5px;border-radius:50%;background:#f59e0b"></div>' : '') +
       '<span>' + d + '</span>' +
       (hasData ? '<div style="width:5px;height:5px;border-radius:50%;background:' + dotColor + '"></div>' : '<div style="width:5px;height:5px"></div>') +
       '</div>';
@@ -2499,6 +2604,8 @@ var appSelectedDate = '';
 var appCalYear = new Date().getFullYear();
 var appCalMonth = new Date().getMonth();
 var appCalDates = {};
+var appTempShiftDates = {};
+var sysTempShiftDates = {};
 
 function initAppCalendar(){
   appCalYear = new Date().getFullYear();
@@ -2543,6 +2650,13 @@ async function loadAppCalendarDates(){
     var rows = await fetch(url).then(function(r){ return r.json(); });
     appCalDates = {};
     rows.forEach(function(r){ var d=(r.date||'').split('T')[0].split(' ')[0]; if(d) appCalDates[d]=(appCalDates[d]||0)+parseInt(r.count||0); });
+    appTempShiftDates = {};
+    if(emp) {
+      try {
+        var tdates = await fetch('/api/employees/'+emp+'/temp-shift-dates').then(function(r){return r.json();});
+        tdates.forEach(function(d){ appTempShiftDates[d]=true; });
+      } catch(e) {}
+    }
     renderAppCalendar();
   }catch(e){ renderAppCalendar(); }
 }
@@ -2567,7 +2681,9 @@ function renderAppCalendar(){
     var col = isSel ? '#0a0c10' : isToday ? '#00e5ff' : '#e2e8f0';
     var bdr = isSel ? '1px solid #00e5ff' : isToday ? '1px solid rgba(0,229,255,0.4)' : '1px solid transparent';
     var dotColor = isSel ? '#0a0c10' : isToday ? '#0a0c10' : '#00e5ff';
-    html += '<div onclick="selectAppDate(\'' + ds + '\');event.stopPropagation()" style="padding:3px 1px;border-radius:4px;cursor:pointer;background:' + bg + ';color:' + col + ';font-size:11px;border:' + bdr + ';text-align:center;min-height:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px">' +
+    var hasTempShiftApp = appTempShiftDates[ds] ? true : false;
+    html += '<div onclick="selectAppDate(\'' + ds + '\');event.stopPropagation()" style="padding:3px 1px;border-radius:4px;cursor:pointer;background:' + bg + ';color:' + col + ';font-size:11px;border:' + bdr + ';text-align:center;min-height:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;position:relative">' +
+      (hasTempShiftApp ? '<div style="position:absolute;top:2px;right:2px;width:5px;height:5px;border-radius:50%;background:#f59e0b"></div>' : '') +
       '<span>' + d + '</span>' +
       (hasData ? '<div style="width:5px;height:5px;border-radius:50%;background:' + dotColor + '"></div>' : '<div style="width:5px;height:5px"></div>') +
       '</div>';
@@ -2828,7 +2944,7 @@ async function loadFlaggedScreenshots(page){
     grid.innerHTML = rows.map(function(s){
       return '<div class="ss-card flagged" onclick="viewFlaggedScreenshot('+s.id+')" oncontextmenu="showFlagCtxMenu(event,'+s.id+')">'+
         '<div style="height:130px;position:relative;background:var(--bg);overflow:hidden">'+
-        '<img src="/screenshots/'+s.filename+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display=\'none\'"/>'+
+        '<img src="/screenshots/'+s.filename+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.onerror=null;this.style.display=\'none\'"/>'+
         '<div style="position:absolute;top:6px;right:6px;background:#ef4444;color:#fff;font-size:9px;padding:2px 6px;border-radius:3px;font-weight:700">FLAGGED</div>'+
         '</div>'+
         '<div style="padding:8px 10px;background:#111418">'+
@@ -2878,7 +2994,7 @@ function viewFlaggedScreenshot(id){
     '</div>'+
     '<div style="display:flex;gap:8px">'+
     '<button onclick="unflagSS('+s.id+')" class="btn" style="border-color:#10b981;color:#10b981">✓ Unflag</button>'+
-    '<button onclick="window.location.href=\'/screenshots/'+s.filename+'\'" class="btn">⤓ Download</button>'+
+    '<button onclick="dlScreenshot(\'/screenshots/'+s.filename+'\',\'' +s.filename+ '\')" class="btn">⤓ Download</button>'+
     '<button onclick="document.getElementById(\'ssOverlay\').remove()" class="btn">✕ Close</button>'+
     '</div></div>'+
     '<img src="/screenshots/'+s.filename+'" style="width:100%;max-height:80vh;object-fit:contain;border-radius:8px;border:1px solid #ef4444"/>'+
@@ -2934,7 +3050,7 @@ async function loadFlaggedPage(page){
     grid.innerHTML = rows.map(function(s){
       return '<div class="ss-card flagged" onclick="viewFlaggedPage('+s.id+')" oncontextmenu="showFlagCtxMenu2(event,'+s.id+')">'+
         '<div style="height:130px;position:relative;background:var(--bg);overflow:hidden">'+
-        '<img src="/screenshots/'+s.filename+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display=\'none\'"/>'+
+        '<img src="/screenshots/'+s.filename+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.onerror=null;this.style.display=\'none\'"/>'+
         '<div style="position:absolute;top:6px;right:6px;background:#ef4444;color:#fff;font-size:9px;padding:2px 6px;border-radius:3px;font-weight:700">FLAGGED</div>'+
         '</div>'+
         '<div style="padding:8px 10px;background:#111418">'+
@@ -2990,7 +3106,7 @@ function viewFlaggedPage(id){
     '</div>'+
     '<div style="display:flex;gap:8px">'+
     '<button onclick="unflagSS2('+s.id+')" class="btn" style="border-color:#10b981;color:#10b981">✓ Unflag</button>'+
-    '<button onclick="window.location.href=\'/screenshots/'+s.filename+'\'" class="btn">⤓ Download</button>'+
+    '<button onclick="dlScreenshot(\'/screenshots/'+s.filename+'\',\'' +s.filename+ '\')" class="btn">⤓ Download</button>'+
     '<button onclick="document.getElementById(\'ssOverlay\').remove()" class="btn">✕ Close</button>'+
     '</div></div>'+
     '<div style="position:relative">'+
@@ -3441,8 +3557,14 @@ async function loadDeptDropdown(){
   try{
     var rows=await fetch('/api/departments').then(function(r){return r.json();});
     var sel=document.getElementById('emp-dept');
-    if(!sel) return;
-    sel.innerHTML='<option value="">Select Department</option>'+rows.map(function(d){return '<option value="'+d.name+'">'+d.name+'</option>';}).join('');
+    if(sel) sel.innerHTML='<option value="">— Select Department —</option>'+rows.map(function(d){return '<option value="'+d.name+'">'+d.name+'</option>';}).join('');
+  }catch(e){}
+  try{
+    var rosters=await fetch('/api/rosters').then(function(r){return r.json();});
+    var rsel=document.getElementById('emp-roster');
+    if(rsel) rsel.innerHTML='<option value="">— Select Duty Roster —</option>'+rosters.map(function(r){
+      return '<option value="'+r.id+'">'+r.name+' ('+fmtRosterTime(r.start_time)+' – '+fmtRosterTime(r.end_time)+')</option>';
+    }).join('');
   }catch(e){}
 }
 
@@ -3534,15 +3656,216 @@ function renderAuditPagination(){
 // ---- SYSTEM ACTIVITY ----
 var sysSelectedDate='',sysCalYear=new Date().getFullYear(),sysCalMonth=new Date().getMonth(),sysCalDates={},sysCurrentPage=1,sysTotalPages=1,sysTotalCount=0;
 var SYS_EVENT_ICONS={startup:{icon:'🟢',label:'System ON',color:'#10b981'},shutdown:{icon:'🔴',label:'Shutdown',color:'#ef4444'},locked:{icon:'🔒',label:'Locked',color:'#f59e0b'},unlocked:{icon:'🔓',label:'Unlocked',color:'#00e5ff'},sleep:{icon:'💤',label:'Sleep',color:'#7c3aed'},hibernate:{icon:'❄️',label:'Hibernate',color:'#06b6d4'},idle_lock:{icon:'⏸️',label:'Idle/Away',color:'#f472b6'},wakeup:{icon:'☀️',label:'Wake Up',color:'#84cc16'}};
-function initSysCalendar(){sysCalYear=new Date().getFullYear();sysCalMonth=new Date().getMonth();sysSelectedDate='';sysCurrentPage=1;var lbl=document.getElementById('sysCalBtnLabel');if(lbl)lbl.textContent='All Dates';var cal=document.getElementById('sysCalDropdown');if(cal)cal.style.display='none';loadSysCalendarDates();}
+function initSysCalendar(){sysCalYear=new Date().getFullYear();sysCalMonth=new Date().getMonth();sysSelectedDate=(function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();sysCurrentPage=1;var lbl=document.getElementById('sysCalBtnLabel');if(lbl)lbl.textContent=sysSelectedDate;var cal=document.getElementById('sysCalDropdown');if(cal)cal.style.display='none';loadSysCalendarDates();}
 function toggleSysCal(event){event.stopPropagation();var d=document.getElementById('sysCalDropdown');var isHidden=d.style.display==='none'||!d.style.display;d.style.display=isHidden?'block':'none';if(isHidden){setTimeout(function(){document.addEventListener('click',function h(e){if(!document.getElementById('sysCalDropdown').contains(e.target)&&e.target.id!=='sysCalBtn'){document.getElementById('sysCalDropdown').style.display='none';document.removeEventListener('click',h);}});},50);}}
 function changeSysMonth(dir){sysCalMonth+=dir;if(sysCalMonth>11){sysCalMonth=0;sysCalYear++;}if(sysCalMonth<0){sysCalMonth=11;sysCalYear--;}renderSysCalendar();}
-async function loadSysCalendarDates(){try{var emp=document.getElementById('sys-emp')?document.getElementById('sys-emp').value:'';var url='/api/dashboard/system-activity-dates'+(emp?'?employee_id='+emp:'');var rows=await fetch(url).then(function(r){return r.json();});sysCalDates={};rows.forEach(function(r){var d=(r.date||'').split('T')[0].split(' ')[0];if(d)sysCalDates[d]=(sysCalDates[d]||0)+parseInt(r.count||0);});renderSysCalendar();}catch(e){renderSysCalendar();}}
-function renderSysCalendar(){var el=document.getElementById('sysCalGrid');if(!el)return;var months=['January','February','March','April','May','June','July','August','September','October','November','December'];var lbl=document.getElementById('sysCalMonthLabel');if(lbl)lbl.textContent=months[sysCalMonth]+' '+sysCalYear;var firstDay=new Date(sysCalYear,sysCalMonth,1).getDay();var daysInMonth=new Date(sysCalYear,sysCalMonth+1,0).getDate();var today=(function(){var _d=new Date();return _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');})();var html='';for(var i=0;i<firstDay;i++)html+='<div></div>';for(var d=1;d<=daysInMonth;d++){var ds=sysCalYear+'-'+String(sysCalMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');var has=sysCalDates[ds]?true:false;var isSel=ds===sysSelectedDate,isToday=ds===today;var bg=isSel?'#00e5ff':isToday?'rgba(0,229,255,0.15)':'transparent';var col=isSel?'#0a0c10':isToday?'#00e5ff':'#e2e8f0';var bdr=isSel?'1px solid #00e5ff':isToday?'1px solid rgba(0,229,255,0.4)':'1px solid transparent';html+='<div onclick="selectSysDate(\''+ds+'\');event.stopPropagation()" style="padding:3px 1px;border-radius:4px;cursor:pointer;background:'+bg+';color:'+col+';font-size:11px;border:'+bdr+';text-align:center;min-height:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px"><span>'+d+'</span>'+(has?'<div style="width:5px;height:5px;border-radius:50%;background:'+(isSel?'#000':'#00e5ff')+'"></div>':'<div style="width:5px;height:5px"></div>')+'</div>';}el.innerHTML=html;}
+async function loadSysCalendarDates(){
+  try{
+    var emp=document.getElementById('sys-emp')?document.getElementById('sys-emp').value:'';
+    var url='/api/dashboard/system-activity-dates'+(emp?'?employee_id='+emp:'');
+    var rows=await fetch(url).then(function(r){return r.json();});
+    sysCalDates={};
+    rows.forEach(function(r){var d=(r.date||'').split('T')[0].split(' ')[0];if(d)sysCalDates[d]=(sysCalDates[d]||0)+parseInt(r.count||0);});
+    sysTempShiftDates={};
+    if(emp){
+      try{
+        var tdates=await fetch('/api/employees/'+emp+'/temp-shift-dates').then(function(r){return r.json();});
+        tdates.forEach(function(d){sysTempShiftDates[d]=true;});
+      }catch(e){}
+    }
+    renderSysCalendar();
+  }catch(e){renderSysCalendar();}
+}
+function renderSysCalendar(){var el=document.getElementById('sysCalGrid');if(!el)return;var months=['January','February','March','April','May','June','July','August','September','October','November','December'];var lbl=document.getElementById('sysCalMonthLabel');if(lbl)lbl.textContent=months[sysCalMonth]+' '+sysCalYear;var firstDay=new Date(sysCalYear,sysCalMonth,1).getDay();var daysInMonth=new Date(sysCalYear,sysCalMonth+1,0).getDate();var today=(function(){var _d=new Date();return _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');})();var html='';for(var i=0;i<firstDay;i++)html+='<div></div>';for(var d=1;d<=daysInMonth;d++){var ds=sysCalYear+'-'+String(sysCalMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');var has=sysCalDates[ds]?true:false;var isSel=ds===sysSelectedDate,isToday=ds===today;var bg=isSel?'#00e5ff':isToday?'rgba(0,229,255,0.15)':'transparent';var col=isSel?'#0a0c10':isToday?'#00e5ff':'#e2e8f0';var bdr=isSel?'1px solid #00e5ff':isToday?'1px solid rgba(0,229,255,0.4)':'1px solid transparent';var hasTmpSys=sysTempShiftDates[ds]?true:false;html+='<div onclick="selectSysDate(\''+ds+'\');event.stopPropagation()" style="padding:3px 1px;border-radius:4px;cursor:pointer;background:'+bg+';color:'+col+';font-size:11px;border:'+bdr+';text-align:center;min-height:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;position:relative">'+(hasTmpSys?'<div style="position:absolute;top:2px;right:2px;width:5px;height:5px;border-radius:50%;background:#f59e0b"></div>':'')+'<span>'+d+'</span>'+(has?'<div style="width:5px;height:5px;border-radius:50%;background:'+(isSel?'#000':'#00e5ff')+'"></div>':'<div style="width:5px;height:5px"></div>')+'</div>';}el.innerHTML=html;}
 function selectSysDate(ds){sysSelectedDate=(sysSelectedDate===ds)?'':ds;sysCurrentPage=1;var lbl=document.getElementById('sysCalBtnLabel');if(lbl)lbl.textContent=sysSelectedDate||'All Dates';var drop=document.getElementById('sysCalDropdown');if(drop)drop.style.display='none';renderSysCalendar();if(sysCurrentView==='timeline')loadSysTimeline();else loadSysActivity(1);}
 function onSysEmpChange(){sysCurrentPage=1;loadSysCalendarDates();if(sysCurrentView==='timeline')loadSysTimeline();else loadSysActivity(1);}
 function clearSysFilters(){var emp=document.getElementById('sys-emp');if(emp)emp.value='';sysSelectedDate='';sysCurrentPage=1;var lbl=document.getElementById('sysCalBtnLabel');if(lbl)lbl.textContent='All Dates';var cal=document.getElementById('sysCalDropdown');if(cal)cal.style.display='none';loadSysCalendarDates();loadSysActivity(1);}
-async function loadSysActivity(page){page=page||sysCurrentPage;sysCurrentPage=page;var list=document.getElementById('sysActivityList');list.innerHTML='<div class="empty">Loading...</div>';var emp=document.getElementById('sys-emp')?document.getElementById('sys-emp').value:'';var url='/api/dashboard/system-activity?page='+page+'&';if(emp)url+='employee_id='+emp+'&';if(sysSelectedDate)url+='date='+sysSelectedDate;try{var data=await fetch(url).then(function(r){return r.json();});sysTotalPages=data.pages||1;sysTotalCount=data.total||0;var rows=data.rows||[];if(!rows.length){list.innerHTML='<div class="empty">No system events found.</div>';renderSysPagination();return;}list.innerHTML='<table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--bg3)"><th style="padding:10px 18px;text-align:left;font-size:9px;color:#64748b;letter-spacing:2px;text-transform:uppercase;width:180px">Employee</th><th style="padding:10px 18px;text-align:left;font-size:9px;color:#64748b;letter-spacing:2px;text-transform:uppercase;width:160px">Event</th><th style="padding:10px 18px;text-align:left;font-size:9px;color:#64748b;letter-spacing:2px;text-transform:uppercase">Date & Time</th><th style="padding:10px 18px;text-align:left;font-size:9px;color:#64748b;letter-spacing:2px;text-transform:uppercase;width:100px">Day</th></tr></thead><tbody>'+rows.map(function(r){var ev=SYS_EVENT_ICONS[r.event_type]||{icon:'❓',label:r.event_type,color:'#64748b'};var dt=new Date(r.recorded_at);return '<tr style="border-bottom:1px solid rgba(30,36,46,0.5);transition:background 0.15s" onmouseover="this.style.background=\'rgba(0,229,255,0.03)\'" onmouseout="this.style.background=\'\'"><td style="padding:11px 18px"><div style="display:flex;align-items:center;gap:8px">'+avatarHTML(r.employee_name)+'<span style="color:#e2e8f0;font-size:12px;font-weight:500">'+r.employee_name+'</span></div></td><td style="padding:11px 18px"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">'+ev.icon+'</span><span style="background:'+ev.color+'22;color:'+ev.color+';border:1px solid '+ev.color+'44;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600">'+ev.label+'</span></div></td><td style="padding:11px 18px;color:#e2e8f0;font-size:12px;font-family:monospace">'+dt.toLocaleString()+'</td><td style="padding:11px 18px;color:#64748b;font-size:11px">'+['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dt.getDay()]+'</td></tr>';}).join('')+'</tbody></table>';renderSysPagination();}catch(e){list.innerHTML='<div class="empty">Error loading.</div>';console.error(e);}}
+async function loadSysActivity(page){
+  var list=document.getElementById('sysActivityList');
+  list.innerHTML='<div class="empty">Loading...</div>';
+  var emp=document.getElementById('sys-emp')?document.getElementById('sys-emp').value:'';
+  var today=(function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
+  var date=sysSelectedDate||today;
+  var url='/api/dashboard/system-activity?date='+date;
+  if(emp) url+='&employee_id='+emp;
+  try{
+    var data=await fetch(url).then(function(r){return r.json();});
+    var employees=data.employees||[];
+    if(!employees.length){list.innerHTML='<div class="empty">No system events found for this date.</div>';return;}
+    var EVENT_CFG={
+      startup:  {icon:'🟢',label:'Startup',  color:'#10b981'},
+      wakeup:   {icon:'☀️', label:'Wake from Sleep', color:'#f59e0b'},
+      sleep:    {icon:'💤', label:'Sleep',    color:'#6366f1'},
+      idle_lock:{icon:'🔒', label:'Idle Lock',color:'#64748b'},
+      unlocked: {icon:'🔓', label:'Unlocked', color:'#00e5ff'},
+      locked:   {icon:'🔒', label:'Win+L',    color:'#ef4444'},
+      shutdown: {icon:'🔴', label:'Shutdown', color:'#ef4444'}
+    };
+    function fmtTime(dt){ return new Date(dt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}); }
+    function fmtDur(ms){ if(ms<0)ms=0; var m=Math.floor(ms/60000); var h=Math.floor(m/60); m=m%60; return h>0?h+'h '+m+'m':m+'m'; }
+    function timeToMin(t){ if(!t)return 0; var p=t.split(':'); return parseInt(p[0])*60+parseInt(p[1]); }
+    function pct(mins){ return Math.min(100,Math.max(0,(mins/1440)*100)).toFixed(3)+'%'; }
+
+    list.innerHTML=employees.map(function(emp){
+      var events=emp.events;
+      var hasRoster=!!(emp.shift_start&&emp.shift_end);
+      var shiftStartMin=hasRoster?timeToMin(emp.shift_start):0;
+      var shiftEndMin=hasRoster?timeToMin(emp.shift_end):0;
+      var firstTime=events.length?fmtTime(events[0].time):'—';
+      var lastTime=events.length?fmtTime(events[events.length-1].time):'—';
+      var activeMsTotal=0; var activeStart=null;
+      for(var i=0;i<events.length;i++){
+        var ev=events[i];
+        if(ev.type==='startup'||ev.type==='wakeup'||ev.type==='unlocked'){
+          if(!activeStart) activeStart=new Date(ev.time); // only set if not already active
+        } else if((ev.type==='sleep'||ev.type==='idle_lock'||ev.type==='locked'||ev.type==='shutdown')&&activeStart){
+          activeMsTotal+=new Date(ev.time)-activeStart;
+          activeStart=null;
+        }
+      }
+      if(activeStart) activeMsTotal+=new Date()-activeStart;
+
+      var shiftBand=hasRoster
+        ?'<div style="position:absolute;top:0;bottom:0;left:'+pct(shiftStartMin)+';width:'+pct(shiftEndMin-shiftStartMin)+';background:repeating-linear-gradient(45deg,rgba(0,229,255,0.05),rgba(0,229,255,0.05) 3px,transparent 3px,transparent 8px);border-left:3px solid rgba(0,229,255,0.7);border-right:3px solid rgba(0,229,255,0.7);box-shadow:inset 0 0 8px rgba(0,229,255,0.1)"></div>'
+        :'';
+
+      var markers=events.map(function(ev){
+        var cfg=EVENT_CFG[ev.type]||{icon:'❓',color:'#64748b'};
+        var t=new Date(ev.time);
+        var minOfDay=t.getHours()*60+t.getMinutes();
+        return '<div style="position:absolute;top:50%;transform:translate(-50%,-50%);left:'+pct(minOfDay)+';z-index:2" title="'+( cfg.label||ev.type)+' — '+fmtTime(ev.time)+'">'+
+          '<div style="width:12px;height:12px;border-radius:50%;background:'+cfg.color+';border:2px solid var(--bg2);box-shadow:0 0 6px '+cfg.color+'99"></div>'+
+        '</div>';
+      }).join('');
+
+      var hourLabels='';
+      for(var h=0;h<=24;h+=3){
+        if(h===0) continue;
+        hourLabels+='<div style="position:absolute;left:'+pct(h*60)+';transform:translateX(-50%);font-size:8px;color:var(--text3);top:22px">'+(h<12?h+'am':h===12?'12pm':(h-12)+'pm')+'</div>';
+      }
+
+      // Build sessions from events
+      var sessions=[];
+      var startEvents=['startup','wakeup','unlocked'];
+      var endEvents=['shutdown','sleep','locked','idle_lock'];
+      var sIdx=0;
+      while(sIdx<events.length){
+        var ev=events[sIdx];
+        if(startEvents.includes(ev.type)){
+          var sess={start:ev,end:null,events:[ev]};
+          sIdx++;
+          while(sIdx<events.length){
+            var nev=events[sIdx];
+            sess.events.push(nev);
+            if(endEvents.includes(nev.type)){sess.end=nev;sIdx++;break;}
+            sIdx++;
+          }
+          sessions.push(sess);
+        } else {
+          // skip standalone end events with no start — not meaningful
+          sIdx++;
+        }
+      }
+
+      var sessionHtml=sessions.map(function(sess,si){
+        var startCfg=sess.start?EVENT_CFG[sess.start.type]||{icon:'🟢',label:'Start',color:'#10b981'}:{icon:'❓',label:'?',color:'#64748b'};
+        var endCfg=sess.end?EVENT_CFG[sess.end.type]||{icon:'🔴',label:'End',color:'#ef4444'}:null;
+        var startTime=sess.start?fmtTime(sess.start.time):'—';
+        var endTime=sess.end?fmtTime(sess.end.time):'ongoing';
+        var durMs=sess.start&&sess.end?new Date(sess.end.time)-new Date(sess.start.time):sess.start?new Date()-new Date(sess.start.time):0;
+        var isActive=!sess.end;
+        var inShift=hasRoster&&sess.start&&(function(){var t=new Date(sess.start.time);var m=t.getHours()*60+t.getMinutes();return shiftEndMin>shiftStartMin?(m>=shiftStartMin&&m<shiftEndMin):(m>=shiftStartMin||m<shiftEndMin);})();
+
+        return '<div style="border:1px solid '+(isActive?'rgba(16,185,129,0.3)':'var(--border)')+';border-radius:10px;margin-bottom:10px;overflow:hidden;background:'+(isActive?'rgba(16,185,129,0.03)':'var(--bg)')+'">'+
+          '<div style="display:flex;align-items:center;gap:0;flex-wrap:wrap">'+
+            // Session number
+            '<div style="padding:12px 14px;border-right:1px solid var(--border);min-width:90px;text-align:center">'+
+              '<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Session '+(si+1)+'</div>'+
+              '<div style="font-size:11px;font-weight:700;color:'+(isActive?'#10b981':'var(--text2)')+'">'+fmtDur(durMs)+'</div>'+
+            '</div>'+
+            // Start event
+            '<div style="padding:12px 14px;border-right:1px solid var(--border);min-width:140px">'+
+              '<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Started</div>'+
+              '<div style="display:flex;align-items:center;gap:6px">'+
+                '<span style="font-size:14px">'+startCfg.icon+'</span>'+
+                '<div>'+
+                  '<div style="font-size:11px;font-weight:700;color:'+startCfg.color+'">'+startCfg.label+'</div>'+
+                  '<div style="font-size:10px;font-family:monospace;color:var(--text3)">'+startTime+'</div>'+
+                '</div>'+
+              '</div>'+
+            '</div>'+
+            // Arrow
+            '<div style="padding:0 10px;color:var(--text3);font-size:16px">→</div>'+
+            // End event
+            '<div style="padding:12px 14px;border-right:1px solid var(--border);min-width:140px">'+
+              '<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Ended</div>'+
+              (endCfg?
+                '<div style="display:flex;align-items:center;gap:6px">'+
+                  '<span style="font-size:14px">'+endCfg.icon+'</span>'+
+                  '<div>'+
+                    '<div style="font-size:11px;font-weight:700;color:'+endCfg.color+'">'+endCfg.label+'</div>'+
+                    '<div style="font-size:10px;font-family:monospace;color:var(--text3)">'+endTime+'</div>'+
+                  '</div>'+
+                '</div>'
+              :'<div style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block;animation:pulse 2s infinite"></span><span style="font-size:11px;font-weight:700;color:#10b981">Active</span></div>')+
+            '</div>'+
+            // Badges
+            '<div style="padding:12px 14px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">'+
+              (inShift?'<span style="font-size:9px;padding:2px 8px;border-radius:8px;background:rgba(0,229,255,0.1);color:var(--accent);border:1px solid rgba(0,229,255,0.2)">In Shift</span>':'')+
+              (isActive?'<span style="font-size:9px;padding:2px 8px;border-radius:8px;background:rgba(16,185,129,0.1);color:#10b981;border:1px solid rgba(16,185,129,0.2)">● Live</span>':'')+
+            '</div>'+
+          '</div>'+
+        '</div>';
+      }).join('');
+
+      return '<div style="border:1px solid var(--border);border-radius:12px;margin-bottom:16px;overflow:hidden">'+
+        '<div style="padding:14px 20px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">'+
+          '<div style="display:flex;align-items:center;gap:10px">'+
+            avatarHTML(emp.employee_name)+
+            '<div>'+
+              '<div style="font-size:14px;font-weight:700;color:var(--text)">'+emp.employee_name+'</div>'+
+              (hasRoster?'<div style="font-size:10px;color:var(--accent);margin-top:1px">'+emp.roster_name+' · '+emp.shift_start.slice(0,5)+' – '+emp.shift_end.slice(0,5)+'</div>':'')+
+            '</div>'+
+          '</div>'+
+          '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+            '<div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:10px;padding:8px 16px;text-align:center;min-width:100px">'+
+              '<div style="font-size:9px;color:#10b981;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">First Seen</div>'+
+              '<div style="font-size:13px;font-weight:800;color:#10b981;font-family:monospace">'+firstTime+'</div>'+
+            '</div>'+
+            '<div style="background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.2);border-radius:10px;padding:8px 16px;text-align:center;min-width:100px">'+
+              '<div style="font-size:9px;color:#7c3aed;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Last Seen</div>'+
+              '<div style="font-size:13px;font-weight:800;color:#7c3aed;font-family:monospace">'+lastTime+'</div>'+
+            '</div>'+
+            '<div style="background:rgba(0,229,255,0.08);border:1px solid rgba(0,229,255,0.2);border-radius:10px;padding:8px 16px;text-align:center;min-width:100px">'+
+              '<div style="font-size:9px;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Active Time</div>'+
+              '<div style="font-size:13px;font-weight:800;color:var(--accent)">'+fmtDur(activeMsTotal)+'</div>'+
+            '</div>'+
+            (hasRoster?'<div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:10px;padding:8px 16px;text-align:center;min-width:100px"><div style="font-size:9px;color:#10b981;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">In Shift</div><div style="font-size:13px;font-weight:800;color:#10b981">'+fmtDur(sessions.filter(function(s){if(!s.start)return false;var t=new Date(s.start.time);var m=t.getHours()*60+t.getMinutes();return shiftEndMin>shiftStartMin?(m>=shiftStartMin&&m<shiftEndMin):(m>=shiftStartMin||m<shiftEndMin);}).reduce(function(a,s){return a+(s.start&&s.end?new Date(s.end.time)-new Date(s.start.time):s.start?new Date()-new Date(s.start.time):0);},0))+'</div></div><div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:8px 16px;text-align:center;min-width:100px"><div style="font-size:9px;color:#ef4444;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Off Shift</div><div style="font-size:13px;font-weight:800;color:#ef4444">'+fmtDur(sessions.filter(function(s){if(!s.start)return false;var t=new Date(s.start.time);var m=t.getHours()*60+t.getMinutes();return !(shiftEndMin>shiftStartMin?(m>=shiftStartMin&&m<shiftEndMin):(m>=shiftStartMin||m<shiftEndMin));}).reduce(function(a,s){return a+(s.start&&s.end?new Date(s.end.time)-new Date(s.start.time):s.start?new Date()-new Date(s.start.time):0);},0))+'</div></div>':'')+ 
+            '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:8px 16px;text-align:center;min-width:80px">'+
+              '<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Sessions</div>'+
+              '<div style="font-size:13px;font-weight:800;color:var(--text)">'+sessions.length+'</div>'+
+            '</div>'+
+            '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:8px 16px;text-align:center;min-width:80px">'+
+              '<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Events</div>'+
+              '<div style="font-size:13px;font-weight:800;color:var(--text)">'+events.length+'</div>'+
+            '</div>'+
+          '</div>'+
+        '</div>'+
+        '<div style="padding:20px 20px 36px;border-bottom:1px solid var(--border);background:var(--bg2)">'+
+          '<div style="position:relative;height:16px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">'+
+            shiftBand+markers+
+          '</div>'+
+          '<div style="position:relative;height:20px">'+hourLabels+'</div>'+
+          (hasRoster?'<div style="margin-top:4px;display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text3)"><div style="width:12px;height:8px;background:rgba(0,229,255,0.1);border:1px solid rgba(0,229,255,0.5);border-radius:2px"></div> Shift hours</div>':'')+
+        '</div>'+
+        '<div style="padding:16px 20px">'+
+          '<div style="font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:12px">Sessions</div>'+
+          sessionHtml+
+        '</div>'+
+      '</div>';
+    }).join('');
+  }catch(e){list.innerHTML='<div class="empty">Error: '+e.message+'</div>';console.error(e);}
+}
 function renderSysPagination(){var wrap=document.getElementById('sysPaginationWrap');if(!wrap)return;if(sysTotalPages<=1){wrap.innerHTML='';return;}wrap.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-top:1px solid #1e242e"><span style="color:#64748b;font-size:11px">Total: '+sysTotalCount+' events · Page '+sysCurrentPage+' of '+sysTotalPages+'</span><div style="display:flex;gap:6px"><button class="btn" '+(sysCurrentPage===1?'disabled style="opacity:0.4"':'')+' onclick="loadSysActivity('+(sysCurrentPage-1)+')">← Prev</button><span style="color:#fff;font-size:12px;padding:6px 12px;background:#181c22;border:1px solid var(--border);border-radius:4px">'+sysCurrentPage+' / '+sysTotalPages+'</span><button class="btn" '+(sysCurrentPage===sysTotalPages?'disabled style="opacity:0.4"':'')+' onclick="loadSysActivity('+(sysCurrentPage+1)+')">Next →</button></div></div>';}
 
 // ---- THEME ----
@@ -4127,64 +4450,6 @@ function toggleSsLog(){
   btn.textContent=hidden?'— Minimise':'+ Maximise';
 }
 
-var ssSelectedServerFile=null;
-
-async function loadSsServerFiles(){
-  var list=document.getElementById('ssServerFileList');
-  list.innerHTML='<div style="color:var(--text3);font-size:12px">Loading...</div>';
-  try{
-    var files=await fetch('/api/admin/backup/screenshots/list').then(function(r){return r.json();});
-    if(!files.length){list.innerHTML='<div style="color:var(--text3);font-size:12px">No .tar.gz backups found in backups folder.</div>';return;}
-    list.innerHTML=files.map(function(f){
-      var sid='ssfile_'+f.filename.replace(/[^a-z0-9]/gi,'_');
-      return '<div onclick="selectSsFile(this)" data-filename="'+f.filename+'" id="'+sid+'"'+
-        ' style="padding:10px 12px;border-radius:8px;border:1px solid var(--border);margin-bottom:8px;cursor:pointer;transition:all 0.15s">'+
-        '<div style="font-weight:600;color:var(--text);font-size:12px">'+f.filename+'</div>'+
-        '<div style="color:var(--text3);font-size:10px;margin-top:2px">'+f.size_mb+' MB &nbsp;·&nbsp; '+new Date(f.created_at).toLocaleString()+'</div>'+
-        '</div>';
-    }).join('');
-  }catch(e){list.innerHTML='<div style="color:#ef4444;font-size:12px">Error: '+e.message+'</div>';}
-}
-
-function selectSsFile(el){
-  ssSelectedServerFile=el.getAttribute('data-filename');
-  document.querySelectorAll('#ssServerFileList > div').forEach(function(d){
-    d.style.borderColor='var(--border)';d.style.background='transparent';
-  });
-  el.style.borderColor='#10b981';el.style.background='rgba(16,185,129,0.08)';
-  document.getElementById('ssServerRestoreBtn').disabled=false;
-}
-
-async function doScreenshotRestoreFromServer(){
-  if(!ssSelectedServerFile){toast('Please select a file first','#ef4444');return;}
-  if(!confirm('Restore screenshots from:\n'+ssSelectedServerFile+'\n\nThis will overwrite existing screenshot files.')) return;
-  var btn=document.getElementById('ssServerRestoreBtn');
-  var btnText=document.getElementById('ssServerRestoreBtnText');
-  var statusEl=document.getElementById('ssServerRestoreStatus');
-  btn.disabled=true; btnText.textContent='⏳ Restoring...';
-  statusEl.style.cssText='display:block;padding:10px 14px;border-radius:8px;font-size:12px;background:rgba(0,229,255,0.06);border:1px solid rgba(0,229,255,0.2);color:var(--accent)';
-  statusEl.textContent='Extracting screenshots on server...';
-  try{
-    var res=await fetch('/api/admin/restore/screenshots/frompath',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:ssSelectedServerFile})});
-    var data=await res.json();
-    if(data.success){
-      statusEl.style.cssText='display:block;padding:10px 14px;border-radius:8px;font-size:12px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.25);color:#10b981';
-      statusEl.textContent='✓ Screenshots restored successfully!';
-      toast('✓ Screenshots restored!','#10b981');
-      btnText.textContent='✓ Done';
-    }else{
-      statusEl.style.cssText='display:block;padding:10px 14px;border-radius:8px;font-size:12px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.25);color:#ef4444';
-      statusEl.textContent='✗ '+(data.error||'Failed');
-      toast('Error: '+(data.error||'Failed'),'#ef4444');
-      btn.disabled=false; btnText.textContent='📷 Restore Selected';
-    }
-  }catch(e){
-    statusEl.style.cssText='display:block;padding:10px 14px;border-radius:8px;font-size:12px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.25);color:#ef4444';
-    statusEl.textContent='✗ '+e.message;
-    btn.disabled=false; btnText.textContent='📷 Restore Selected';
-  }
-}
-// ---- END SCREENSHOT RESTORE TABS ----
 
 
 // ---- SCREENSHOT UPLOAD TO SERVER ----
@@ -4558,8 +4823,9 @@ async function loadReportJobs(){
     list.innerHTML = jobs.map(function(j){
       var statusColor = j.status==='done'?'#10b981':j.status==='failed'?'#ef4444':j.status==='generating'?'#00e5ff':'#f59e0b';
       var statusLabel = j.status==='done'?'✓ Ready':j.status==='failed'?'✗ Failed':j.status==='generating'?'⏳ Generating...':'🕐 Queued';
-      var from = (j.from_date||'').split('T')[0];
-      var to   = (j.to_date||'').split('T')[0];
+      function pgDate(d){ if(!d)return ''; var dt=new Date(d); return dt.getUTCFullYear()+'-'+String(dt.getUTCMonth()+1).padStart(2,'0')+'-'+String(dt.getUTCDate()).padStart(2,'0'); }
+      var from = pgDate(j.from_date);
+      var to   = pgDate(j.to_date);
       var created = new Date(j.created_at).toLocaleString();
       var progressBar = (j.status==='generating'||j.status==='queued') ?
         '<div style="height:3px;background:var(--border);border-radius:2px;margin-top:8px;overflow:hidden">'+
@@ -4630,12 +4896,7 @@ function setRptRange(days){
   checkReportData();
 }
 
-function showScheduleForm(){
-  var form=document.getElementById('scheduleForm');
-  if(!form) return;
-  form.style.display=form.style.display==='none'?'block':'none';
-  if(form.style.display==='block') populateDropdown('sched-emp');
-}
+function showScheduleForm(){ /* removed - schedule form always visible */ }
 
 function onSchedFreqChange(){
   var freq=document.getElementById('sched-freq').value;
@@ -4650,8 +4911,9 @@ async function createSchedule(){
   var dom=document.getElementById('sched-dom')?document.getElementById('sched-dom').value:null;
   var email=document.getElementById('sched-email').value.trim();
   var hour=document.getElementById('sched-hour')?parseInt(document.getElementById('sched-hour').value):8;
+  var range=document.getElementById('sched-range')?document.getElementById('sched-range').value:'yesterday';
   try{
-    var res=await fetch('/api/admin/report-schedules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({employee_id:empId||null,frequency:freq,day_of_week:dow||null,day_of_month:dom||null,email:email||null,send_hour:hour})});
+    var res=await fetch('/api/admin/report-schedules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({employee_id:empId||null,frequency:freq,day_of_week:dow||null,day_of_month:dom||null,email:email||null,send_hour:hour,report_range:range})});
     var data=await res.json();
     if(data.success){ toast('✓ Schedule created','#10b981'); loadReportSchedules(); }
     else { toast('Error: '+(data.error||'Failed'),'#ef4444'); }
@@ -4667,11 +4929,13 @@ async function loadReportSchedules(){
     var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     list.innerHTML=schedules.map(function(s){
       var freqLabel=s.frequency==='daily'?'Daily':s.frequency==='weekly'?'Weekly ('+days[s.day_of_week||1]+')':'Monthly (day '+s.day_of_month+')';
+      var rangeMap={'yesterday':'Yesterday','7days':'Last 7 Days','30days':'Last 30 Days','3months':'Last 3 Months','6months':'Last 6 Months','1year':'1 Year'};
+      var rangeLabel=rangeMap[s.report_range||'yesterday']||'Yesterday';
       var nextRun=s.next_run?new Date(s.next_run).toLocaleString():'—';
       var lastRun=s.last_run?new Date(s.last_run).toLocaleString():'Never';
       return '<div style="padding:12px 14px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'+
         '<div>'+
-          '<div style="font-size:12px;font-weight:600;color:var(--text)">'+s.employee_name+' &nbsp;·&nbsp; <span style="color:var(--accent)">'+freqLabel+'</span></div>'+
+          '<div style="font-size:12px;font-weight:600;color:var(--text)">'+s.employee_name+' &nbsp;·&nbsp; <span style="color:var(--accent)">'+freqLabel+'</span> &nbsp;·&nbsp; <span style="color:#10b981;font-size:11px">📅 '+rangeLabel+'</span></div>'+
           '<div style="font-size:10px;color:var(--text3);margin-top:3px">Next: '+nextRun+' &nbsp;·&nbsp; Last: '+lastRun+(s.email?' &nbsp;·&nbsp; Email: '+s.email:'')+'</div>'+
         '</div>'+
         '<div style="display:flex;align-items:center;gap:8px">'+
@@ -4830,9 +5094,641 @@ async function loadSysTimeline(){
 }
 // ---- END SYSTEM ACTIVITY TIMELINE ----
 
+
+// ---- FLAGGED SCREENSHOTS CALENDAR ----
+var flagCalYear=new Date().getFullYear(), flagCalMonth=new Date().getMonth();
+var flagSelectedDate='';
+
+function toggleFlagCal(event){
+  event.stopPropagation();
+  var d=document.getElementById('flagCalDropdown');
+  var isHidden=d.style.display==='none'||d.style.display==='';
+  d.style.display=isHidden?'block':'none';
+  if(isHidden){
+    var btn=document.getElementById('flagCalBtn');
+    var rect=btn.getBoundingClientRect();
+    d.style.left=rect.left+'px';
+    d.style.top=(rect.bottom+4)+'px';
+    renderFlagCalendar();
+    setTimeout(function(){
+      document.addEventListener('click',function flagHandler(e){
+        if(!d.contains(e.target)&&e.target.id!=='flagCalBtn'){
+          d.style.display='none';
+          document.removeEventListener('click',flagHandler);
+        }
+      });
+    },50);
+  }
+}
+
+function changeFlagMonth(dir){
+  flagCalMonth+=dir;
+  if(flagCalMonth>11){flagCalMonth=0;flagCalYear++;}
+  if(flagCalMonth<0){flagCalMonth=11;flagCalYear--;}
+  renderFlagCalendar();
+}
+
+var flagCalDates={};
+async function loadFlagCalendarDates(){
+  try{
+    var emp=document.getElementById('flag-emp2')?document.getElementById('flag-emp2').value:'';
+    var url='/api/dashboard/screenshot-dates'+(emp?'?employee_id='+emp:'');
+    var rows=await fetch(url).then(function(r){return r.json();});
+    flagCalDates={};
+    rows.forEach(function(r){var d=(r.date||'').split('T')[0].split(' ')[0];if(d)flagCalDates[d]=(flagCalDates[d]||0)+parseInt(r.count||0);});
+    renderFlagCalendar();
+  }catch(e){renderFlagCalendar();}
+}
+
+function renderFlagCalendar(){
+  var el=document.getElementById('flagCalGrid');
+  if(!el) return;
+  var months=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var lbl=document.getElementById('flagCalMonthLabel');
+  if(lbl) lbl.textContent=months[flagCalMonth]+' '+flagCalYear;
+  var firstDay=new Date(flagCalYear,flagCalMonth,1).getDay();
+  var daysInMonth=new Date(flagCalYear,flagCalMonth+1,0).getDate();
+  var today=(function(){var _d=new Date();return _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');})();
+  var html='';
+  for(var i=0;i<firstDay;i++) html+='<div></div>';
+  for(var d=1;d<=daysInMonth;d++){
+    var ds=flagCalYear+'-'+String(flagCalMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    var hasData=flagCalDates[ds]?true:false;
+    var isSel=ds===flagSelectedDate, isToday=ds===today;
+    var bg=isSel?'#00e5ff':isToday?'rgba(0,229,255,0.15)':'transparent';
+    var col=isSel?'#0a0c10':isToday?'#00e5ff':'#e2e8f0';
+    var bdr=isSel?'1px solid #00e5ff':isToday?'1px solid rgba(0,229,255,0.4)':'1px solid transparent';
+    var dotColor=isSel?'#000':'#00e5ff';
+    html+='<div onclick="selectFlagDate(\'' +ds+ '\');event.stopPropagation()" style="padding:3px 1px;border-radius:4px;cursor:pointer;background:'+bg+';color:'+col+';font-size:11px;border:'+bdr+';text-align:center;min-height:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px">'+
+      '<span>'+d+'</span>'+
+      (hasData?'<div style="width:5px;height:5px;border-radius:50%;background:'+dotColor+'"></div>':'<div style="width:5px;height:5px"></div>')+
+    '</div>';
+  }
+  el.innerHTML=html;
+}
+
+function selectFlagDate(ds){
+  flagSelectedDate=(flagSelectedDate===ds)?'':ds;
+  document.getElementById('flag-date2').value=flagSelectedDate;
+  var lbl=document.getElementById('flagCalBtnLabel');
+  if(lbl) lbl.textContent=flagSelectedDate||'All Dates';
+  document.getElementById('flagCalDropdown').style.display='none';
+  renderFlagCalendar();
+  loadFlaggedPage(1);
+}
+
+function clearFlagFilters(){
+  flagSelectedDate='';
+  document.getElementById('flag-date2').value='';
+  document.getElementById('flag-emp2').value='';
+  var lbl=document.getElementById('flagCalBtnLabel');
+  if(lbl) lbl.textContent='All Dates';
+  renderFlagCalendar();
+  loadFlaggedPage(1);
+}
+// ---- END FLAGGED CALENDAR ----
+
+
+// ============================================================
+// ---- EMPLOYEE PROFILE OVERLAY ----------------------------
+// ============================================================
+var epEmpId = null, epEmpName = '', epCurrentTab = 'ss';
+var epCalYear = new Date().getFullYear(), epCalMonth = new Date().getMonth();
+var epSelectedDate = '';
+var epCalDates = {};
+var epTempShiftDates = {}; // date -> roster info
+
+function openEmpProfile(id, name) {
+  epEmpId = id; epEmpName = name;
+  epCurrentTab = 'ss';
+  epSelectedDate = '';
+  // Set today as default
+  var today = new Date();
+  epCalYear = today.getFullYear(); epCalMonth = today.getMonth();
+  var todayStr = today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+  epSelectedDate = todayStr;
+
+  // Set header
+  var initials = name.split(' ').map(function(x){return x[0];}).join('').slice(0,2).toUpperCase();
+  document.getElementById('epAvatar').textContent = initials;
+  document.getElementById('epName').textContent = name;
+  document.getElementById('epMeta').textContent = '';
+
+  // Show overlay
+  document.getElementById('empProfileOverlay').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+
+  // Load calendar dates and content
+  loadEpCalDates();
+  loadEpTempShiftDates();
+  switchEpTab('ss');
+}
+
+function closeEmpProfile() {
+  document.getElementById('empProfileOverlay').style.display = 'none';
+  document.body.style.overflow = '';
+  epEmpId = null;
+}
+
+async function loadEpTempShiftDates() {
+  if (!epEmpId) return;
+  try {
+    var dates = await fetch('/api/employees/'+epEmpId+'/temp-shift-dates').then(function(r){return r.json();});
+    epTempShiftDates = {};
+    dates.forEach(function(d){ epTempShiftDates[d] = true; });
+    renderEpCalendar();
+  } catch(e) {}
+}
+
+function openTempShiftModal(date) {
+  var modal = document.getElementById('tempShiftModal');
+  if (!modal) return;
+  document.getElementById('tempShiftDate').value = date || epSelectedDate;
+  document.getElementById('tempShiftDateDisplay').textContent = date || epSelectedDate;
+  modal.style.display = 'flex';
+  // Load rosters into dropdown
+  fetch('/api/rosters').then(function(r){return r.json();}).then(function(rosters){
+    var sel = document.getElementById('tempShiftRoster');
+    sel.innerHTML = '<option value="">— Select Roster —</option>' + rosters.map(function(r){
+      return '<option value="'+r.id+'">'+r.name+' ('+fmtRosterTime(r.start_time)+' – '+fmtRosterTime(r.end_time)+')</option>';
+    }).join('');
+  });
+}
+
+function closeTempShiftModal() {
+  var modal = document.getElementById('tempShiftModal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function saveTempShift() {
+  var date = document.getElementById('tempShiftDate').value;
+  var rosterId = document.getElementById('tempShiftRoster').value;
+  if (!date || !rosterId) { toast('Please select a roster', '#ef4444'); return; }
+  try {
+    var res = await fetch('/api/employees/'+epEmpId+'/temp-shift', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({date: date, roster_id: parseInt(rosterId)})
+    });
+    var data = await res.json();
+    if (data.error) { toast('Error: '+data.error, '#ef4444'); return; }
+    toast('✓ Temp shift set for '+date, '#10b981');
+    closeTempShiftModal();
+    await loadEpTempShiftDates();
+    loadEpTabContent();
+  } catch(e) { toast('Error saving temp shift', '#ef4444'); }
+}
+
+async function removeTempShift(date) {
+  if (!confirm('Remove temp shift override for '+date+'?')) return;
+  try {
+    await fetch('/api/employees/'+epEmpId+'/temp-shift?date='+date, {method:'DELETE'});
+    toast('Temp shift removed', '#10b981');
+    await loadEpTempShiftDates();
+    loadEpTabContent();
+  } catch(e) { toast('Error removing temp shift', '#ef4444'); }
+}
+
+function switchEpTab(tab) {
+  epCurrentTab = tab;
+  var tabs = ['ss','web','app','sys'];
+  tabs.forEach(function(t) {
+    var btn = document.getElementById('epTab-'+t);
+    var content = document.getElementById('epContent-'+t);
+    if(btn) {
+      btn.style.borderBottomColor = t===tab ? 'var(--accent)' : 'transparent';
+      btn.style.color = t===tab ? 'var(--accent)' : 'var(--text3)';
+    }
+    if(content) content.style.display = t===tab ? 'block' : 'none';
+  });
+  loadEpTabContent();
+}
+
+function changeEpMonth(dir) {
+  epCalMonth += dir;
+  if(epCalMonth > 11) { epCalMonth = 0; epCalYear++; }
+  if(epCalMonth < 0)  { epCalMonth = 11; epCalYear--; }
+  renderEpCalendar();
+}
+
+function selectEpDate(ds) {
+  epSelectedDate = ds;
+  renderEpCalendar();
+  loadEpTabContent();
+}
+
+async function loadEpCalDates() {
+  try {
+    // Load dates based on current tab
+    var url = '/api/dashboard/screenshot-dates?employee_id='+epEmpId;
+    var rows = await fetch(url).then(function(r){return r.json();});
+    epCalDates = {};
+    rows.forEach(function(r){
+      var d = (r.date||'').split('T')[0].split(' ')[0];
+      if(d) epCalDates[d] = (epCalDates[d]||0) + parseInt(r.count||0);
+    });
+    renderEpCalendar();
+  } catch(e) { renderEpCalendar(); }
+}
+
+async function loadEpCalDatesByTab(tab) {
+  try {
+    var url = '';
+    if(tab==='ss')  url = '/api/dashboard/screenshot-dates?employee_id='+epEmpId;
+    else if(tab==='web') url = '/api/dashboard/web-activity-dates?employee_id='+epEmpId;
+    else if(tab==='app') url = '/api/dashboard/app-usage-dates?employee_id='+epEmpId;
+    else if(tab==='sys') url = '/api/dashboard/system-event-dates?employee_id='+epEmpId;
+    if(!url) return;
+    var rows = await fetch(url).then(function(r){return r.json();});
+    epCalDates = {};
+    rows.forEach(function(r){
+      var d = (r.date||'').split('T')[0].split(' ')[0];
+      if(d) epCalDates[d] = (epCalDates[d]||0) + parseInt(r.count||0);
+    });
+    renderEpCalendar();
+  } catch(e) { renderEpCalendar(); }
+}
+
+function renderEpCalendar() {
+  var el = document.getElementById('epCalGrid');
+  if(!el) return;
+  var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var lbl = document.getElementById('epCalMonthLabel');
+  if(lbl) lbl.textContent = months[epCalMonth]+' '+epCalYear;
+  var firstDay = new Date(epCalYear, epCalMonth, 1).getDay();
+  var daysInMonth = new Date(epCalYear, epCalMonth+1, 0).getDate();
+  var today = (function(){var _d=new Date();return _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');})();
+  var h = '';
+  for(var i=0;i<firstDay;i++) h+='<div></div>';
+  for(var d=1;d<=daysInMonth;d++){
+    var ds = epCalYear+'-'+String(epCalMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    var hasData = epCalDates[ds] ? true : false;
+    var isSel = ds===epSelectedDate, isToday = ds===today;
+    var bg  = isSel?'#00e5ff':isToday?'rgba(0,229,255,0.15)':'transparent';
+    var col = isSel?'#0a0c10':isToday?'#00e5ff':'#e2e8f0';
+    var bdr = isSel?'1px solid #00e5ff':isToday?'1px solid rgba(0,229,255,0.4)':'1px solid transparent';
+    var dotCol = isSel?'#000':'#00e5ff';
+    h += '<div onclick="selectEpDate(\''+ds+'\')" style="padding:3px 1px;border-radius:4px;cursor:pointer;background:'+bg+';color:'+col+';font-size:11px;border:'+bdr+';text-align:center;min-height:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;position:relative">'+
+      '<span>'+d+'</span>'+
+      (epTempShiftDates[ds]?'<div style="width:5px;height:5px;border-radius:50%;background:#f59e0b;position:absolute;top:2px;right:2px"></div>':'')+
+      (hasData?'<div style="width:5px;height:5px;border-radius:50%;background:'+dotCol+'"></div>':'<div style="width:5px;height:5px"></div>')+
+    '</div>';
+  }
+  el.innerHTML = h;
+}
+
+async function loadEpTabContent() {
+  if(!epEmpId) return;
+  // Load summary stats into left panel
+  fetch('/api/employees/'+epEmpId+'/stats'+(epSelectedDate?'?date='+epSelectedDate:'')).then(function(r){return r.json();}).then(function(s){
+    // Stats panel
+    var el = document.getElementById('epStats');
+    if(el) el.innerHTML =
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+        '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center">'+
+          '<div style="font-size:18px;font-weight:800;color:var(--accent)">'+s.screenshots+'</div>'+
+          '<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px">Screenshots</div>'+
+        '</div>'+
+        '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center">'+
+          '<div style="font-size:18px;font-weight:800;color:#10b981">'+s.apps+'</div>'+
+          '<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px">Apps</div>'+
+        '</div>'+
+        '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center">'+
+          '<div style="font-size:18px;font-weight:800;color:#7c3aed">'+(s.websites||0)+'</div>'+
+          '<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px">Websites</div>'+
+        '</div>'+
+        '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center">'+
+          '<div style="font-size:18px;font-weight:800;color:#f59e0b">'+(s.web_incognito||0)+'</div>'+
+          '<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px">Incognito</div>'+
+        '</div>'+
+      '</div>';
+    // Productivity panel
+    var pel = document.getElementById('epProductivity');
+    if(!pel) return;
+    function fmtM(m){ var h=Math.floor(m/60); var mm=m%60; return h>0?h+'h '+mm+'m':mm+'m'; }
+    var hasRoster = !!s.roster_name;
+
+    // Roster badge
+    // Roster
+    var isTempShift = epSelectedDate && epTempShiftDates[epSelectedDate];
+    var rosterHtml = '<div style="padding:12px 16px;border-radius:10px;margin-bottom:20px;'+(hasRoster?'background:var(--accent-bg);border:1px solid rgba(0,229,255,0.2)':'background:var(--bg3);border:1px solid var(--border)')+'">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:'+(isTempShift||epSelectedDate?'8px':'0px')+'">'+
+        '<div>'+
+          '<div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Shift Roster</div>'+
+          '<div style="font-size:14px;font-weight:800;color:'+(hasRoster?'var(--accent)':'var(--text3)')+'>'+(s.roster_name||'Not Assigned')+'</div>'+
+        '</div>'+
+        (hasRoster&&s.shift_start?'<div style="text-align:right"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Hours</div><div style="font-size:13px;font-weight:700;color:var(--text)">'+s.shift_start.slice(0,5)+' – '+s.shift_end.slice(0,5)+'</div></div>':'')+
+      '</div>'+
+      (epSelectedDate?
+        '<div style="display:flex;align-items:center;gap:6px;border-top:1px solid var(--border);padding-top:8px">'+
+          (isTempShift?
+            '<span style="font-size:9px;padding:2px 8px;border-radius:8px;background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3)">⚡ Temp Shift Active</span>'+
+            '<button onclick="removeTempShift(&quot;'+epSelectedDate+'&quot;)" style="font-size:9px;padding:2px 8px;border-radius:6px;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.3);cursor:pointer">✕ Remove</button>':
+            '<button onclick="openTempShiftModal(&quot;'+epSelectedDate+'&quot;)" style="font-size:10px;padding:4px 12px;border-radius:6px;background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);cursor:pointer">⚡ Set Temp Shift for '+epSelectedDate+'</button>')+
+        '</div>':'')+
+    '</div>';
+
+    // Stat box helper
+    function statBox(val, label, color, bg) {
+      return '<div style="text-align:center;padding:12px 8px;background:'+(bg||'var(--bg)')+';border:1px solid var(--border);border-radius:10px">'+
+        '<div style="font-size:15px;font-weight:800;color:'+color+'">'+val+'</div>'+
+        '<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-top:3px">'+label+'</div>'+
+      '</div>';
+    }
+
+    // Section header helper
+    function secHeader(icon, label) {
+      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)">'+
+        '<span style="font-size:15px">'+icon+'</span>'+
+        '<span style="font-size:12px;font-weight:700;color:var(--text)">'+label+'</span>'+
+      '</div>';
+    }
+
+    // WEB ACTIVITY section
+    var webHtml = '<div style="margin-bottom:20px">'+
+      secHeader('🌐','Web Activity')+
+      // Total row
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">'+
+        statBox(fmtM(s.web_on_shift||0),'On Shift','#10b981','rgba(16,185,129,0.06)')+
+        statBox(fmtM(s.web_off_shift||0),'Off Shift','#ef4444','rgba(239,68,68,0.06)')+
+      '</div>'+
+      // On-shift breakdown
+      (s.web_on_shift>0?
+        '<div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">On-Shift Breakdown</div>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">'+
+          statBox(fmtM(s.web_on_prod||0),'Productive','#10b981','')+
+          statBox(fmtM(s.web_on_neutral||0),'Neutral','#f59e0b','')+
+          statBox(fmtM(s.web_on_nonprod||0),'Non-Prod','#ef4444','')+
+        '</div>':'')+
+      // Off-shift breakdown
+      (s.web_off_shift>0?
+        '<div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Off-Shift Breakdown</div>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">'+
+          statBox(fmtM(s.web_off_prod||0),'Productive','#10b981','')+
+          statBox(fmtM(s.web_off_neutral||0),'Neutral','#f59e0b','')+
+          statBox(fmtM(s.web_off_nonprod||0),'Non-Prod','#ef4444','')+
+        '</div>':'')+
+    '</div>';
+
+    // APP USAGE section
+    var appHtml = '<div style="margin-bottom:20px">'+
+      secHeader('💻','App Usage')+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+        statBox(fmtM(s.app_on_shift||0),'On Shift','#10b981','rgba(16,185,129,0.06)')+
+        statBox(fmtM(s.app_off_shift||0),'Off Shift','#ef4444','rgba(239,68,68,0.06)')+
+      '</div>'+
+    '</div>';
+
+    // SYSTEM EVENTS section
+    var sysHtml = '<div style="margin-bottom:8px">'+
+      secHeader('⚡','System Events')+
+      (s.first_seen?
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'+
+          statBox(s.first_seen,'First Seen','#10b981','rgba(16,185,129,0.06)')+
+          statBox(s.last_seen,'Last Seen','#7c3aed','rgba(124,58,237,0.06)')+
+        '</div>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">'+
+          statBox(fmtM(s.sys_active_mins||0),'Active Time','var(--accent)','rgba(0,229,255,0.06)')+
+          statBox(fmtM(s.sys_on_shift_mins||0),'In Shift','#10b981','rgba(16,185,129,0.06)')+
+          statBox(fmtM(s.sys_off_shift_mins||0),'Off Shift','#ef4444','rgba(239,68,68,0.06)')+
+        '</div>'
+      :'<div style="color:var(--text3);font-size:11px;padding:10px 0">No system events recorded</div>')+
+    '</div>';
+
+    pel.innerHTML = rosterHtml + webHtml + appHtml + sysHtml;
+  }).catch(function(){});
+  var tab = epCurrentTab;
+
+  // Load calendar dots for this tab
+  loadEpCalDatesByTab(tab);
+
+  var contentEl = document.getElementById('epContent-'+tab);
+  if(!contentEl) return;
+  contentEl.innerHTML = '<div class="empty">Loading...</div>';
+
+  var dateParam = epSelectedDate ? '&date='+epSelectedDate : '';
+
+  try {
+    if(tab === 'ss') {
+      var data = await fetch('/api/dashboard/screenshots?page=1&per_page=40&employee_id='+epEmpId+dateParam).then(function(r){return r.json();});
+      var shots = data.screenshots || data || [];
+      if(!shots.length){ contentEl.innerHTML='<div class="empty">No screenshots found.</div>'; return; }
+      contentEl.innerHTML = '<div class="ss-grid" style="grid-template-columns:repeat(4,1fr)">'+
+        shots.map(function(s){
+          return '<div class="ss-card" onclick="epViewScreenshot(this.dataset.f,this.dataset.n,this.dataset.t)" data-f="'+s.filename+'" data-n="'+s.employee_name+'" data-t="'+s.recorded_at+'">'+
+            '<img src="/screenshots/'+s.filename+'" style="width:100%;height:120px;object-fit:cover;border-radius:6px" onerror="this.style.display=\'none\'">'+
+            '<div style="padding:6px 8px">'+
+              '<div style="font-size:10px;color:var(--text2)">'+new Date(s.recorded_at).toLocaleTimeString()+'</div>'+
+            '</div>'+
+          '</div>';
+        }).join('')+'</div>';
+
+    } else if(tab === 'web') {
+      var data = await fetch('/api/dashboard/web-activity?page=1&employee_id='+epEmpId+dateParam).then(function(r){return r.json();});
+      // API returns grouped data — extract rows from first (only) employee group
+      var rawRows = data.rows || [];
+      if(!rawRows.length){ contentEl.innerHTML='<div class="empty">No web activity found.</div>'; return; }
+      // rawRows are per-url entries with url, browser, total_seconds
+      rawRows.sort(function(a,b){ return parseInt(b.total_seconds||0)-parseInt(a.total_seconds||0); });
+      function fmtSecs(s){ var m=Math.floor(s/60); var h=Math.floor(m/60); m=m%60; return h>0?h+'h '+m+'m':m+'m'; }
+      contentEl.innerHTML = '<table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--bg3)">'+
+        '<th style="padding:8px 12px;text-align:left;font-size:9px;color:var(--text3);letter-spacing:1px;text-transform:uppercase">Website</th>'+
+        '<th style="padding:8px 12px;text-align:left;font-size:9px;color:var(--text3);letter-spacing:1px;text-transform:uppercase">Browser</th>'+
+        '<th style="padding:8px 12px;text-align:left;font-size:9px;color:var(--text3);letter-spacing:1px;text-transform:uppercase">Productivity</th>'+
+        '<th style="padding:8px 12px;text-align:right;font-size:9px;color:var(--text3);letter-spacing:1px;text-transform:uppercase">Time</th>'+
+        '</tr></thead><tbody>'+
+        rawRows.map(function(r){
+          var prod = getProductivity(r.url);
+          var prodColor = prod==='Productive'?'#10b981':prod==='Non-productive'?'#ef4444':'#f59e0b';
+          var favicon = getFaviconUrl(r.url);
+          var friendly = getFriendlyName(r.url);
+          return '<tr style="border-bottom:1px solid var(--border)">'+
+            '<td style="padding:8px 12px;font-size:11px">'+
+              '<div style="display:flex;align-items:center;gap:8px">'+
+                (favicon?'<img src="'+favicon+'" style="width:14px;height:14px;border-radius:2px" onerror="this.style.display=\'none\'">':'')+
+                '<span style="color:var(--text)">'+friendly+'</span>'+
+              '</div>'+
+            '</td>'+
+            '<td style="padding:8px 12px;color:var(--text3);font-size:11px">'+(r.browser||'—')+'</td>'+
+            '<td style="padding:8px 12px;font-size:11px"><span style="color:'+prodColor+';font-weight:600">'+prod+'</span></td>'+
+            '<td style="padding:8px 12px;color:var(--accent);font-size:11px;font-weight:700;text-align:right;font-family:monospace">'+fmtSecs(parseInt(r.total_seconds||0))+'</td>'+
+          '</tr>';
+        }).join('')+'</tbody></table>';
+    } else if(tab === 'app') {
+      var data = await fetch('/api/dashboard/app-usage?page=1&employee_id='+epEmpId+dateParam).then(function(r){return r.json();});
+      var groups = data.groups || data || [];
+      if(!groups.length){ contentEl.innerHTML='<div class="empty">No app usage found.</div>'; return; }
+      // Flatten all apps from groups
+      var allApps = [];
+      groups.forEach(function(g){ if(g.apps) g.apps.forEach(function(a){ allApps.push(a); }); });
+      if(!allApps.length){ contentEl.innerHTML='<div class="empty">No app usage found.</div>'; return; }
+      contentEl.innerHTML = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">'+
+        allApps.slice(0,20).map(function(a){
+          var col = '#00e5ff';
+          var secs = parseInt(a.total_seconds)||0;
+          var h2=Math.floor(secs/3600), m2=Math.floor((secs%3600)/60);
+          var timeStr=(h2>0?'0'+h2+'h ':'')+String(m2).padStart(2,'0')+'m';
+          return '<div class="panel" style="padding:14px;text-align:center">'+
+            '<div style="font-size:16px;font-weight:800;color:var(--text);font-family:monospace">'+timeStr+'</div>'+
+            '<div style="font-size:11px;color:'+col+';margin-top:4px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+a.app_name+'</div>'+
+          '</div>';
+        }).join('')+'</div>';
+
+    } else if(tab === 'sys') {
+      var data = await fetch('/api/dashboard/system-timeline?employee_id='+epEmpId+(epSelectedDate?'&date='+epSelectedDate:'')).then(function(r){return r.json();});
+      if(!data.length){ contentEl.innerHTML='<div class="empty">No system activity found.</div>'; return; }
+      var EVENT_MAP = {
+        startup:{icon:'🟢',label:'System ON',color:'#10b981'},
+        shutdown:{icon:'🔴',label:'Shutdown',color:'#ef4444'},
+        wakeup:{icon:'☀️',label:'Wake Up',color:'#f59e0b'},
+        sleep:{icon:'💤',label:'Sleep',color:'#6366f1'},
+        idle_lock:{icon:'🔒',label:'Idle Lock',color:'#64748b'}
+      };
+      function fmtMs(ms){var m=Math.round(ms/60000);var h=Math.floor(m/60);m=m%60;return h>0?h+'h '+m+'m':m+'m';}
+      contentEl.innerHTML = data.map(function(d){
+        var prodStr = fmtMs(d.productive_ms||0);
+        var evHtml = d.events.map(function(ev,i){
+          var cfg=EVENT_MAP[ev.type]||{icon:'❓',label:ev.type,color:'#64748b'};
+          var dt=new Date(ev.time);
+          var timeStr=dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+          var isLast=i===d.events.length-1;
+          var durStr='';
+          if(!isLast){var ndt=new Date(d.events[i+1].time);var dur=ndt-dt;if(dur>60000){var isAct=(ev.type==='startup'||ev.type==='wakeup');durStr='<span style="font-size:10px;color:'+(isAct?'#10b981':'#64748b')+';margin-left:8px;background:'+(isAct?'#10b98118':'#64748b18')+';padding:1px 6px;border-radius:10px">'+(isAct?'active ':'')+fmtMs(dur)+'</span>';}}
+          return '<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:2px">'+
+            '<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:30px">'+
+              '<div style="width:28px;height:28px;border-radius:50%;background:'+cfg.color+'18;border:2px solid '+cfg.color+';display:flex;align-items:center;justify-content:center;font-size:12px">'+cfg.icon+'</div>'+
+              (!isLast?'<div style="width:2px;background:var(--border);flex:1;min-height:16px;margin-top:2px"></div>':'')+
+            '</div>'+
+            '<div style="padding-top:4px;padding-bottom:'+(isLast?'0':'10px')+'">'+
+              '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+                '<span style="font-size:12px;font-weight:700;color:'+cfg.color+'">'+cfg.label+'</span>'+
+                '<span style="font-size:11px;font-family:monospace;color:var(--text2)">'+timeStr+'</span>'+
+                durStr+
+              '</div>'+
+            '</div>'+
+          '</div>';
+        }).join('');
+        return '<div style="border:1px solid var(--border);border-radius:10px;margin-bottom:14px;overflow:hidden">'+
+          '<div style="padding:10px 16px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">'+
+            '<span style="font-size:12px;font-weight:700;color:var(--text)">'+d.employee_name+'</span>'+
+            (d.shift_start?'<span style="font-size:11px;color:var(--text3)">🎯 In Shift: <strong style="color:var(--accent)">'+prodStr+'</strong> &nbsp;·&nbsp; 📋 '+d.shift_start.slice(0,5)+'–'+d.shift_end.slice(0,5)+'</span>':'<span style="font-size:11px;color:var(--text3)">⏱ Active: <strong style="color:#10b981">'+fmtMs(d.total_active_ms||0)+'</strong></span>')+
+          '</div>'+
+          '<div style="padding:14px 18px">'+evHtml+'</div>'+
+        '</div>';
+      }).join('');
+    }
+  } catch(e) {
+    contentEl.innerHTML = '<div class="empty">Error loading data: '+e.message+'</div>';
+    console.error(e);
+  }
+}
+
+function epViewScreenshot(filename, empName, recordedAt) {
+  var ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:600;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px';
+  var closeBtn = document.createElement('button');
+  closeBtn.className = 'btn';
+  closeBtn.textContent = '✕ Close';
+  closeBtn.onclick = function(){ ov.remove(); };
+  var dlBtn = document.createElement('button');
+  dlBtn.className = 'btn';
+  dlBtn.textContent = '⤓ Download';
+  dlBtn.onclick = function(){ dlScreenshot('/screenshots/'+filename, filename); };
+  var header = document.createElement('div');
+  header.style.cssText = 'width:100%;max-width:1200px';
+  var topBar = document.createElement('div');
+  topBar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px';
+  var info = document.createElement('div');
+  info.innerHTML = '<div style="color:#fff;font-size:15px;font-weight:700">'+empName+'</div><div style="color:#64748b;font-size:12px">'+new Date(recordedAt).toLocaleString()+'</div>';
+  var btns = document.createElement('div');
+  btns.style.cssText = 'display:flex;gap:8px';
+  btns.appendChild(dlBtn);
+  btns.appendChild(closeBtn);
+  topBar.appendChild(info);
+  topBar.appendChild(btns);
+  var img = document.createElement('img');
+  img.src = '/screenshots/'+filename;
+  img.style.cssText = 'width:100%;max-height:80vh;object-fit:contain;border-radius:8px';
+  header.appendChild(topBar);
+  header.appendChild(img);
+  ov.appendChild(header);
+  ov.addEventListener('click', function(e){ if(e.target===ov) ov.remove(); });
+  document.body.appendChild(ov);
+}
+// ---- END EMPLOYEE PROFILE OVERLAY ----
+
 loadStats();
 loadEmployees();
 setInterval(function(){loadStats();loadEmployees();},30000);
 </script>
+
+<!-- EMPLOYEE PROFILE OVERLAY -->
+<div id="empProfileOverlay" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:500;overflow-y:auto">
+  <div style="max-width:1400px;margin:0 auto;padding:20px 24px">
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div id="epAvatar" class="avatar" style="width:48px;height:48px;font-size:18px;font-weight:700;border-radius:12px;background:#00e5ff22;color:#00e5ff;display:flex;align-items:center;justify-content:center"></div>
+        <div>
+          <div id="epName" style="font-size:20px;font-weight:800;color:var(--text)"></div>
+          <div id="epMeta" style="font-size:12px;color:var(--text3);margin-top:2px"></div>
+        </div>
+      </div>
+      <button onclick="closeEmpProfile()" class="btn" style="padding:8px 18px;font-size:13px">✕ Close</button>
+    </div>
+
+    <!-- Overview only -->
+    <div style="display:grid;grid-template-columns:300px 1fr;gap:20px;align-items:start">
+      <!-- Left: Calendar + Stats + Productivity -->
+      <div>
+        <div class="panel" style="padding:16px;margin-bottom:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <button class="btn" style="padding:4px 12px" onclick="changeEpMonth(-1)">‹</button>
+            <span id="epCalMonthLabel" style="font-size:13px;font-weight:700;color:var(--text)"></span>
+            <button class="btn" style="padding:4px 12px" onclick="changeEpMonth(1)">›</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;margin-bottom:6px">
+            <div style="font-size:9px;color:#64748b">Su</div><div style="font-size:9px;color:#64748b">Mo</div><div style="font-size:9px;color:#64748b">Tu</div><div style="font-size:9px;color:#64748b">We</div><div style="font-size:9px;color:#64748b">Th</div><div style="font-size:9px;color:#64748b">Fr</div><div style="font-size:9px;color:#64748b">Sa</div>
+          </div>
+          <div id="epCalGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px"></div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:10px;color:#64748b">
+            <div style="width:6px;height:6px;border-radius:50%;background:#00e5ff"></div> Has data
+          </div>
+          <button class="btn" style="width:100%;margin-top:10px;font-size:11px" onclick="selectEpDate('')">Show All Dates</button>
+        </div>
+
+        <!-- Summary stats -->
+        <div id="epStats" style="margin-bottom:14px"></div>
+
+      </div>
+
+      <!-- Right: Productivity -->
+      <div class="panel" style="padding:20px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:16px">Productivity</div>
+        <div id="epProductivity"><div style="color:var(--text3);font-size:11px">Select a date to view</div></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- TEMP SHIFT MODAL -->
+<div id="tempShiftModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;min-width:360px;max-width:440px">
+    <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px">⚡ Set Temporary Shift</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:20px">Override shift for <strong id="tempShiftDateDisplay" style="color:#f59e0b"></strong> only</div>
+    <input type="hidden" id="tempShiftDate">
+    <div style="margin-bottom:16px">
+      <label style="display:block;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Roster</label>
+      <select id="tempShiftRoster" class="filter-select" style="width:100%;padding:10px 12px">
+        <option value="">— Select Roster —</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="btn btn-accent" onclick="saveTempShift()" style="flex:1">Save Override</button>
+      <button class="btn" onclick="closeTempShiftModal()">Cancel</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

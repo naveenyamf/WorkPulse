@@ -6,7 +6,7 @@ const path = require('path');
 const os = require('os');
 const { execSync, exec } = require('child_process');
 
-const AGENT_VERSION = '2.5.0';
+const AGENT_VERSION = '2.6.5';
 const CONFIG_FILE = 'C:\\WorkPulse\\config.json';
 let SERVER_URL = 'http://10.10.11.251';
 
@@ -14,6 +14,87 @@ let AGENT_TOKEN = '';
 let currentApp = '';
 let appStartTime = Date.now();
 var lastIdleState = false;
+var lastLockState = false;
+
+// Offline queue - stores failed requests for retry
+var offlineQueue = [];
+var isRetrying = false;
+var QUEUE_FILE = 'C:\\WorkPulse\\offline_queue.json';
+
+function saveQueue() {
+  try { fs.writeFileSync(QUEUE_FILE, JSON.stringify(offlineQueue)); } catch(e) {}
+}
+
+function loadQueue() {
+  try {
+    if (fs.existsSync(QUEUE_FILE)) {
+      offlineQueue = JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8')) || [];
+      console.log('[Queue] Loaded ' + offlineQueue.length + ' offline items');
+    }
+  } catch(e) { offlineQueue = []; }
+}
+
+async function retryQueue() {
+  if (isRetrying || !offlineQueue.length) return;
+  isRetrying = true;
+  var remaining = [];
+  for (var item of offlineQueue) {
+    try {
+      await axios.post(SERVER_URL + item.path, item.body, {
+        headers: Object.assign({ 'x-agent-token': AGENT_TOKEN }, item.headers||{}),
+        timeout: 10000
+      });
+    } catch(e) {
+      remaining.push(item);
+    }
+  }
+  offlineQueue = remaining;
+  saveQueue();
+  isRetrying = false;
+  if (offlineQueue.length === 0) console.log('[Queue] All offline items synced');
+  // Also retry pending screenshots
+  retryPendingScreenshots();
+}
+
+async function retryPendingScreenshots() {
+  var pendingDir = 'C:\\WorkPulse\\pending_screenshots';
+  if (!fs.existsSync(pendingDir)) return;
+  var files = fs.readdirSync(pendingDir).filter(function(f){ return f.endsWith('.png'); });
+  if (!files.length) return;
+  console.log('[SS] Retrying ' + files.length + ' pending screenshots...');
+  for (var file of files) {
+    var filePath = pendingDir + '\\' + file;
+    try {
+      var form = new FormData();
+      form.append('screenshot', fs.createReadStream(filePath));
+      await axios.post(SERVER_URL + '/api/agent/screenshot', form, {
+        headers: Object.assign({ 'x-agent-token': AGENT_TOKEN }, form.getHeaders()),
+        timeout: 30000
+      });
+      fs.unlinkSync(filePath);
+      console.log('[SS] Retry sent: ' + file);
+    } catch(e) {
+      break; // still offline, stop trying
+    }
+  }
+}
+
+async function safePost(path, body, headers) {
+  try {
+    await axios.post(SERVER_URL + path, body, {
+      headers: Object.assign({ 'x-agent-token': AGENT_TOKEN }, headers||{}),
+      timeout: 10000
+    });
+    // If successful, retry any queued items
+    if (offlineQueue.length > 0) retryQueue();
+  } catch(e) {
+    // Queue for later retry
+    if (offlineQueue.length < 500) {
+      offlineQueue.push({ path: path, body: body, headers: headers||{} });
+      saveQueue();
+    }
+  }
+}
 var systemCheckInterval = 60; // seconds
 
 function loadConfig() {
@@ -78,10 +159,18 @@ function getActiveWindow() {
   }
 }
 
-var lastEventCheck = new Date(Date.now() - 5 * 60 * 1000);
+var lastEventCheck = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24hr lookback on startup
+var lastFullBackfill = Date.now();
 
 async function checkWindowsEvents() {
   try {
+    // Every 6 hours do a full 24hr backfill to catch missed events
+    var now = Date.now();
+    if (now - lastFullBackfill > 6 * 60 * 60 * 1000) {
+      lastEventCheck = new Date(now - 24 * 60 * 60 * 1000);
+      lastFullBackfill = now;
+      console.log('[Events] 6hr backfill - checking last 24hrs');
+    }
     var since = lastEventCheck.toISOString();
     lastEventCheck = new Date();
     var script = `
@@ -114,10 +203,7 @@ if($events.Count -eq 0) { Write-Output '[]' } else { $events | ConvertTo-Json -C
     if (!Array.isArray(events)) events = [events];
     for (var ev of events) {
       try {
-        await axios.post(SERVER_URL + '/api/agent/system-event',
-          { event_type: ev.type, recorded_at: ev.time },
-          { headers: { 'x-agent-token': AGENT_TOKEN }, timeout: 5000 }
-        );
+        await safePost('/api/agent/system-event', { event_type: ev.type, recorded_at: ev.time });
       } catch(e) {}
     }
   } catch(e) {}
@@ -191,7 +277,7 @@ if (urlInTitle) {
 function getAllApps(activeApp) {
   // Only track foreground active app — not background/minimized apps
   if (!activeApp || activeApp === 'Desktop' || activeApp === '') return [];
-  return [{ name: activeApp, seconds: 60 }];
+  return [{ name: activeApp, seconds: 20 }];
 }
 
 function takeScreenshot(callback) {
@@ -200,22 +286,44 @@ function takeScreenshot(callback) {
 const script = `
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-$screens = [System.Windows.Forms.Screen]::AllScreens
-$left = [int]::MaxValue; $top = [int]::MaxValue; $right = [int]::MinValue; $bottom = [int]::MinValue
-foreach ($s in $screens) {
-  if ($s.Bounds.Left -lt $left) { $left = $s.Bounds.Left }
-  if ($s.Bounds.Top -lt $top) { $top = $s.Bounds.Top }
-  if ($s.Bounds.Right -gt $right) { $right = $s.Bounds.Right }
-  if ($s.Bounds.Bottom -gt $bottom) { $bottom = $s.Bounds.Bottom }
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class GDICapture {
+  [DllImport("gdi32.dll")] public static extern int GetDeviceCaps(IntPtr hdc, int nIndex);
+  [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr hwnd);
+  [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr hwnd, IntPtr hdc);
 }
-$width = $right - $left
-$height = $bottom - $top
-$bitmap = New-Object System.Drawing.Bitmap($width, $height)
+"@
+$hdc = [GDICapture]::GetDC([IntPtr]::Zero)
+$physW = [GDICapture]::GetDeviceCaps($hdc, 118)
+$physH = [GDICapture]::GetDeviceCaps($hdc, 117)
+[GDICapture]::ReleaseDC([IntPtr]::Zero, $hdc) | Out-Null
+$screens = [System.Windows.Forms.Screen]::AllScreens
+$left = 0; $top = 0; $right = 0; $bottom = 0
+foreach ($s in $screens) {
+  if ($s.Bounds.Left -lt $left)     { $left   = $s.Bounds.Left }
+  if ($s.Bounds.Top -lt $top)       { $top     = $s.Bounds.Top }
+  if ($s.Bounds.Right -gt $right)   { $right   = $s.Bounds.Right }
+  if ($s.Bounds.Bottom -gt $bottom) { $bottom  = $s.Bounds.Bottom }
+}
+$logW = $right - $left
+$logH = $bottom - $top
+$primW = $screens[0].Bounds.Width
+$scaleX = if ($primW -gt 0 -and $physW -gt 0) { $physW / $primW } else { 1 }
+$scaleY = if ($primW -gt 0 -and $physH -gt 0) { $physH / $screens[0].Bounds.Height } else { 1 }
+$totalW = [int]($logW * $scaleX)
+$totalH = [int]($logH * $scaleY)
+if ($totalW -le 0) { $totalW = $physW }
+if ($totalH -le 0) { $totalH = $physH }
+$bitmap = New-Object System.Drawing.Bitmap($totalW, $totalH)
 $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
 foreach ($screen in $screens) {
-  $destX = $screen.Bounds.Left - $left
-  $destY = $screen.Bounds.Top - $top
-  $graphics.CopyFromScreen($screen.Bounds.Location, (New-Object System.Drawing.Point($destX, $destY)), $screen.Bounds.Size)
+  $srcX = [int](($screen.Bounds.Left - $left) * $scaleX)
+  $srcY = [int](($screen.Bounds.Top - $top) * $scaleY)
+  $scrW = [int]($screen.Bounds.Width * $scaleX)
+  $scrH = [int]($screen.Bounds.Height * $scaleY)
+  $graphics.CopyFromScreen($screen.Bounds.Left, $screen.Bounds.Top, $srcX, $srcY, (New-Object System.Drawing.Size($scrW, $scrH)))
 }
 $bitmap.Save("${tmpFile}")
 $graphics.Dispose()
@@ -245,42 +353,68 @@ schedule.scheduleJob('*/5 * * * *', async function() {
   await checkWindowsEvents();
 });
 
-// Heartbeat every 1 minute
-schedule.scheduleJob('*/1 * * * *', async function() {
+// Heartbeat every 20 seconds
+schedule.scheduleJob('*/20 * * * * *', async function() {
   if (!AGENT_TOKEN) return;
   try {
     const app = getActiveWindow();
     const idleSeconds = getIdleSeconds();
     const isIdle = idleSeconds > 300;
 
+    // Detect Win+L lock by checking if LockApp has a visible main window
+    const lockCheckScript = `
+$lockProc = Get-Process -Name 'LockApp' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 }
+$logonProc = Get-Process -Name 'LogonUI' -ErrorAction SilentlyContinue
+if ($lockProc -or $logonProc) { Write-Output 'locked' } else { Write-Output 'unlocked' }
+`;
+    const lockState = runPS(lockCheckScript).trim();
+    const isLocked = (lockState === 'locked');
+    if (isLocked && !lastLockState) {
+      try {
+        await safePost('/api/agent/system-event', { event_type: 'locked' });
+        console.log('[Lock] Screen locked detected via LockApp.exe');
+      } catch(e) {}
+    }
+    if (!isLocked && lastLockState) {
+      try {
+        await safePost('/api/agent/system-event', { event_type: 'unlocked' });
+        console.log('[Lock] Screen unlocked detected');
+      } catch(e) {}
+    }
+    lastLockState = isLocked;
+
 // Detect idle/away transition
     if (!lastIdleState && isIdle && idleSeconds > 600) {
       try {
-        await axios.post(SERVER_URL + '/api/agent/system-event',
-          { event_type: 'idle_lock' },
-          { headers: { 'x-agent-token': AGENT_TOKEN }, timeout: 5000 }
-        );
+        await safePost('/api/agent/system-event', { event_type: 'idle_lock' });
       } catch(e) {}
     }
     lastIdleState = isIdle;
 
-    const urls = getBrowserActivity().map(function(u) {
-  return Object.assign({}, u, { idle_seconds: isIdle ? idleSeconds : 0 });
-});
-    const apps = getAllApps();
+    // Don't track URLs or apps when screen is locked
+    const urls = isLocked ? [] : getBrowserActivity().map(function(u) {
+      return Object.assign({}, u, { idle_seconds: isIdle ? idleSeconds : 0 });
+    });
+    // Only track app if not idle and not locked
+    const apps = (isIdle || isLocked) ? [] : getAllApps(app);
 
-    await axios.post(SERVER_URL + '/api/agent/heartbeat', {
+    await safePost('/api/agent/heartbeat', {
       active_app: app,
       idle: isIdle,
       apps: apps,
       urls: urls,
       version: AGENT_VERSION
-    }, {
-      headers: { 'x-agent-token': AGENT_TOKEN },
-      timeout: 10000
     });
 
-    console.log('[' + new Date().toLocaleTimeString() + '] OK - ' + app + ' - Idle: ' + idleSeconds + 's - URLs: ' + urls.length + ' - Apps: ' + apps.length);
+    if (isLocked && !lastLockState) {
+      console.log('[' + new Date().toLocaleTimeString() + '] [LOCKED] System Locked');
+    } else if (!isLocked && lastLockState) {
+      console.log('[' + new Date().toLocaleTimeString() + '] [UNLOCKED] System Unlocked - ' + app);
+    } else if (isLocked) {
+      console.log('[' + new Date().toLocaleTimeString() + '] [LOCKED] System Locked - Idle: ' + idleSeconds + 's');
+    } else {
+      console.log('[' + new Date().toLocaleTimeString() + '] OK - ' + app + ' - Idle: ' + idleSeconds + 's - URLs: ' + urls.length + ' - Apps: ' + apps.length);
+    }
   } catch (e) {
     console.error('Heartbeat error:', e.message);
   }
@@ -303,6 +437,12 @@ async function fetchSettings() {
 function scheduleScreenshot() {
   setTimeout(async function() {
     if (!AGENT_TOKEN) { scheduleScreenshot(); return; }
+    if (lastLockState) {
+      console.log('[SS] Skipped - screen locked');
+      await fetchSettings();
+      scheduleScreenshot();
+      return;
+    }
     takeScreenshot(async function(err, tmpFile) {
 	console.log('[SS] Taking screenshot...');
       if (!err) {
@@ -315,8 +455,15 @@ function scheduleScreenshot() {
           });
           fs.unlinkSync(tmpFile);
 		console.log('[SS] Screenshot sent OK - ' + new Date().toLocaleTimeString());
+		if (offlineQueue.length > 0) retryQueue();
         } catch(e) {
-          console.error('Screenshot upload error:', e.message);
+          var pendingDir = 'C:\\WorkPulse\\pending_screenshots';
+          try {
+            if (!fs.existsSync(pendingDir)) fs.mkdirSync(pendingDir,{recursive:true});
+            var pendingFile = pendingDir + '\\ss_' + Date.now() + '.png';
+            fs.renameSync(tmpFile, pendingFile);
+            console.log('[SS] Offline - saved for retry: ' + pendingFile);
+          } catch(e2) { console.error('Screenshot upload error:', e.message); }
         }
       } else {
 		console.error('Screenshot error:', err.message, err.stack||'');
@@ -328,6 +475,7 @@ function scheduleScreenshot() {
 }
 
 if (loadConfig()) {
+  loadQueue();
   console.log('WorkPulse Agent running...');
   console.log('Server: ' + SERVER_URL);
 axios.post(SERVER_URL + '/api/agent/system-event',
