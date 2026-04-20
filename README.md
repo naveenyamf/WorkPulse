@@ -20,10 +20,14 @@
 - **Machine Binding** — Each employee email locked to one PC; uninstall.bat releases the binding
 - **Backup & Restore** — Full PostgreSQL DB backup + screenshot archive backup/restore
 - **Multi-User** — Admin and Monitor (view-only) roles with employee assignment
-- **MFA Support** — Email OTP login verification
+- **MFA Support** — Email OTP and TOTP authenticator login verification
+- **Remember This Device** — Skip re-authentication for 30 days on trusted devices (works with password-only, OTP, and TOTP)
+- **Alert Rules** — Per-admin configurable alert rules with background evaluator and 1-hour dedup
+- **Site Categories** — Per-admin domain productivity classification (Productive / Neutral / Non-Productive)
 - **Audit Log** — Full admin action logging
 - **Dark / Light Mode** — System-aware theme with manual override
 - **Timezone Settings** — Configurable timezone for all date displays and reports
+- **Clean URLs** — Login at `/`, dashboard at `/dashboard` — no `.html` in URLs
 
 ---
 
@@ -123,6 +127,7 @@ ALTER TABLE audit_log OWNER TO workpulse_user;
 ALTER TABLE dashboard_users OWNER TO workpulse_user;
 ALTER TABLE alert_rules OWNER TO workpulse_user;
 ALTER TABLE site_categories OWNER TO workpulse_user;
+ALTER TABLE remembered_devices OWNER TO workpulse_user;
 "
 ```
 
@@ -160,6 +165,7 @@ cd ~
 git clone https://github.com/naveenyamf/WorkPulse.git workpulse-app
 cd workpulse-app
 npm install
+npm install cookie-parser
 ```
 
 ---
@@ -225,6 +231,79 @@ Enable the site:
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo ln -s /etc/nginx/sites-available/workpulse /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
+```
+
+---
+
+### Step 10b — Install SSL with Certbot (HTTPS)
+
+> ⚠️ **Required for production.** Do this only after your domain DNS is pointed to this server and the HTTP site is working.
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d your-domain.com
+```
+
+Certbot will:
+1. Automatically detect your Nginx config
+2. Obtain a free Let's Encrypt certificate
+3. Rewrite your Nginx config to serve HTTPS on port 443
+4. Set up HTTP → HTTPS redirect automatically
+
+After Certbot completes, your Nginx config will look like:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name your-domain.com;
+    ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+    client_max_body_size 500M;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+}
+
+server {
+    listen 80;
+    server_name your-domain.com;
+    return 301 https://$host$request_uri;
+}
+```
+
+**Switch app to production mode after SSL is working:**
+
+```bash
+nano /home/workpulse/workpulse-app/.env
+```
+
+Change:
+```env
+NODE_ENV=production
+```
+
+Then restart:
+```bash
+pm2 restart workpulse --update-env
+```
+
+**Auto-renew certificates** (Let's Encrypt certs expire every 90 days — Certbot sets up auto-renewal automatically):
+
+```bash
+# Test renewal works
+sudo certbot renew --dry-run
+
+# Check auto-renew timer is active
+sudo systemctl status certbot.timer
 ```
 
 ---
@@ -424,9 +503,11 @@ Go to **Admin → Backup & Restore**:
 | Agent | Node.js + PowerShell + BAT (v2.6.5) |
 | Web Server | Nginx |
 | Process Manager | PM2 |
-| Auth | express-session + bcryptjs |
+| Auth | express-session + bcryptjs + cookie-parser |
+| Remember Device | `remembered_devices` table + 30-day cookie |
 | Reports | ExcelJS |
 | Email | Nodemailer |
+| TOTP | speakeasy |
 
 ---
 
@@ -481,15 +562,46 @@ New installs via `installer.bat` handle this automatically.
 ### Employee email blocked: "already monitored on another PC"
 **Fix:** Run `uninstall.bat` on the old PC first. If unavailable, reset via employee Settings in the dashboard.
 
-### Bad Gateway (502)
+### Certbot fails: "Could not bind to IPv4 or IPv6"
+**Cause:** Nginx is using port 80. Certbot needs it temporarily.
+**Fix:**
 ```bash
-pm2 logs workpulse --lines 30
+sudo systemctl stop nginx
+sudo certbot certonly --standalone -d your-domain.com
+sudo systemctl start nginx
+# Then manually update Nginx config with the cert paths
+```
+
+### SSL certificate not renewing
+```bash
+sudo certbot renew --dry-run
+sudo systemctl status certbot.timer
+# If timer missing:
+sudo systemctl enable certbot.timer && sudo systemctl start certbot.timer
+```
+
+### Signed out immediately after login (production)
+**Cause:** `NODE_ENV=production` requires HTTPS cookies. If you're on HTTP, sessions won't persist.
+**Fix:** Either set up SSL (Step 10b) or keep `NODE_ENV=development` until SSL is ready.
+
+### Remember device not working
+**Cause:** `cookie-parser` not installed or `NODE_ENV=production` with HTTP (cookies need HTTPS in production mode).
+**Fix:**
+```bash
+cd ~/workpulse-app && npm install cookie-parser
 pm2 restart workpulse --update-env
 ```
+If on HTTPS, make sure `NODE_ENV=production` is set in `.env`.
 
 ---
 
 ## Changelog
+
+### v2.7.2 (April 2026)
+- **Remember This Device** — 30-day persistent login cookie; works for password-only, OTP, and TOTP flows; logout clears cookie and DB record
+- **Clean URLs** — Login served at `/`, dashboard at `/dashboard`; no `.html` extensions in URLs
+- **Installer fix** — Added missing tables to web installer: `report_schedules`, `alert_rules`, `site_categories`, `settings`, `temp_shift_overrides`, `report_jobs`
+- **cookie-parser** — Added as dependency for remember-device cookie handling
 
 ### v2.7.1 (April 2026)
 - **Mobile Responsive** — Full mobile layout with slide-over sidebar, hamburger menu
