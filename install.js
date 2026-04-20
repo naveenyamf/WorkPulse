@@ -123,6 +123,12 @@ router.post('/run', async (req, res) => {
       { name: 'audit_log',            sql: `CREATE TABLE IF NOT EXISTS audit_log (id SERIAL PRIMARY KEY, admin_id INTEGER, admin_name VARCHAR(200), action VARCHAR(200), details TEXT, created_at TIMESTAMPTZ DEFAULT NOW())` },
       { name: 'email_config',         sql: `CREATE TABLE IF NOT EXISTS email_config (id SERIAL PRIMARY KEY, smtp_host VARCHAR(200), smtp_port INTEGER DEFAULT 587, smtp_user VARCHAR(200), smtp_pass VARCHAR(500), smtp_from_name VARCHAR(100) DEFAULT 'WorkPulse', smtp_tls BOOLEAN DEFAULT true, mfa_enabled BOOLEAN DEFAULT false, updated_at TIMESTAMPTZ DEFAULT NOW())` },
       { name: 'otp_tokens',           sql: `CREATE TABLE IF NOT EXISTS otp_tokens (id SERIAL PRIMARY KEY, email VARCHAR(200) NOT NULL, otp VARCHAR(10) NOT NULL, purpose VARCHAR(20) DEFAULT 'mfa', expires_at TIMESTAMPTZ NOT NULL, used BOOLEAN DEFAULT false, created_at TIMESTAMPTZ DEFAULT NOW())` },
+      { name: 'settings',             sql: `CREATE TABLE IF NOT EXISTS settings (id SERIAL PRIMARY KEY, key VARCHAR(100) UNIQUE NOT NULL, value TEXT, updated_at TIMESTAMPTZ DEFAULT NOW())` },
+      { name: 'temp_shift_overrides', sql: `CREATE TABLE IF NOT EXISTS temp_shift_overrides (id SERIAL PRIMARY KEY, employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE, override_date DATE NOT NULL, roster_id INTEGER REFERENCES duty_rosters(id) ON DELETE SET NULL, is_day_off BOOLEAN DEFAULT false, created_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(employee_id, override_date))` },
+      { name: 'report_jobs',          sql: `CREATE TABLE IF NOT EXISTS report_jobs (id SERIAL PRIMARY KEY, admin_id INTEGER, report_type VARCHAR(50), parameters JSONB, status VARCHAR(20) DEFAULT 'pending', result_path VARCHAR(500), created_at TIMESTAMPTZ DEFAULT NOW(), completed_at TIMESTAMPTZ)` },
+      { name: 'report_schedules',     sql: `CREATE TABLE IF NOT EXISTS report_schedules (id SERIAL PRIMARY KEY, admin_id INTEGER, report_type VARCHAR(50), frequency VARCHAR(20), recipients TEXT, parameters JSONB, enabled BOOLEAN DEFAULT true, last_run TIMESTAMPTZ, next_run TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW())` },
+      { name: 'alert_rules',          sql: `CREATE TABLE IF NOT EXISTS alert_rules (id SERIAL PRIMARY KEY, admin_id INTEGER, rule_type VARCHAR(50) NOT NULL, threshold INTEGER, employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE, enabled BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW())` },
+      { name: 'site_categories',      sql: `CREATE TABLE IF NOT EXISTS site_categories (id SERIAL PRIMARY KEY, admin_id INTEGER, domain VARCHAR(255) NOT NULL, category VARCHAR(50) NOT NULL DEFAULT 'Neutral', created_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(admin_id, domain))` },
     ];
 
     send(`Creating ${tables.length} tables…`, 'info', 15, 'Creating tables…');
@@ -144,6 +150,11 @@ router.post('/run', async (req, res) => {
       `CREATE INDEX IF NOT EXISTS idx_system_events_emp_time ON system_events(employee_id, recorded_at DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_alerts_emp             ON alerts       (employee_id)`,
       `CREATE INDEX IF NOT EXISTS idx_audit_log_time         ON audit_log    (created_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_report_jobs_admin      ON report_jobs  (admin_id, created_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_report_sched_admin     ON report_schedules (admin_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_alert_rules_admin      ON alert_rules  (admin_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_site_cats_admin        ON site_categories (admin_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_temp_overrides_emp     ON temp_shift_overrides (employee_id, override_date)`,
     ]) await client.query(idx);
     send('✓ Indexes created', 'ok', 66, 'Indexes done');
 
