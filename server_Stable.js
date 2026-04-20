@@ -274,15 +274,17 @@ app.post('/api/screenshots/:id/unflag', requireLogin, async (req, res) => {
 app.get("/api/dashboard/web-activity", requireLogin, async (req, res) => {
   const { employee_id, date } = req.query;
   const page = parseInt(req.query.page) || 1;
+  const perPage = req.query.date ? 50 : 2; // show all emps when date selected
   try {
+    // Get employees with their roster
     const allowed = getAllowedEmployees(req);
-    let empQuery = `SELECT DISTINCT e.id, e.name, e.department,
+	let empQuery = `SELECT DISTINCT e.id, e.name, e.department,
       r.start_time as shift_start, r.end_time as shift_end, r.name as roster_name
       FROM employees e
       LEFT JOIN duty_rosters r ON e.roster_id = r.id
       WHERE e.active=true
       AND EXISTS (
-        SELECT 1 FROM web_activity w
+        SELECT 1 FROM web_activity w 
         WHERE w.employee_id = e.id
         AND w.url NOT LIKE '[Incognito]%'
         AND w.url != 'Desktop' AND w.url != 'Unknown'
@@ -290,28 +292,24 @@ app.get("/api/dashboard/web-activity", requireLogin, async (req, res) => {
         AND w.url != 'Speed Dial' AND length(w.url) < 150
         ${date ? "AND w.recorded_at::date=$1::date" : ""}
       )`;
+
+
     const empParams = [];
-    if (date) { empParams.push(date); }
+    if (date) { empParams.push(date); } // $1 for date in EXISTS
     if (employee_id) { empParams.push(employee_id); empQuery += ` AND e.id=$${empParams.length}`; }
     if (allowed) { empParams.push(allowed); empQuery += ` AND e.id = ANY($${empParams.length}::int[])`; }
     empQuery += ' ORDER BY e.name';
     const empResult = await pool.query(empQuery, empParams);
     const allEmps = empResult.rows;
-
     // Apply temp shift overrides if date selected
     if (date) {
       for (let i = 0; i < allEmps.length; i++) {
         const ov = await getEffectiveRoster(allEmps[i].id, date);
-        if (ov) allEmps[i] = Object.assign({}, allEmps[i], {
-          shift_start: ov.start_time,
-          shift_end:   ov.end_time,
-          roster_name: ov.name
-        });
+        if (ov) allEmps[i] = Object.assign({}, allEmps[i], {shift_start:ov.start_time, shift_end:ov.end_time, roster_name:ov.name});
       }
     }
-
-    // Pagination
-    const perPage = date ? 50 : 2;
+    // When date selected, show all employees on one page
+    // Otherwise pack employees into pages of max 50 sites
     let pages_arr;
     if (date) {
       pages_arr = [allEmps];
@@ -336,82 +334,78 @@ app.get("/api/dashboard/web-activity", requireLogin, async (req, res) => {
     const pages = total;
     const emps = pages_arr[(page-1)] || [];
     if (!emps.length) return res.json({ rows: [], total, page, pages });
+    const empIds = emps.map(e => e.id);
+    let query = `WITH url_mins AS (
+      SELECT w.employee_id, w.url, w.browser,
+        COUNT(DISTINCT date_trunc('minute', w.recorded_at)) * 60 AS url_seconds,
+        COUNT(*) AS visits
+      FROM web_activity w
+      JOIN employees e ON w.employee_id = e.id
+      WHERE e.active = true
+      AND w.url NOT LIKE '[Incognito]%'
+      AND w.url != 'Desktop' AND w.url != 'Unknown'
+      AND w.url != 'New Tab' AND w.url != 'New tab'
+      AND w.url != 'Speed Dial' AND length(w.url) < 150
+      AND w.employee_id = ANY($1::int[])
+      ${date ? "AND w.recorded_at::date=$2" : ""}
+      GROUP BY w.employee_id, w.url, w.browser
+    ),
+    emp_duty AS (
+      -- Unique minutes per employee within shift (no double counting)
+      SELECT w.employee_id,
+        COUNT(DISTINCT CASE
+          WHEN r.start_time IS NULL THEN date_trunc('minute', w.recorded_at)
+          WHEN r.end_time > r.start_time THEN
+            CASE WHEN w.recorded_at::time >= r.start_time AND w.recorded_at::time < r.end_time
+              THEN date_trunc('minute', w.recorded_at) END
+          ELSE
+            CASE WHEN w.recorded_at::time >= r.start_time OR w.recorded_at::time < r.end_time
+              THEN date_trunc('minute', w.recorded_at) END
+        END) * 60 AS emp_duty_seconds,
+        COUNT(DISTINCT date_trunc('minute', w.recorded_at)) * 60 AS emp_total_seconds
+      FROM web_activity w
+      JOIN employees e ON w.employee_id = e.id
+      LEFT JOIN duty_rosters r ON e.roster_id = r.id
+      WHERE e.active = true
+      AND w.url NOT LIKE '[Incognito]%'
+      AND w.url != 'Desktop' AND w.url != 'Unknown'
+      AND w.url != 'New Tab' AND w.url != 'New tab'
+      AND w.url != 'Speed Dial' AND length(w.url) < 150
+      AND w.employee_id = ANY($1::int[])
+      ${date ? "AND w.recorded_at::date=$2" : ""}
+      GROUP BY w.employee_id
+    )
+    SELECT u.url, u.browser, e.name as employee_name, e.id as employee_id,
+      u.url_seconds as total_seconds,
+      u.url_seconds as active_seconds,
+      u.visits,
+      -- Per-URL duty seconds = proportional share of employee total duty
+      ROUND(
+        COALESCE(d.emp_duty_seconds, 0)::numeric
+        * u.url_seconds::numeric
+        / NULLIF(d.emp_total_seconds, 0)
+      ) AS duty_seconds,
+      d.emp_duty_seconds,
+      d.emp_total_seconds
+    FROM url_mins u
+    JOIN employees e ON u.employee_id = e.id
+    LEFT JOIN emp_duty d ON d.employee_id = u.employee_id
+    WHERE e.active = true
+    ORDER BY total_seconds DESC LIMIT 500`;
+    const params = date ? [empIds, date] : [empIds];
+    const result = await pool.query(query, params);
 
+    // Attach roster info to each row
     const rosterMap = {};
     emps.forEach(function(e){ rosterMap[e.id] = e; });
-
-    // Build per-employee shift filter using EFFECTIVE roster (temp override already applied)
-    // This fixes the "same % for all rows" bug and the temp shift not being used in SQL
-    const rows = [];
-    for (const emp of emps) {
-      const shiftStart = emp.shift_start ? emp.shift_start.slice(0,5) : null;
-      const shiftEnd   = emp.shift_end   ? emp.shift_end.slice(0,5)   : null;
-      const hasShift   = shiftStart && shiftEnd;
-      const overnight  = hasShift && shiftEnd <= shiftStart;
-
-      let shiftFilter = 'true';
-      if (hasShift) {
-        if (overnight) {
-          shiftFilter = `(w.recorded_at::time >= '${shiftStart}' OR w.recorded_at::time < '${shiftEnd}')`;
-        } else {
-          shiftFilter = `(w.recorded_at::time >= '${shiftStart}' AND w.recorded_at::time < '${shiftEnd}')`;
-        }
-      }
-
-      let qParams = [emp.id];
-      let dateFilter = '';
-      if (date) {
-        qParams.push(date);
-        dateFilter = 'AND w.recorded_at::date=$2';
-      }
-
-      const webQuery = `
-        WITH url_data AS (
-          SELECT
-            w.url, w.browser,
-            COUNT(DISTINCT date_trunc('minute', w.recorded_at)) * 60 AS url_seconds,
-            COUNT(DISTINCT CASE WHEN ${shiftFilter} THEN date_trunc('minute', w.recorded_at) END) * 60 AS url_shift_seconds,
-            COUNT(*) AS visits
-          FROM web_activity w
-          WHERE w.employee_id = $1
-            ${dateFilter}
-            AND w.url NOT LIKE '[Incognito]%'
-            AND w.url != 'Desktop' AND w.url != 'Unknown'
-            AND w.url != 'New Tab' AND w.url != 'New tab'
-            AND w.url != 'Speed Dial' AND length(w.url) < 150
-          GROUP BY w.url, w.browser
-        ),
-        totals AS (
-          SELECT
-            SUM(url_seconds) as emp_total_seconds,
-            SUM(url_shift_seconds) as emp_duty_seconds
-          FROM url_data
-        )
-        SELECT
-          u.url, u.browser,
-          u.url_seconds as total_seconds,
-          u.url_seconds as active_seconds,
-          u.url_shift_seconds as duty_seconds,
-          u.visits,
-          t.emp_total_seconds,
-          t.emp_duty_seconds
-        FROM url_data u, totals t
-        ORDER BY u.url_seconds DESC
-        LIMIT 200
-      `;
-
-      const result = await pool.query(webQuery, qParams);
-      result.rows.forEach(r => {
-        rows.push(Object.assign({}, r, {
-          employee_id:   emp.id,
-          employee_name: emp.name,
-          shift_start:   shiftStart,
-          shift_end:     shiftEnd,
-          roster_name:   emp.roster_name || null
-        }));
+    const rows = result.rows.map(function(r){
+      const emp = rosterMap[r.employee_id] || {};
+      return Object.assign({}, r, {
+        shift_start: emp.shift_start || null,
+        shift_end: emp.shift_end || null,
+        roster_name: emp.roster_name || null
       });
-    }
-
+    });
     res.json({ rows, total, page, pages, emps });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -436,147 +430,198 @@ app.get('/api/dashboard/app-usage', requireLogin, async (req, res) => {
     empQuery += ' ORDER BY e.name';
     const empResult = await pool.query(empQuery, empParams);
     const allEmps = empResult.rows;
-
     // Apply temp shift overrides if date selected
     if (date) {
       for (let i = 0; i < allEmps.length; i++) {
         const ov = await getEffectiveRoster(allEmps[i].id, date);
-        if (ov) allEmps[i] = Object.assign({}, allEmps[i], {
-          shift_start: ov.start_time,
-          shift_end: ov.end_time,
-          roster_name: ov.name
-        });
+        if (ov) allEmps[i] = Object.assign({}, allEmps[i], {shift_start:ov.start_time, shift_end:ov.end_time, roster_name:ov.name});
       }
     }
-
     const total = allEmps.length;
     const pages = Math.ceil(total / perPage) || 1;
     const emps = allEmps.slice((page-1)*perPage, page*perPage);
     if (!emps.length) return res.json({ rows: [], total, page, pages });
 
-    // For each employee, calculate app usage correctly
-    const rows = [];
-    for (const emp of emps) {
-      const shiftStart = emp.shift_start ? emp.shift_start.slice(0,5) : null;
-      const shiftEnd   = emp.shift_end   ? emp.shift_end.slice(0,5)   : null;
-      const hasShift   = shiftStart && shiftEnd;
-      const overnight  = hasShift && shiftEnd <= shiftStart;
+    const empIds = emps.map(e => e.id);
 
-      // Date filter params
-      let dateFilter = '';
-      let qParams = [emp.id];
-      if (date) {
-        const nd = new Date(date); nd.setDate(nd.getDate()+1);
-        const nextDate = nd.toISOString().split('T')[0];
-        qParams.push(date, nextDate);
-        dateFilter = `AND a.recorded_at::date IN ($2::date, $3::date)`;
+    // Build per-employee shift time ranges for SQL filtering
+    const shiftParams = []; // [{id, start, end, overnight}]
+    emps.forEach(emp => {
+      if (emp.shift_start && emp.shift_end) {
+        const s = emp.shift_start.slice(0,5);
+        const e = emp.shift_end.slice(0,5);
+        shiftParams.push({ id: emp.id, start: s, end: e, overnight: e <= s });
       }
+    });
+    console.log('[AppUsage] shiftParams:', JSON.stringify(shiftParams));
+    // For overnight shifts, also check next day
+    let dateFilter = '';
+    let params = [empIds];
+    if (date) {
+      const nd = new Date(date); nd.setDate(nd.getDate()+1);
+      const nextDate = nd.toISOString().split('T')[0];
+      params = [empIds, date, nextDate];
+      // dateFilter uses $2 and $3
+      dateFilter = `AND a.recorded_at::date IN ($2::date, $3::date)`;
+    }
+    let query = `WITH app_data AS (
+      SELECT
+        CASE
+          WHEN LOWER(a.app_name) = 'excel' THEN 'Microsoft Excel'
+          WHEN LOWER(a.app_name) = 'msedge' THEN 'Microsoft Edge'
+          WHEN LOWER(a.app_name) = 'chrome' THEN 'Google Chrome'
+          WHEN LOWER(a.app_name) = 'firefox' THEN 'Firefox'
+          WHEN LOWER(a.app_name) = 'brave' THEN 'Brave Browser'
+          WHEN LOWER(a.app_name) = 'winword' THEN 'Microsoft Word'
+          WHEN LOWER(a.app_name) = 'powerpnt' THEN 'PowerPoint'
+          WHEN LOWER(a.app_name) = 'outlook' THEN 'Outlook'
+          WHEN LOWER(a.app_name) = 'teams' THEN 'Microsoft Teams'
+          WHEN LOWER(a.app_name) = 'code' THEN 'VS Code'
+          WHEN LOWER(a.app_name) = 'opera' THEN 'Opera Browser'
+          WHEN LOWER(a.app_name) = 'slack' THEN 'Slack'
+          WHEN LOWER(a.app_name) = 'zoom' THEN 'Zoom'
+          WHEN LOWER(a.app_name) = 'notepad++' THEN 'Notepad++'
+          WHEN LOWER(a.app_name) = 'notepad' THEN 'Notepad'
+          WHEN LOWER(a.app_name) = 'windowsterminal' THEN 'Windows Terminal'
+          WHEN LOWER(a.app_name) = 'powershell_ise' THEN 'PowerShell ISE'
+          WHEN LOWER(a.app_name) = 'powershell' THEN 'PowerShell'
+          WHEN LOWER(a.app_name) = 'cmd' THEN 'Command Prompt'
+          WHEN LOWER(a.app_name) = 'explorer' THEN 'File Explorer'
+          WHEN LOWER(a.app_name) = 'ultraviewer_desktop' THEN 'UltraViewer'
+          WHEN LOWER(a.app_name) = 'screenrec' THEN 'ScreenRec'
+          WHEN LOWER(a.app_name) = 'putty' THEN 'PuTTY'
+          WHEN LOWER(a.app_name) = 'snippingtool' THEN 'Snipping Tool'
+          WHEN LOWER(a.app_name) = 'm365copilot' THEN 'Microsoft Copilot'
+          WHEN LOWER(a.app_name) = 'msteams' THEN 'Microsoft Teams'
+          WHEN LOWER(a.app_name) = 'wps' THEN 'WPS Office'
+          WHEN LOWER(a.app_name) = 'acrobat' THEN 'Adobe Acrobat'
+          WHEN LOWER(a.app_name) = 'acrord32' THEN 'Adobe Acrobat Reader'
+          WHEN LOWER(a.app_name) = 'taskmgr' THEN 'Task Manager'
+          WHEN LOWER(a.app_name) = 'mspaint' THEN 'MS Paint'
+          WHEN LOWER(a.app_name) = 'whatsapp' THEN 'WhatsApp'
+          WHEN LOWER(a.app_name) = 'telegram' THEN 'Telegram'
+          WHEN LOWER(a.app_name) = 'winscp' THEN 'WinSCP'
+          ELSE INITCAP(LOWER(a.app_name))
+        END as app_name,
+        a.employee_id,
+        e.name as employee_name,
+        -- unique minutes this app appeared in (deduplicated)
+COUNT(DISTINCT DATE_TRUNC('minute', a.recorded_at)) as app_minutes,
+        COUNT(DISTINCT DATE_TRUNC('minute', a.recorded_at)) * 60 as total_seconds
 
-      // Build shift time filter
-      let shiftFilter = 'true';
-      if (hasShift) {
-        if (overnight) {
-          shiftFilter = `(a.recorded_at::time >= '${shiftStart}' OR a.recorded_at::time < '${shiftEnd}')`;
-        } else {
-          shiftFilter = `(a.recorded_at::time >= '${shiftStart}' AND a.recorded_at::time < '${shiftEnd}')`;
+      FROM app_usage a JOIN employees e ON a.employee_id=e.id
+      LEFT JOIN duty_rosters r ON e.roster_id=r.id
+      WHERE e.active=true
+        AND LOWER(a.app_name) NOT IN ('applicationframehost','desktop','unknown','','searchhost','textinputhost')
+        AND a.app_name NOT SIMILAR TO '[0-9]%'
+        AND a.employee_id = ANY($1::int[])
+        ${date ? dateFilter : ''}
+        AND (
+          ${shiftParams.length === 0 ? 'true' :
+            shiftParams.map(sp => sp.overnight ?
+              `(a.employee_id=${sp.id} AND (a.recorded_at::time >= '${sp.start}' OR a.recorded_at::time < '${sp.end}'))` :
+              `(a.employee_id=${sp.id} AND a.recorded_at::time >= '${sp.start}' AND a.recorded_at::time < '${sp.end}')`
+            ).join(' OR ')}
+        )
+      GROUP BY 1, a.employee_id, e.name
+    ),
+    emp_totals AS (
+      SELECT employee_id,
+        COUNT(DISTINCT DATE_TRUNC('minute', a.recorded_at)) * 60 as unique_total_seconds
+      FROM app_usage a JOIN employees e ON a.employee_id=e.id
+      WHERE e.active=true AND a.employee_id = ANY($1::int[])
+        ${date ? dateFilter : ''}
+        AND (
+          ${shiftParams.length === 0 ? 'true' :
+            shiftParams.map(sp => sp.overnight ?
+              `(a.employee_id=${sp.id} AND (a.recorded_at::time >= '${sp.start}' OR a.recorded_at::time < '${sp.end}'))` :
+              `(a.employee_id=${sp.id} AND a.recorded_at::time >= '${sp.start}' AND a.recorded_at::time < '${sp.end}')`
+            ).join(' OR ')}
+        )
+      GROUP BY employee_id
+    )
+SELECT d.app_name, d.employee_name, d.employee_id,
+      d.total_seconds,
+      COALESCE(t.unique_total_seconds, d.total_seconds) as emp_unique_total,
+      (SELECT COUNT(DISTINCT DATE_TRUNC('minute', a2.recorded_at)) * 60
+       FROM app_usage a2
+       JOIN employees e2 ON a2.employee_id = e2.id
+       LEFT JOIN duty_rosters r ON e2.roster_id = r.id
+       WHERE a2.employee_id = d.employee_id
+         AND LOWER(a2.app_name) NOT IN ('applicationframehost','desktop','unknown','','searchhost','textinputhost')
+         ${date ? `AND a2.recorded_at::date IN ($2::date, $3::date)` : ''}
+         AND CASE
+           WHEN r.start_time IS NULL THEN true
+           WHEN r.end_time > r.start_time THEN
+             a2.recorded_at::time >= r.start_time AND a2.recorded_at::time < r.end_time
+           ELSE
+             a2.recorded_at::time >= r.start_time OR a2.recorded_at::time < r.end_time
+         END
+      ) as shift_active_seconds
+    FROM app_data d
+    LEFT JOIN emp_totals t ON d.employee_id = t.employee_id
+    ORDER BY d.employee_id, d.total_seconds DESC
+    `;
+
+
+    const result = await pool.query(query, params);
+
+    // Attach roster info
+    const rosterMap = {};
+    emps.forEach(e => { rosterMap[e.id] = e; });
+    // Recalculate shift_active_seconds using effective roster (temp override applied)
+    const rows = result.rows.map(r => {
+      const emp = rosterMap[r.employee_id];
+      const shiftStart = emp?.shift_start || null;
+      const shiftEnd = emp?.shift_end || null;
+      let shiftActiveSecs = parseInt(r.shift_active_seconds) || 0;
+      // If temp override changed the shift, recalculate proportionally
+      if (emp && shiftStart && shiftEnd) {
+        const [sh, sm] = shiftStart.slice(0,5).split(':').map(Number);
+        const [eh, em] = shiftEnd.slice(0,5).split(':').map(Number);
+        const sMin = sh*60+sm, eMin = eh*60+em;
+        const overnight = eMin <= sMin;
+        const shiftMins = overnight ? (1440-sMin+eMin) : (eMin-sMin);
+        // Use proportion: shift_active = total * (shift_mins / 1440)
+        const total = parseInt(r.total_seconds) || 0;
+        // Only recalculate if roster was overridden
+        if (emp.roster_name !== r.roster_name) {
+          shiftActiveSecs = Math.round(total * shiftMins / 1440);
         }
       }
-
-      const appQuery = `
-        WITH normalized AS (
-          SELECT
-            CASE
-              WHEN LOWER(a.app_name) = 'excel'              THEN 'Microsoft Excel'
-              WHEN LOWER(a.app_name) = 'msedge'             THEN 'Microsoft Edge'
-              WHEN LOWER(a.app_name) = 'chrome'             THEN 'Google Chrome'
-              WHEN LOWER(a.app_name) = 'firefox'            THEN 'Firefox'
-              WHEN LOWER(a.app_name) = 'brave'              THEN 'Brave Browser'
-              WHEN LOWER(a.app_name) = 'winword'            THEN 'Microsoft Word'
-              WHEN LOWER(a.app_name) = 'powerpnt'           THEN 'PowerPoint'
-              WHEN LOWER(a.app_name) = 'outlook'            THEN 'Outlook'
-              WHEN LOWER(a.app_name) = 'teams'              THEN 'Microsoft Teams'
-              WHEN LOWER(a.app_name) = 'msteams'            THEN 'Microsoft Teams'
-              WHEN LOWER(a.app_name) = 'code'               THEN 'VS Code'
-              WHEN LOWER(a.app_name) = 'opera'              THEN 'Opera Browser'
-              WHEN LOWER(a.app_name) = 'slack'              THEN 'Slack'
-              WHEN LOWER(a.app_name) = 'zoom'               THEN 'Zoom'
-              WHEN LOWER(a.app_name) = 'notepad++'          THEN 'Notepad++'
-              WHEN LOWER(a.app_name) = 'notepad'            THEN 'Notepad'
-              WHEN LOWER(a.app_name) = 'windowsterminal'    THEN 'Windows Terminal'
-              WHEN LOWER(a.app_name) = 'powershell_ise'     THEN 'PowerShell ISE'
-              WHEN LOWER(a.app_name) = 'powershell'         THEN 'PowerShell'
-              WHEN LOWER(a.app_name) = 'cmd'                THEN 'Command Prompt'
-              WHEN LOWER(a.app_name) = 'explorer'           THEN 'File Explorer'
-              WHEN LOWER(a.app_name) = 'ultraviewer_desktop' THEN 'UltraViewer'
-              WHEN LOWER(a.app_name) = 'screenrec'          THEN 'ScreenRec'
-              WHEN LOWER(a.app_name) = 'putty'              THEN 'PuTTY'
-              WHEN LOWER(a.app_name) = 'snippingtool'       THEN 'Snipping Tool'
-              WHEN LOWER(a.app_name) = 'm365copilot'        THEN 'Microsoft Copilot'
-              WHEN LOWER(a.app_name) = 'wps'                THEN 'WPS Office'
-              WHEN LOWER(a.app_name) = 'acrobat'            THEN 'Adobe Acrobat'
-              WHEN LOWER(a.app_name) = 'acrord32'           THEN 'Adobe Acrobat Reader'
-              WHEN LOWER(a.app_name) = 'taskmgr'            THEN 'Task Manager'
-              WHEN LOWER(a.app_name) = 'mspaint'            THEN 'MS Paint'
-              WHEN LOWER(a.app_name) = 'whatsapp'           THEN 'WhatsApp'
-              WHEN LOWER(a.app_name) = 'telegram'           THEN 'Telegram'
-              WHEN LOWER(a.app_name) = 'winscp'             THEN 'WinSCP'
-              ELSE INITCAP(LOWER(a.app_name))
-            END as app_name,
-            a.duration_seconds,
-            a.recorded_at,
-            CASE WHEN ${shiftFilter} THEN true ELSE false END as in_shift
-          FROM app_usage a
-          WHERE a.employee_id = $1
-            ${dateFilter}
-            AND LOWER(a.app_name) NOT IN ('applicationframehost','desktop','unknown','','searchhost','textinputhost')
-            AND a.app_name NOT SIMILAR TO '[0-9]%'
-        ),
-        per_app AS (
-          SELECT
-            app_name,
-            SUM(duration_seconds) as total_seconds,
-            SUM(CASE WHEN in_shift THEN duration_seconds ELSE 0 END) as shift_seconds,
-            ROUND(SUM(duration_seconds)/60.0) as app_minutes
-          FROM normalized
-          GROUP BY app_name
-        ),
-        totals AS (
-          SELECT
-            SUM(duration_seconds) as grand_total,
-            SUM(CASE WHEN in_shift THEN duration_seconds ELSE 0 END) as shift_total
-          FROM normalized
-        )
-        SELECT
-          p.app_name,
-          p.total_seconds,
-          p.shift_seconds,
-          p.app_minutes,
-          t.grand_total as emp_unique_total,
-          t.shift_total as shift_active_seconds
-        FROM per_app p, totals t
-        ORDER BY p.total_seconds DESC
-      `;
-
-      const appResult = await pool.query(appQuery, qParams);
-      if (!appResult.rows.length) continue;
-
-      appResult.rows.forEach(r => {
-        rows.push(Object.assign({}, r, {
-          employee_id:   emp.id,
-          employee_name: emp.name,
-          shift_start:   shiftStart,
-          shift_end:     shiftEnd,
-          roster_name:   emp.roster_name || null
-        }));
+      return Object.assign({}, r, {
+        shift_start: shiftStart,
+        shift_end: shiftEnd,
+        roster_name: emp?.roster_name || null,
+        shift_active_seconds: shiftActiveSecs
       });
-    }
+    });
 
     res.json({ rows, total, page, pages, emps });
   } catch (err) {
-    console.error('[AppUsage] Error:', err.message, err.stack);
+    console.error("[AppUsage] Error:", err.message, err.stack);
     res.status(500).json({ error: err.message });
   }
 });
+
+app.get('/api/alerts', requireLogin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT a.*, e.name as employee_name
+      FROM alerts a JOIN employees e ON a.employee_id=e.id
+      WHERE e.active=true ORDER BY a.created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/alerts/:id/resolve', requireLogin, async (req, res) => {
+  await pool.query('UPDATE alerts SET resolved=true WHERE id=$1', [req.params.id]);
+  res.json({ success: true });
+});
+
 
 // Agent self-registration by email - simple IP rate limit (10 req/min per IP)
 const _tokenRateMap = new Map();
@@ -665,6 +710,35 @@ app.get('/api/dashboard/screenshot-dates', requireLogin, async (req, res) => {
 
 
 // Dates with web activity (for calendar)
+app.get('/api/dashboard/web-activity-dates', requireLogin, async (req, res) => {
+  try {
+    const { employee_id } = req.query;
+    const allowed = getAllowedEmployees(req);
+    const params = [];
+    let query = `SELECT w.recorded_at::date::text as date, COUNT(*) as count FROM web_activity w JOIN employees e ON w.employee_id=e.id WHERE e.active=true AND w.recorded_at >= NOW() - INTERVAL '90 days'`;
+    if (employee_id) { params.push(employee_id); query += ` AND w.employee_id=$${params.length}`; }
+    if (allowed) { params.push(allowed); query += ` AND w.employee_id = ANY($${params.length}::int[])`; }
+    query += ' GROUP BY w.recorded_at::date ORDER BY date DESC';
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Dates with app usage (for calendar)
+app.get('/api/dashboard/app-usage-dates', requireLogin, async (req, res) => {
+  try {
+    const { employee_id } = req.query;
+    const allowed = getAllowedEmployees(req);
+    const params = [];
+    let query = `SELECT a.recorded_at::date::text as date, COUNT(*) as count FROM app_usage a JOIN employees e ON a.employee_id=e.id WHERE e.active=true AND a.recorded_at >= NOW() - INTERVAL '90 days'`;
+    if (employee_id) { params.push(employee_id); query += ` AND a.employee_id=$${params.length}`; }
+    if (allowed) { params.push(allowed); query += ` AND a.employee_id = ANY($${params.length}::int[])`; }
+    query += ' GROUP BY a.recorded_at::date ORDER BY date DESC';
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Get deleted employees
 app.get("/api/employees/deleted", requireLogin, async (req, res) => {
   try {
@@ -3113,281 +3187,6 @@ app.get('/api/employees/:id/temp-shift-dates', requireLogin, async (req, res) =>
     res.json(rows.rows.map(r => r.date.split('T')[0]));
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
-
-// ============================================================
-// ── ALERT RULES API ─────────────────────────────────────────
-// ============================================================
-
-app.get('/api/alert-rules', requireLogin, async (req, res) => {
-  try {
-    const rows = await pool.query(
-      'SELECT * FROM alert_rules WHERE admin_id=$1 ORDER BY created_at DESC',
-      [req.session.adminId]
-    );
-    res.json(rows.rows);
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/alert-rules', requireLogin, async (req, res) => {
-  const { name, category, condition, value, employee_id, employee_name, severity } = req.body;
-  try {
-    const r = await pool.query(
-      `INSERT INTO alert_rules (admin_id, admin_name, name, category, condition, value, employee_id, employee_name, severity)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [req.session.adminId, req.session.adminName, name, category, condition,
-       value||null, employee_id||null, employee_name||null, severity||'medium']
-    );
-    res.json(r.rows[0]);
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.patch('/api/alert-rules/:id', requireLogin, async (req, res) => {
-  try {
-    await pool.query(
-      'UPDATE alert_rules SET active=$1 WHERE id=$2 AND admin_id=$3',
-      [req.body.active, req.params.id, req.session.adminId]
-    );
-    res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/alert-rules/:id', requireLogin, async (req, res) => {
-  try {
-    await pool.query('DELETE FROM alert_rules WHERE id=$1 AND admin_id=$2',
-      [req.params.id, req.session.adminId]);
-    res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-// ============================================================
-// ── SITE CATEGORIES API (per admin) ─────────────────────────
-// ============================================================
-
-app.get('/api/site-categories', requireLogin, async (req, res) => {
-  try {
-    const rows = await pool.query(
-      'SELECT * FROM site_categories WHERE admin_id=$1 ORDER BY domain ASC',
-      [req.session.adminId]
-    );
-    res.json(rows.rows);
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/site-categories', requireLogin, async (req, res) => {
-  const { domain, category } = req.body;
-  if (!domain || !category) return res.status(400).json({ error: 'domain and category required' });
-  const clean = domain.toLowerCase().replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].trim();
-  try {
-    const r = await pool.query(
-      `INSERT INTO site_categories (admin_id, domain, category)
-       VALUES ($1,$2,$3)
-       ON CONFLICT (admin_id, domain)
-       DO UPDATE SET category=$3 RETURNING *`,
-      [req.session.adminId, clean, category]
-    );
-    res.json(r.rows[0]);
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/site-categories/:id', requireLogin, async (req, res) => {
-  try {
-    await pool.query('DELETE FROM site_categories WHERE id=$1 AND admin_id=$2',
-      [req.params.id, req.session.adminId]);
-    res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-// ============================================================
-// ── ALERTS API (per admin) ───────────────────────────────────
-// ============================================================
-
-app.get('/api/alerts', requireLogin, async (req, res) => {
-  try {
-    const allowed = getAllowedEmployees(req);
-    let q = `SELECT a.*, e.name as employee_name
-             FROM alerts a JOIN employees e ON a.employee_id=e.id
-             WHERE e.active=true AND (a.admin_id=$1 OR a.admin_id IS NULL)`;
-    const params = [req.session.adminId];
-    if (allowed) { q += ` AND e.id = ANY($2::int[])`; params.push(allowed); }
-    q += ' ORDER BY a.created_at DESC LIMIT 200';
-    const result = await pool.query(q, params);
-    res.json(result.rows);
-  } catch(err) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/alerts/:id/resolve', requireLogin, async (req, res) => {
-  await pool.query('UPDATE alerts SET resolved=true WHERE id=$1', [req.params.id]);
-  res.json({ success: true });
-});
-
-app.delete('/api/alerts/:id', requireLogin, async (req, res) => {
-  await pool.query('DELETE FROM alerts WHERE id=$1', [req.params.id]);
-  res.json({ success: true });
-});
-
-// ============================================================
-// ── ALERT RULE EVALUATOR ─────────────────────────────────────
-// ============================================================
-
-async function triggerAlert(rule, employeeId, employeeName, message) {
-  const existing = await pool.query(
-    `SELECT id FROM alerts WHERE rule_id=$1 AND employee_id=$2
-     AND created_at > NOW() - INTERVAL '1 hour' AND resolved=false LIMIT 1`,
-    [rule.id, employeeId]
-  );
-  if (existing.rows.length) return;
-  await pool.query(
-    `INSERT INTO alerts (employee_id, message, severity, resolved, admin_id, rule_id, rule_name, created_at)
-     VALUES ($1,$2,$3,false,$4,$5,$6,NOW())`,
-    [employeeId, message, rule.severity||'medium', rule.admin_id, rule.id, rule.name]
-  );
-}
-
-async function evaluateRule(rule) {
-  const today = new Date().toISOString().split('T')[0];
-  const empCond = rule.employee_id ? `AND e.id=${parseInt(rule.employee_id)}` : 'AND e.active=true';
-
-  if (rule.category === 'web') {
-    if (rule.condition === 'nonprod_over') {
-      const mins = parseInt(rule.value)||30;
-      const rows = await pool.query(`
-        SELECT w.employee_id, e.name, ROUND(SUM(w.duration_seconds)/60) as m
-        FROM web_activity w JOIN employees e ON w.employee_id=e.id
-        WHERE w.visited_at::date=$1 AND w.productivity='Non-productive' ${empCond}
-        GROUP BY w.employee_id,e.name HAVING SUM(w.duration_seconds)/60>$2
-      `, [today, mins]);
-      for (const r of rows.rows) await triggerAlert(rule, r.employee_id, r.name,
-        `${r.name} spent ${r.m}m on non-productive sites today (limit: ${mins}m)`);
-    }
-    if (rule.condition === 'domain_visited') {
-      const rows = await pool.query(`
-        SELECT DISTINCT w.employee_id, e.name FROM web_activity w
-        JOIN employees e ON w.employee_id=e.id
-        WHERE w.visited_at::date=$1 AND LOWER(w.url) LIKE LOWER($2) ${empCond}
-      `, [today, `%${rule.value||''}%`]);
-      for (const r of rows.rows) await triggerAlert(rule, r.employee_id, r.name,
-        `${r.name} visited "${rule.value}" today`);
-    }
-    if (rule.condition === 'web_over') {
-      const mins = parseInt(rule.value)||60;
-      const rows = await pool.query(`
-        SELECT w.employee_id, e.name, ROUND(SUM(w.duration_seconds)/60) as m
-        FROM web_activity w JOIN employees e ON w.employee_id=e.id
-        WHERE w.visited_at::date=$1 ${empCond}
-        GROUP BY w.employee_id,e.name HAVING SUM(w.duration_seconds)/60>$2
-      `, [today, mins]);
-      for (const r of rows.rows) await triggerAlert(rule, r.employee_id, r.name,
-        `${r.name} spent ${r.m}m browsing today (limit: ${mins}m)`);
-    }
-  }
-
-  if (rule.category === 'app') {
-    if (rule.condition === 'app_over') {
-      const parts = (rule.value||'|30').split('|');
-      const appName = parts[0]||''; const mins = parseInt(parts[1])||30;
-      const rows = await pool.query(`
-        SELECT a.employee_id, e.name, ROUND(SUM(a.duration_seconds)/60) as m
-        FROM app_usage a JOIN employees e ON a.employee_id=e.id
-        WHERE a.recorded_at::date=$1 AND LOWER(a.app_name) LIKE LOWER($2) ${empCond}
-        GROUP BY a.employee_id,e.name HAVING SUM(a.duration_seconds)/60>$3
-      `, [today, `%${appName}%`, mins]);
-      for (const r of rows.rows) await triggerAlert(rule, r.employee_id, r.name,
-        `${r.name} used ${appName} for ${r.m}m today (limit: ${mins}m)`);
-    }
-    if (rule.condition === 'total_app_over') {
-      const mins = parseInt(rule.value)||120;
-      const rows = await pool.query(`
-        SELECT a.employee_id, e.name, ROUND(SUM(a.duration_seconds)/60) as m
-        FROM app_usage a JOIN employees e ON a.employee_id=e.id
-        WHERE a.recorded_at::date=$1 ${empCond}
-        GROUP BY a.employee_id,e.name HAVING SUM(a.duration_seconds)/60>$2
-      `, [today, mins]);
-      for (const r of rows.rows) await triggerAlert(rule, r.employee_id, r.name,
-        `${r.name} total app usage ${r.m}m today (limit: ${mins}m)`);
-    }
-  }
-
-  if (rule.category === 'login') {
-    if (rule.condition === 'not_online_by') {
-      const [rh,rm] = (rule.value||'09:00').split(':').map(Number);
-      const now = new Date(); if (now.getHours()<rh||(now.getHours()===rh&&now.getMinutes()<rm)) return;
-      const rows = await pool.query(`
-        SELECT e.id, e.name FROM employees e WHERE e.active=true ${empCond}
-        AND e.id NOT IN (SELECT DISTINCT employee_id FROM heartbeats WHERE recorded_at::date=CURRENT_DATE)
-      `);
-      for (const r of rows.rows) await triggerAlert(rule, r.id, r.name,
-        `${r.name} has not logged in by ${rule.value} today`);
-    }
-    if (rule.condition === 'outside_shift') {
-      const rows = await pool.query(`
-        SELECT DISTINCT h.employee_id, e.name FROM heartbeats h
-        JOIN employees e ON h.employee_id=e.id
-        LEFT JOIN duty_rosters dr ON e.roster_id=dr.id
-        WHERE h.recorded_at::date=CURRENT_DATE AND dr.id IS NOT NULL ${empCond}
-        AND (h.recorded_at::time < dr.start_time OR h.recorded_at::time > dr.end_time)
-      `);
-      for (const r of rows.rows) await triggerAlert(rule, r.employee_id, r.name,
-        `${r.name} was active outside shift hours today`);
-    }
-  }
-
-  if (rule.category === 'idle' && rule.condition === 'idle_over') {
-    const mins = parseInt(rule.value)||30;
-    const rows = await pool.query(`
-      SELECT h.employee_id, e.name, COUNT(*)*0.33 as idle_mins
-      FROM heartbeats h JOIN employees e ON h.employee_id=e.id
-      WHERE h.recorded_at > NOW()-INTERVAL '2 hours' AND h.idle=true ${empCond}
-      GROUP BY h.employee_id,e.name HAVING COUNT(*)*0.33>$1
-    `, [mins]);
-    for (const r of rows.rows) await triggerAlert(rule, r.employee_id, r.name,
-      `${r.name} has been idle for over ${mins} minutes`);
-  }
-
-  if (rule.category === 'screenshot' && rule.condition === 'flagged') {
-    const rows = await pool.query(`
-      SELECT DISTINCT s.employee_id, e.name FROM screenshots s
-      JOIN employees e ON s.employee_id=e.id
-      WHERE s.flagged=true AND s.taken_at::date=CURRENT_DATE ${empCond}
-    `);
-    for (const r of rows.rows) await triggerAlert(rule, r.employee_id, r.name,
-      `${r.name} has flagged screenshots today`);
-  }
-
-  if (rule.category === 'system') {
-    if (rule.condition === 'shutdown') {
-      const rows = await pool.query(`
-        SELECT DISTINCT s.employee_id, e.name FROM system_events s
-        JOIN employees e ON s.employee_id=e.id
-        WHERE s.event_type='shutdown' AND s.recorded_at::date=CURRENT_DATE ${empCond}
-      `);
-      for (const r of rows.rows) await triggerAlert(rule, r.employee_id, r.name,
-        `${r.name}'s PC was shut down today`);
-    }
-    if (rule.condition === 'locked_over') {
-      const count = Math.max(1, Math.floor(parseInt(rule.value||'60')/10));
-      const rows = await pool.query(`
-        SELECT s.employee_id, e.name, COUNT(*) as c FROM system_events s
-        JOIN employees e ON s.employee_id=e.id
-        WHERE s.event_type='locked' AND s.recorded_at::date=CURRENT_DATE ${empCond}
-        GROUP BY s.employee_id,e.name HAVING COUNT(*)>$1
-      `, [count]);
-      for (const r of rows.rows) await triggerAlert(rule, r.employee_id, r.name,
-        `${r.name}'s screen was locked ${r.c} times today`);
-    }
-  }
-}
-
-async function evaluateAlertRules() {
-  try {
-    const rules = await pool.query("SELECT * FROM alert_rules WHERE active=true");
-    for (const rule of rules.rows) {
-      try { await evaluateRule(rule); } catch(e) { console.error('[Rule]', rule.name, e.message); }
-    }
-  } catch(e) { console.error('[AlertEval]', e.message); }
-}
-
-setInterval(evaluateAlertRules, 5 * 60 * 1000);
-setTimeout(evaluateAlertRules, 30000);
 
 app.listen(PORT, () => {
   console.log(`WorkPulse server running on port ${PORT}`);

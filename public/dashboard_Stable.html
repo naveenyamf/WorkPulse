@@ -566,9 +566,6 @@ tr.emp-row:hover{background:var(--card-hover)}
                 <div style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:10px;color:#64748b">
                   <div style="width:6px;height:6px;border-radius:50%;background:#00e5ff;flex-shrink:0"></div> Has activity
                 </div>
-                <div style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:10px;color:#64748b">
-                  <div style="width:6px;height:6px;border-radius:50%;background:#f59e0b;flex-shrink:0"></div> Temp shift assigned
-                </div>
                 <button class="btn" style="width:100%;margin-top:10px" onclick="clearWebFilters();event.stopPropagation()">Clear Filter</button>
               </div>
             </div>
@@ -601,9 +598,6 @@ tr.emp-row:hover{background:var(--card-hover)}
                 <div id="appCalGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px"></div>
                 <div style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:10px;color:#64748b">
                   <div style="width:6px;height:6px;border-radius:50%;background:#00e5ff;flex-shrink:0"></div> Has data
-                </div>
-                <div style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:10px;color:#64748b">
-                  <div style="width:6px;height:6px;border-radius:50%;background:#f59e0b;flex-shrink:0"></div> Temp shift assigned
                 </div>
                 <button class="btn" style="width:100%;margin-top:10px" onclick="clearAppFilters();event.stopPropagation()">Clear Filter</button>
               </div>
@@ -702,9 +696,6 @@ tr.emp-row:hover{background:var(--card-hover)}
             <div id="sysCalGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px"></div>
             <div style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:10px;color:#64748b">
               <div style="width:6px;height:6px;border-radius:50%;background:#00e5ff;flex-shrink:0"></div> Has events
-            </div>
-            <div style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:10px;color:#64748b">
-              <div style="width:6px;height:6px;border-radius:50%;background:#f59e0b;flex-shrink:0"></div> Temp shift assigned
             </div>
             <button class="btn" style="width:100%;margin-top:10px" onclick="clearSysFilters();event.stopPropagation()">Clear Filter</button>
           </div>
@@ -1325,160 +1316,10 @@ tr.emp-row:hover{background:var(--card-hover)}
 
 <!-- ALERTS PAGE -->
     <div class="page" id="page-alerts">
-
-      <!-- TAB BAR -->
-      <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap">
-        <button class="btn btn-accent" id="alertTab-triggered" onclick="switchAlertTab('triggered')" style="font-size:12px">🚨 Triggered Alerts</button>
-        <button class="btn" id="alertTab-rules" onclick="switchAlertTab('rules')" style="font-size:12px">⚙ Alert Rules</button>
-        <button class="btn" id="alertTab-sites" onclick="switchAlertTab('sites')" style="font-size:12px">🌐 Site Categories</button>
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">Alerts</div></div>
+        <div id="alertList"></div>
       </div>
-
-      <!-- TRIGGERED ALERTS TAB -->
-      <div id="alertSection-triggered">
-        <div class="panel">
-          <div class="panel-header">
-            <div class="panel-title">🚨 Triggered Alerts</div>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-              <select id="alertFilterSeverity" class="filter-select" onchange="loadAlerts()" style="font-size:11px">
-                <option value="">All Severity</option>
-                <option value="high">🔴 High</option>
-                <option value="medium">🟡 Medium</option>
-                <option value="low">⚪ Low</option>
-              </select>
-              <select id="alertFilterStatus" class="filter-select" onchange="loadAlerts()" style="font-size:11px">
-                <option value="open">Open</option>
-                <option value="resolved">Resolved</option>
-                <option value="">All</option>
-              </select>
-              <button class="btn" onclick="loadAlerts()" style="font-size:11px">↻ Refresh</button>
-            </div>
-          </div>
-          <div id="alertList"></div>
-        </div>
-      </div>
-
-      <!-- ALERT RULES TAB -->
-      <div id="alertSection-rules" style="display:none">
-        <!-- Add Rule Form -->
-        <div class="panel" style="margin-bottom:16px">
-          <div class="panel-header"><div class="panel-title">➕ Add Alert Rule</div></div>
-          <div style="padding:18px 20px">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-              <div>
-                <label style="display:block;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Rule Name</label>
-                <input type="text" id="rule-name" placeholder="e.g. Too much YouTube" class="filter-select" style="width:100%;padding:9px 12px">
-              </div>
-              <div>
-                <label style="display:block;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Employee (optional)</label>
-                <select id="rule-employee" class="filter-select" style="width:100%;padding:9px 12px">
-                  <option value="">All Employees</option>
-                </select>
-              </div>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
-              <div>
-                <label style="display:block;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Category</label>
-                <select id="rule-category" class="filter-select" style="width:100%;padding:9px 12px" onchange="updateRuleConditions()">
-                  <option value="web">🌐 Web Activity</option>
-                  <option value="app">💻 App Usage</option>
-                  <option value="login">🕐 Login Time</option>
-                  <option value="idle">💤 Idle Time</option>
-                  <option value="screenshot">📸 Screenshot</option>
-                  <option value="system">🖥 System Events</option>
-                </select>
-              </div>
-              <div>
-                <label style="display:block;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Condition</label>
-                <select id="rule-condition" class="filter-select" style="width:100%;padding:9px 12px" onchange="updateRuleValueUI()">
-                </select>
-              </div>
-              <div>
-                <label style="display:block;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Severity</label>
-                <select id="rule-severity" class="filter-select" style="width:100%;padding:9px 12px">
-                  <option value="high">🔴 High</option>
-                  <option value="medium" selected>🟡 Medium</option>
-                  <option value="low">⚪ Low</option>
-                </select>
-              </div>
-            </div>
-            <div id="rule-value-area" style="margin-bottom:14px"></div>
-            <button class="btn btn-accent" onclick="saveAlertRule()" style="padding:9px 24px">Save Rule</button>
-            <span id="ruleStatus" style="font-size:12px;margin-left:12px"></span>
-          </div>
-        </div>
-        <!-- Rules List -->
-        <div class="panel">
-          <div class="panel-header">
-            <div class="panel-title">📋 My Alert Rules</div>
-            <button class="btn" onclick="loadAlertRules()" style="font-size:11px">↻ Refresh</button>
-          </div>
-          <div id="rulesList"></div>
-        </div>
-      </div>
-
-      <!-- SITE CATEGORIES TAB -->
-      <div id="alertSection-sites" style="display:none">
-        <div class="panel" style="margin-bottom:16px">
-          <div class="panel-header"><div class="panel-title">➕ Add Site Category</div></div>
-          <div style="padding:18px 20px">
-            <div style="display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:end">
-              <div>
-                <label style="display:block;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Domain</label>
-                <input type="text" id="site-domain" placeholder="e.g. youtube.com or facebook.com" class="filter-select" style="width:100%;padding:9px 12px">
-              </div>
-              <div>
-                <label style="display:block;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Category</label>
-                <select id="site-category" class="filter-select" style="padding:9px 12px">
-                  <option value="Productive">✅ Productive</option>
-                  <option value="Neutral" selected>🟡 Neutral</option>
-                  <option value="Non-productive">🔴 Non-Productive</option>
-                </select>
-              </div>
-              <button class="btn btn-accent" onclick="saveSiteCategory()" style="padding:9px 18px;white-space:nowrap">Add</button>
-            </div>
-            <div style="margin-top:10px;font-size:11px;color:var(--text3)">
-              These categories apply to your view only. Each admin has their own list.
-            </div>
-          </div>
-        </div>
-        <!-- Bulk quick-add -->
-        <div class="panel" style="margin-bottom:16px">
-          <div class="panel-header"><div class="panel-title">⚡ Quick Add Common Sites</div></div>
-          <div style="padding:16px 20px">
-            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
-              <span style="font-size:11px;color:var(--text3);width:100%;margin-bottom:4px">🔴 Non-Productive (click to add):</span>
-              <span id="npd-facebook" onclick="quickAddSite('facebook.com','Non-productive',this)" style="cursor:pointer;padding:4px 10px;border-radius:12px;font-size:11px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#ef4444">facebook.com</span>
-              <span id="npd-youtube" onclick="quickAddSite('youtube.com','Non-productive',this)" style="cursor:pointer;padding:4px 10px;border-radius:12px;font-size:11px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#ef4444">youtube.com</span>
-              <span id="npd-instagram" onclick="quickAddSite('instagram.com','Non-productive',this)" style="cursor:pointer;padding:4px 10px;border-radius:12px;font-size:11px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#ef4444">instagram.com</span>
-              <span id="npd-twitter" onclick="quickAddSite('twitter.com','Non-productive',this)" style="cursor:pointer;padding:4px 10px;border-radius:12px;font-size:11px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#ef4444">twitter.com</span>
-              <span id="npd-netflix" onclick="quickAddSite('netflix.com','Non-productive',this)" style="cursor:pointer;padding:4px 10px;border-radius:12px;font-size:11px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#ef4444">netflix.com</span>
-              <span id="npd-reddit" onclick="quickAddSite('reddit.com','Non-productive',this)" style="cursor:pointer;padding:4px 10px;border-radius:12px;font-size:11px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#ef4444">reddit.com</span>
-              <span id="npd-tiktok" onclick="quickAddSite('tiktok.com','Non-productive',this)" style="cursor:pointer;padding:4px 10px;border-radius:12px;font-size:11px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#ef4444">tiktok.com</span>
-            </div>
-            <div style="display:flex;flex-wrap:wrap;gap:8px">
-              <span style="font-size:11px;color:var(--text3);width:100%;margin-bottom:4px">✅ Productive (click to add):</span>
-              <span onclick="quickAddSite('github.com','Productive',this)" style="cursor:pointer;padding:4px 10px;border-radius:12px;font-size:11px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);color:#10b981">github.com</span>
-              <span onclick="quickAddSite('stackoverflow.com','Productive',this)" style="cursor:pointer;padding:4px 10px;border-radius:12px;font-size:11px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);color:#10b981">stackoverflow.com</span>
-              <span onclick="quickAddSite('docs.google.com','Productive',this)" style="cursor:pointer;padding:4px 10px;border-radius:12px;font-size:11px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);color:#10b981">docs.google.com</span>
-              <span onclick="quickAddSite('notion.so','Productive',this)" style="cursor:pointer;padding:4px 10px;border-radius:12px;font-size:11px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);color:#10b981">notion.so</span>
-              <span onclick="quickAddSite('slack.com','Productive',this)" style="cursor:pointer;padding:4px 10px;border-radius:12px;font-size:11px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);color:#10b981">slack.com</span>
-              <span onclick="quickAddSite('jira.atlassian.com','Productive',this)" style="cursor:pointer;padding:4px 10px;border-radius:12px;font-size:11px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);color:#10b981">jira.atlassian.com</span>
-            </div>
-          </div>
-        </div>
-        <!-- Site list -->
-        <div class="panel">
-          <div class="panel-header">
-            <div class="panel-title">🌐 My Site Categories</div>
-            <div style="display:flex;gap:8px;align-items:center">
-              <input type="text" id="siteSearch" placeholder="Search domain..." class="filter-select" oninput="renderSiteList()" style="padding:6px 10px;font-size:11px;width:160px">
-              <button class="btn" onclick="loadSiteCategories()" style="font-size:11px">↻ Refresh</button>
-            </div>
-          </div>
-          <div id="siteList"></div>
-        </div>
-      </div>
-
     </div>
 
 <!-- DUTY ROSTER PAGE -->
@@ -1674,7 +1515,7 @@ function showPage(name,el){
   if(name==='screenshots'){populateDropdown('ss-emp');initCalendar();loadScreenshots();}
   if(name==='webactivity'){populateDropdown('web-emp');initWebCalendar();loadWebActivity();}
   if(name==='appusage'){populateDropdown('app-emp');initAppCalendar();loadAppUsage();}
-  if(name==='alerts'){switchAlertTab('triggered');}
+  if(name==='alerts'){loadAlerts();}
   if(name==='deleted'){loadDeleted();}
   if(name==='users'){loadDashboardUsers();loadAdminUsers();}
   if(name==='flagged'){populateDropdown('flag-emp2');flagCalYear=new Date().getFullYear();flagCalMonth=new Date().getMonth();loadFlagCalendarDates();loadFlaggedPage(1);}
@@ -1699,7 +1540,7 @@ function refreshPage(){
   else if(name==='webactivity'){loadWebActivity(1);}
   else if(name==='appusage'){loadAppUsage(1);}
   else if(name==='sysactivity'){if(sysCurrentView==='timeline')loadSysTimeline();else loadSysActivity(1);}
-  else if(name==='alerts'){switchAlertTab('triggered');}
+  else if(name==='alerts'){loadAlerts();}
   else if(name==='flagged'){loadFlaggedPage(1);}
   else if(name==='reports'){loadReportJobs();loadReportSchedules();}
   else if(name==='auditlog'){loadAuditLog();}
@@ -3023,341 +2864,27 @@ function clearAppFilters(){
 }
 
 // ---- ALERTS ----
-// ============================================================
-// ---- ALERTS SYSTEM ----------------------------------------
-// ============================================================
-
-var alertCurrentTab = 'triggered';
-var allSiteCategories = [];
-
-function switchAlertTab(tab) {
-  alertCurrentTab = tab;
-  ['triggered','rules','sites'].forEach(function(t) {
-    var sec = document.getElementById('alertSection-'+t);
-    var btn = document.getElementById('alertTab-'+t);
-    if (sec) sec.style.display = t===tab ? 'block' : 'none';
-    if (btn) {
-      btn.className = t===tab ? 'btn btn-accent' : 'btn';
-      btn.style.fontSize = '12px';
-    }
-  });
-  if (tab==='triggered') loadAlerts();
-  if (tab==='rules') { loadAlertRules(); populateRuleEmployee(); updateRuleConditions(); }
-  if (tab==='sites') loadSiteCategories();
-}
-
-// ── TRIGGERED ALERTS ────────────────────────────────────────
-
-async function loadAlerts() {
-  var list = document.getElementById('alertList');
-  if (!list) return;
-  list.innerHTML = '<div class="empty">Loading...</div>';
-  try {
-    var severity = document.getElementById('alertFilterSeverity') ? document.getElementById('alertFilterSeverity').value : '';
-    var status = document.getElementById('alertFilterStatus') ? document.getElementById('alertFilterStatus').value : 'open';
-    var rows = await fetch('/api/alerts').then(function(r){return r.json();});
-    if (!Array.isArray(rows)) rows = [];
-    // Filter client-side
-    if (severity) rows = rows.filter(function(a){return a.severity===severity;});
-    if (status==='open') rows = rows.filter(function(a){return !a.resolved;});
-    if (status==='resolved') rows = rows.filter(function(a){return a.resolved;});
-    if (!rows.length) {
-      list.innerHTML = '<div class="empty" style="padding:40px">✅ No alerts' + (status==='open'?' — all clear!':'') + '</div>';
-      return;
-    }
-    var sevColor = function(s){ return s==='high'?'#ef4444':s==='low'?'#64748b':'#f59e0b'; };
-    var sevIcon  = function(s){ return s==='high'?'🚨':s==='low'?'⚪':'⚠️'; };
-    list.innerHTML = rows.map(function(a) {
-      var col = sevColor(a.severity);
-      return '<div style="display:flex;align-items:flex-start;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border);border-left:3px solid '+col+'">' +
-        '<span style="font-size:16px;margin-top:1px">'+sevIcon(a.severity)+'</span>' +
-        '<div style="flex:1;min-width:0">' +
-          '<div style="color:var(--text);font-size:12px;font-weight:600">'+escHtml(a.message||'')+'</div>' +
-          '<div style="color:var(--text3);font-size:10px;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap">' +
-            '<span>👤 '+(a.employee_name||'—')+'</span>' +
-            (a.rule_name?'<span>⚙ '+escHtml(a.rule_name)+'</span>':'') +
-            '<span>🕐 '+new Date(a.created_at).toLocaleString()+'</span>' +
-          '</div>' +
-        '</div>' +
-        '<div style="display:flex;gap:6px;flex-shrink:0">' +
-          (!a.resolved
-            ? '<button class="btn" style="font-size:10px;border-color:rgba(16,185,129,0.4);color:#10b981" onclick="resolveAlert('+a.id+',this)">✓ Resolve</button>'
-            : '<span style="color:#10b981;font-size:10px;padding:4px 8px">✓ Resolved</span>') +
-          '<button class="btn btn-danger" style="font-size:10px" onclick="deleteAlert('+a.id+',this)">🗑</button>' +
-        '</div>' +
-      '</div>';
+async function loadAlerts(){
+  var list=document.getElementById('alertList');
+  list.innerHTML='<div class="empty">Loading...</div>';
+  try{
+    var rows=await fetch('/api/alerts').then(function(r){return r.json();});
+    if(!rows.length){list.innerHTML='<div class="empty">No alerts. All clear!</div>';return;}
+    list.innerHTML=rows.map(function(a){
+      return '<div style="display:flex;align-items:flex-start;gap:12px;padding:14px 18px;border-bottom:1px solid rgba(30,36,46,0.5);border-left:3px solid '+(a.severity==='high'?'#ef4444':a.severity==='low'?'#64748b':'#f59e0b')+'">'+
+        '<span style="font-size:16px">'+(a.severity==='high'?'🚨':'⚠️')+'</span>'+
+        '<div style="flex:1"><div style="color:#e2e8f0;font-size:12px">'+a.message+'</div>'+
+        '<div style="color:#64748b;font-size:10px;margin-top:3px">'+a.employee_name+' · '+new Date(a.created_at).toLocaleString()+'</div></div>'+
+        (!a.resolved?'<button class="btn" style="font-size:10px" onclick="resolveAlert('+a.id+',this)">Resolve</button>':
+        '<span style="color:#10b981;font-size:10px">✓ Resolved</span>')+'</div>';
     }).join('');
-  } catch(e) { list.innerHTML = '<div class="empty">Error loading alerts.</div>'; }
+  }catch(e){list.innerHTML='<div class="empty">Error loading alerts.</div>';}
 }
 
-function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-async function resolveAlert(id, btn) {
-  await fetch('/api/alerts/'+id+'/resolve', {method:'POST'});
-  btn.outerHTML = '<span style="color:#10b981;font-size:10px;padding:4px 8px">✓ Resolved</span>';
-  toast('Alert resolved', '#10b981');
-}
-
-async function deleteAlert(id, btn) {
-  if (!confirm('Delete this alert?')) return;
-  await fetch('/api/alerts/'+id, {method:'DELETE'});
-  btn.closest('div[style*="border-left"]').remove();
-  toast('Alert deleted', '#64748b');
-}
-
-// ── ALERT RULES ─────────────────────────────────────────────
-
-var RULE_CONDITIONS = {
-  web: [
-    {value:'nonprod_over', label:'Non-productive time over X minutes'},
-    {value:'web_over',     label:'Total browsing time over X minutes'},
-    {value:'domain_visited', label:'Specific domain visited'}
-  ],
-  app: [
-    {value:'app_over',       label:'Specific app used over X minutes'},
-    {value:'total_app_over', label:'Total app usage over X minutes'}
-  ],
-  login: [
-    {value:'not_online_by', label:'Not logged in by time (HH:MM)'},
-    {value:'outside_shift', label:'Active outside shift hours'}
-  ],
-  idle: [
-    {value:'idle_over', label:'Idle for over X minutes'}
-  ],
-  screenshot: [
-    {value:'flagged', label:'Screenshot flagged today'}
-  ],
-  system: [
-    {value:'shutdown',    label:'PC shutdown detected'},
-    {value:'locked_over', label:'Screen locked more than X times'}
-  ]
-};
-
-function updateRuleConditions() {
-  var cat = document.getElementById('rule-category').value;
-  var cond = document.getElementById('rule-condition');
-  var conditions = RULE_CONDITIONS[cat] || [];
-  cond.innerHTML = conditions.map(function(c){
-    return '<option value="'+c.value+'">'+c.label+'</option>';
-  }).join('');
-  updateRuleValueUI();
-}
-
-function updateRuleValueUI() {
-  var cat  = document.getElementById('rule-category').value;
-  var cond = document.getElementById('rule-condition').value;
-  var area = document.getElementById('rule-value-area');
-  var html = '';
-  // Minutes input
-  if (['nonprod_over','web_over','total_app_over','idle_over'].includes(cond)) {
-    html = '<label style="display:block;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Threshold (minutes)</label>' +
-      '<input type="number" id="rule-value" min="1" value="30" class="filter-select" style="width:180px;padding:9px 12px">';
-  } else if (cond === 'domain_visited') {
-    html = '<label style="display:block;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Domain (e.g. youtube.com)</label>' +
-      '<input type="text" id="rule-value" placeholder="youtube.com" class="filter-select" style="width:260px;padding:9px 12px">';
-  } else if (cond === 'app_over') {
-    html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
-      '<div><label style="display:block;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">App Name</label>' +
-      '<input type="text" id="rule-value-app" placeholder="e.g. Chrome" class="filter-select" style="width:100%;padding:9px 12px"></div>' +
-      '<div><label style="display:block;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Minutes</label>' +
-      '<input type="number" id="rule-value-mins" min="1" value="30" class="filter-select" style="width:100%;padding:9px 12px"></div>' +
-      '</div>';
-  } else if (cond === 'not_online_by') {
-    html = '<label style="display:block;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Expected login time</label>' +
-      '<input type="time" id="rule-value" value="09:00" class="filter-select" style="width:180px;padding:9px 12px">';
-  } else if (cond === 'locked_over') {
-    html = '<label style="display:block;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Max lock count per day</label>' +
-      '<input type="number" id="rule-value" min="1" value="5" class="filter-select" style="width:180px;padding:9px 12px">';
-  }
-  area.innerHTML = html;
-}
-
-function getRuleValue() {
-  var cond = document.getElementById('rule-condition').value;
-  if (cond === 'app_over') {
-    var app = document.getElementById('rule-value-app');
-    var mins = document.getElementById('rule-value-mins');
-    return (app?app.value.trim():'') + '|' + (mins?mins.value:'30');
-  }
-  var el = document.getElementById('rule-value');
-  return el ? el.value.trim() : '';
-}
-
-function populateRuleEmployee() {
-  var sel = document.getElementById('rule-employee');
-  if (!sel) return;
-  fetch('/api/employees').then(function(r){return r.json();}).then(function(emps){
-    if (!Array.isArray(emps)) return;
-    sel.innerHTML = '<option value="">All Employees</option>' +
-      emps.filter(function(e){return e.active;}).map(function(e){
-        return '<option value="'+e.id+'">'+e.name+'</option>';
-      }).join('');
-  }).catch(function(){});
-}
-
-async function saveAlertRule() {
-  var name = document.getElementById('rule-name').value.trim();
-  var category = document.getElementById('rule-category').value;
-  var condition = document.getElementById('rule-condition').value;
-  var severity = document.getElementById('rule-severity').value;
-  var empSel = document.getElementById('rule-employee');
-  var empId = empSel ? empSel.value : '';
-  var empName = empSel ? empSel.options[empSel.selectedIndex].text : '';
-  var value = getRuleValue();
-  var statusEl = document.getElementById('ruleStatus');
-
-  if (!name) { toast('Enter a rule name','#ef4444'); return; }
-
-  try {
-    var res = await fetch('/api/alert-rules', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        name, category, condition, value,
-        employee_id: empId||null,
-        employee_name: empId ? empName : null,
-        severity
-      })
-    });
-    var data = await res.json();
-    if (data.id) {
-      toast('✓ Rule saved!','#10b981');
-      document.getElementById('rule-name').value = '';
-      loadAlertRules();
-    } else { toast('Error: '+(data.error||'Failed'),'#ef4444'); }
-  } catch(e) { toast('Error: '+e.message,'#ef4444'); }
-}
-
-async function loadAlertRules() {
-  var list = document.getElementById('rulesList');
-  if (!list) return;
-  list.innerHTML = '<div class="empty">Loading...</div>';
-  try {
-    var rows = await fetch('/api/alert-rules').then(function(r){return r.json();});
-    if (!Array.isArray(rows)||!rows.length) {
-      list.innerHTML = '<div class="empty" style="padding:32px">No rules yet. Add your first rule above.</div>';
-      return;
-    }
-    var catIcons = {web:'🌐',app:'💻',login:'🕐',idle:'💤',screenshot:'📸',system:'🖥'};
-    var sevColor = function(s){return s==='high'?'#ef4444':s==='low'?'#64748b':'#f59e0b';};
-    list.innerHTML = '<table style="width:100%"><thead><tr>' +
-      '<th>Rule</th><th>Category</th><th>Condition</th><th>Employee</th><th>Severity</th><th>Status</th><th>Actions</th>' +
-      '</tr></thead><tbody>' +
-      rows.map(function(r) {
-        return '<tr>' +
-          '<td style="font-weight:600;color:var(--text)">'+escHtml(r.name)+'</td>' +
-          '<td>'+(catIcons[r.category]||'')+'  '+r.category+'</td>' +
-          '<td style="color:var(--text2);font-size:11px">'+escHtml(r.condition)+(r.value?' · <span style="color:var(--accent)">'+escHtml(r.value)+'</span>':'')+'</td>' +
-          '<td style="color:var(--text2);font-size:11px">'+(r.employee_name||'All')+'</td>' +
-          '<td><span style="color:'+sevColor(r.severity)+';font-weight:600;font-size:11px">'+r.severity+'</span></td>' +
-          '<td>' +
-            '<label style="display:flex;align-items:center;gap:6px;cursor:pointer">' +
-              '<input type="checkbox" '+(r.active?'checked':'')+' onchange="toggleRule('+r.id+',this.checked)" style="accent-color:var(--accent)">' +
-              '<span style="font-size:11px;color:'+(r.active?'#10b981':'#64748b')+'">'+(r.active?'Active':'Off')+'</span>' +
-            '</label>' +
-          '</td>' +
-          '<td><button class="btn btn-danger" style="font-size:10px" onclick="deleteRule('+r.id+',this)">🗑 Delete</button></td>' +
-        '</tr>';
-      }).join('') +
-      '</tbody></table>';
-  } catch(e) { list.innerHTML = '<div class="empty">Error loading rules.</div>'; }
-}
-
-async function toggleRule(id, active) {
-  await fetch('/api/alert-rules/'+id, {
-    method:'PATCH',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({active})
-  });
-  toast(active ? 'Rule activated' : 'Rule paused', active?'#10b981':'#64748b');
-}
-
-async function deleteRule(id, btn) {
-  if (!confirm('Delete this rule?')) return;
-  await fetch('/api/alert-rules/'+id, {method:'DELETE'});
-  btn.closest('tr').remove();
-  toast('Rule deleted','#64748b');
-}
-
-// ── SITE CATEGORIES ──────────────────────────────────────────
-
-async function loadSiteCategories() {
-  try {
-    allSiteCategories = await fetch('/api/site-categories').then(function(r){return r.json();});
-    if (!Array.isArray(allSiteCategories)) allSiteCategories = [];
-    renderSiteList();
-  } catch(e) {}
-}
-
-function renderSiteList() {
-  var list = document.getElementById('siteList');
-  if (!list) return;
-  var search = (document.getElementById('siteSearch')||{value:''}).value.toLowerCase();
-  var rows = allSiteCategories.filter(function(s){
-    return !search || s.domain.toLowerCase().includes(search);
-  });
-  if (!rows.length) {
-    list.innerHTML = '<div class="empty" style="padding:32px">No site categories yet.</div>';
-    return;
-  }
-  var catStyle = function(c){
-    if (c==='Productive') return 'background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);color:#10b981';
-    if (c==='Non-productive') return 'background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#ef4444';
-    return 'background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);color:#f59e0b';
-  };
-  list.innerHTML = '<table style="width:100%"><thead><tr><th>Domain</th><th>Category</th><th>Actions</th></tr></thead><tbody>' +
-    rows.map(function(s) {
-      return '<tr>' +
-        '<td style="font-family:monospace;color:var(--text)">'+escHtml(s.domain)+'</td>' +
-        '<td><span style="padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;'+catStyle(s.category)+'">'+s.category+'</span></td>' +
-        '<td><button class="btn btn-danger" style="font-size:10px" onclick="deleteSiteCategory('+s.id+',this)">🗑</button></td>' +
-      '</tr>';
-    }).join('') +
-    '</tbody></table>';
-}
-
-async function saveSiteCategory() {
-  var domain = document.getElementById('site-domain').value.trim();
-  var category = document.getElementById('site-category').value;
-  if (!domain) { toast('Enter a domain','#ef4444'); return; }
-  try {
-    var res = await fetch('/api/site-categories', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({domain, category})
-    });
-    var data = await res.json();
-    if (data.id) {
-      toast('✓ Site category saved!','#10b981');
-      document.getElementById('site-domain').value = '';
-      loadSiteCategories();
-    } else { toast('Error: '+(data.error||'Failed'),'#ef4444'); }
-  } catch(e) { toast('Error: '+e.message,'#ef4444'); }
-}
-
-async function quickAddSite(domain, category, el) {
-  try {
-    var res = await fetch('/api/site-categories', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({domain, category})
-    });
-    var data = await res.json();
-    if (data.id) {
-      el.style.opacity = '0.4';
-      el.style.pointerEvents = 'none';
-      el.textContent = '✓ '+domain;
-      toast('Added: '+domain,'#10b981');
-      loadSiteCategories();
-    }
-  } catch(e) {}
-}
-
-async function deleteSiteCategory(id, btn) {
-  await fetch('/api/site-categories/'+id, {method:'DELETE'});
-  btn.closest('tr').remove();
-  allSiteCategories = allSiteCategories.filter(function(s){return s.id!==id;});
-  toast('Removed','#64748b');
+async function resolveAlert(id,btn){
+  await fetch('/api/alerts/'+id+'/resolve',{method:'POST'});
+  btn.replaceWith(Object.assign(document.createElement('span'),{style:'color:#10b981;font-size:10px',textContent:'✓ Resolved'}));
+  toast('Alert resolved','#10b981');
 }
 
 // ---- DELETED USERS ----
@@ -6308,9 +5835,6 @@ setInterval(function(){loadStats();loadEmployees();},30000);
           <div id="epCalGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px"></div>
           <div style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:10px;color:#64748b">
             <div style="width:6px;height:6px;border-radius:50%;background:#00e5ff"></div> Has data
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:10px;color:#64748b">
-            <div style="width:6px;height:6px;border-radius:50%;background:#f59e0b"></div> Temp shift assigned
           </div>
           <button class="btn" style="width:100%;margin-top:10px;font-size:11px" onclick="selectEpDate('')">Show All Dates</button>
         </div>

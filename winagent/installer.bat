@@ -6,7 +6,7 @@ cls
 
 echo.
 echo  ================================================
-echo   WorkPulse Agent Installer v2.2
+echo   WorkPulse Agent Installer v2.6
 echo  ================================================
 echo.
 
@@ -26,7 +26,7 @@ if not exist "%~dp0WorkPulse-Agent.exe" (
 
 echo.
 echo  Examples:
-echo    Local IP  : http://192.168.1.100
+echo    Local IP  : http://192.168.1.100:3000
 echo    Domain    : https://monitoring.company.com
 echo.
 set /p SERVER_URL=" Enter WorkPulse server URL: "
@@ -51,43 +51,57 @@ if errorlevel 1 (
     )
 )
 
-echo  Server URL: !SERVER_URL!
-
 echo  Checking server connection...
 powershell -NoProfile -Command "try { $r = Invoke-WebRequest -Uri '!SERVER_URL!' -UseBasicParsing -TimeoutSec 8; if($r.StatusCode -lt 500){exit 0}else{exit 1} } catch { exit 1 }" >nul 2>&1
 if %errorlevel% neq 0 (
-    echo.
     echo  ERROR: Cannot reach server at !SERVER_URL!
     pause
     exit /b 1
 )
 echo  Server connected OK
 
+echo  Getting machine ID...
+for /f "delims=" %%i in ('powershell -NoProfile -Command "$env:COMPUTERNAME"') do set MACHINE_ID=%%i
+echo  Machine: !MACHINE_ID!
+
+:: EMAIL ENTRY WITH 3 ATTEMPTS
+set TOKEN=
+set EMAIL_ATTEMPT=0
+
+:ask_email
+set /a EMAIL_ATTEMPT+=1
 echo.
 set /p EMPLOYEE_EMAIL=" Enter employee email address: "
 if "!EMPLOYEE_EMAIL!"=="" (
-    echo  ERROR: Email cannot be empty
+    echo  ERROR: Email cannot be empty.
+    if !EMAIL_ATTEMPT! lss 3 goto ask_email
+    echo  Too many failed attempts. Exiting.
     pause
     exit /b 1
 )
 
-echo  Fetching agent token...
-for /f "delims=" %%i in ('powershell -NoProfile -Command "try { (Invoke-WebRequest -Uri '!SERVER_URL!/api/agent/token/!EMPLOYEE_EMAIL!' -UseBasicParsing).Content } catch { '' }" 2^>nul') do set RESPONSE=%%i
-
-for /f "tokens=2 delims=:}" %%a in ("!RESPONSE!") do (
-    set TOKEN=%%a
-    set TOKEN=!TOKEN:"=!
-    set TOKEN=!TOKEN: =!
-)
+echo  Looking up employee...
+for /f "delims=" %%i in ('powershell -NoProfile -Command "try { $r=(Invoke-WebRequest -Uri '!SERVER_URL!/api/agent/token/!EMPLOYEE_EMAIL!?machine_id=!MACHINE_ID!' -UseBasicParsing).Content; ($r|ConvertFrom-Json).token } catch { '' }" 2^>nul') do set TOKEN=%%i
 
 if "!TOKEN!"=="" (
-    echo  ERROR: Employee not found: !EMPLOYEE_EMAIL!
-    echo  Add this employee in the dashboard first.
-    pause
-    exit /b 1
+    echo.
+    echo  ------------------------------------------------
+    echo   Employee not found or already assigned to
+    echo   another PC. Please enter a different email.
+    echo  ------------------------------------------------
+    if !EMAIL_ATTEMPT! lss 3 (
+        echo   Attempt !EMAIL_ATTEMPT! of 3. Try again.
+        goto ask_email
+    ) else (
+        echo   3 attempts used. Contact your administrator.
+        pause
+        exit /b 1
+    )
 )
 echo  Employee found! Token retrieved.
 
+:: INSTALL FILES
+echo.
 echo  Installing to C:\WorkPulse...
 mkdir "C:\WorkPulse" >nul 2>&1
 
@@ -99,37 +113,68 @@ if not exist "C:\WorkPulse\WorkPulse-Agent.exe" (
     exit /b 1
 )
 
-echo {"email":"!EMPLOYEE_EMAIL!","token":"!TOKEN!","server_url":"!SERVER_URL!"} > "C:\WorkPulse\config.json"
+echo  Writing config...
+powershell -NoProfile -Command "[System.IO.File]::WriteAllText('C:\WorkPulse\config.json','{\"email\":\"!EMPLOYEE_EMAIL!\",\"token\":\"!TOKEN!\",\"server_url\":\"!SERVER_URL!\",\"machine_id\":\"!MACHINE_ID!\"}')"
 
-echo  Creating launcher...
-(
-echo Set oShell = CreateObject^("WScript.Shell"^)
-echo Set oFSO = CreateObject^("Scripting.FileSystemObject"^)
-echo strDir = "C:\WorkPulse"
-echo strExe = strDir ^& "\WorkPulse-Agent.exe"
-echo If oFSO.FileExists^(strExe^) Then
-echo     oShell.Run Chr^(34^) ^& strExe ^& Chr^(34^), 0, False
-echo End If
-) > "C:\WorkPulse\launch.vbs"
+echo  Creating silent launcher...
+powershell -NoProfile -Command "$a='Set oShell = CreateObject(' + [char]34 + 'WScript.Shell' + [char]34 + ')'; $b='oShell.CurrentDirectory = ' + [char]34 + 'C:\WorkPulse' + [char]34; $c='oShell.Run ' + [char]34 + 'cmd /c WorkPulse-Agent.exe >> C:\WorkPulse\agent.log 2>nul' + [char]34 + ', 0, False'; [System.IO.File]::WriteAllLines('C:\WorkPulse\launch.vbs',@($a,$b,$c))"
 
 if exist "%~dp0updater.bat"   copy /Y "%~dp0updater.bat"   "C:\WorkPulse\updater.bat"   >nul
 if exist "%~dp0uninstall.bat" copy /Y "%~dp0uninstall.bat" "C:\WorkPulse\uninstall.bat" >nul
 
-reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\Run" /v "WorkPulse" /t REG_SZ /d "wscript.exe \"C:\WorkPulse\launch.vbs\"" /f >nul
 echo  Trusting agent executable...
 powershell -NoProfile -Command "Unblock-File -Path 'C:\WorkPulse\WorkPulse-Agent.exe'" >nul 2>&1
 powershell -NoProfile -Command "Add-MpPreference -ExclusionPath 'C:\WorkPulse\'" >nul 2>&1
 
-echo  Starting agent...
-start "" wscript.exe "C:\WorkPulse\launch.vbs"
-timeout /t 3 /nobreak >nul
+:: SETUP TASK SCHEDULER
+echo  Setting up auto-start...
+schtasks /delete /tn "WorkPulseAgent" /f >nul 2>&1
+schtasks /create /tn "WorkPulseAgent" /tr "wscript.exe //B \"C:\WorkPulse\launch.vbs\"" /sc onlogon /rl highest /f >nul 2>&1
+
+:: START AGENT NOW
+echo  Starting agent silently...
+taskkill /F /IM WorkPulse-Agent.exe >nul 2>&1
+timeout /t 1 /nobreak >nul
+del "C:\WorkPulse\agent.log" >nul 2>&1
+
+wscript.exe //B "C:\WorkPulse\launch.vbs"
+echo  Waiting for agent to start...
+timeout /t 8 /nobreak >nul
+
 tasklist /FI "IMAGENAME eq WorkPulse-Agent.exe" 2>nul | find /I "WorkPulse-Agent.exe" >nul
-if %errorlevel% neq 0 (
-    echo  VBS blocked, switching to Task Scheduler...
-    schtasks /create /tn "WorkPulseAgent" /tr "wscript.exe //B \"C:\WorkPulse\launch.vbs\"" /sc onlogon /rl highest /f >nul 2>&1
-    schtasks /run /tn "WorkPulseAgent" >nul 2>&1
-    echo  Task Scheduler started
+if %errorlevel%==0 goto :agent_running
+
+echo  Retrying...
+wscript.exe //B "C:\WorkPulse\launch.vbs"
+timeout /t 8 /nobreak >nul
+
+tasklist /FI "IMAGENAME eq WorkPulse-Agent.exe" 2>nul | find /I "WorkPulse-Agent.exe" >nul
+if %errorlevel%==0 goto :agent_running
+
+echo.
+echo  ------------------------------------------------
+echo   Agent could not start automatically.
+echo   Please RESTART your PC - the agent will start
+echo   automatically on next login.
+echo  ------------------------------------------------
+goto :done
+
+:agent_running
+echo.
+echo  ================================================
+echo   Agent Status: RUNNING
+echo  ================================================
+echo.
+echo  Verifying connection to server...
+timeout /t 5 /nobreak >nul
+findstr /C:"Agent started" "C:\WorkPulse\agent.log" >nul 2>&1
+if %errorlevel%==0 (
+    echo   Connected : YES
+) else (
+    echo   Connected : Connecting...
 )
+
+:done
 echo.
 echo  ================================================
 echo   Installation Complete!
@@ -137,8 +182,9 @@ echo  ================================================
 echo.
 echo   Employee : !EMPLOYEE_EMAIL!
 echo   Server   : !SERVER_URL!
+echo   Machine  : !MACHINE_ID!
 echo   Location : C:\WorkPulse\
-echo   Startup  : Enabled
-echo   Status   : Agent running
+echo   Auto-start: On every login ^(Task Scheduler^)
+echo   Log file : C:\WorkPulse\agent.log
 echo.
 pause

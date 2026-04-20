@@ -17,7 +17,7 @@
 - **Reports** — Export Excel reports: Employee Summary, Web Activity, App Usage, System Activity — all shift-aware
 - **Scheduled Reports** — Auto-generate and email reports daily/weekly/monthly
 - **Offline Queue** — Agent stores failed heartbeats locally and retries when internet reconnects
-- **Machine Binding** — Each employee email locked to one PC; uninstaller releases the binding
+- **Machine Binding** — Each employee email locked to one PC; uninstall.bat releases the binding
 - **Backup & Restore** — Full PostgreSQL DB backup + screenshot archive backup/restore
 - **Multi-User** — Admin and Monitor (view-only) roles with employee assignment
 - **MFA Support** — Email OTP login verification
@@ -100,7 +100,7 @@ GRANT ALL ON SCHEMA public TO workpulse_user;
 \q
 ```
 
-> ⚠️ **Important:** After the app creates its tables (Step 11), you must transfer table ownership to `workpulse_user` so the app can run migrations. Run this once after first startup:
+> ⚠️ **Important:** Run this AFTER Step 12 (web installer) once all tables are created. Also run if you see "must be owner of table" errors:
 
 ```bash
 sudo -u postgres psql -d workpulse -c "
@@ -115,6 +115,14 @@ ALTER TABLE heartbeats OWNER TO workpulse_user;
 ALTER TABLE alerts OWNER TO workpulse_user;
 ALTER TABLE report_schedules OWNER TO workpulse_user;
 ALTER TABLE temp_shift_overrides OWNER TO workpulse_user;
+ALTER TABLE report_jobs OWNER TO workpulse_user;
+ALTER TABLE email_config OWNER TO workpulse_user;
+ALTER TABLE otp_tokens OWNER TO workpulse_user;
+ALTER TABLE settings OWNER TO workpulse_user;
+ALTER TABLE audit_log OWNER TO workpulse_user;
+ALTER TABLE dashboard_users OWNER TO workpulse_user;
+ALTER TABLE alert_rules OWNER TO workpulse_user;
+ALTER TABLE site_categories OWNER TO workpulse_user;
 "
 ```
 
@@ -271,9 +279,13 @@ npx pkg . --targets node18-win-x64 --output ~/workpulse-app/winagent/dist/WorkPu
 
 cp ~/workpulse-app/winagent/dist/WorkPulse-Agent.exe ~/WorkPulse-Agent.exe
 
-cd ~/workpulse-app/winagent/dist
-zip WorkPulse-Agent-Windows.zip WorkPulse-Agent.exe installer.bat updater.bat uninstaller.bat
-cp WorkPulse-Agent-Windows.zip ~/WorkPulse-Agent-Windows.zip
+mkdir -p /tmp/wp_dist
+cp ~/workpulse-app/winagent/dist/WorkPulse-Agent.exe /tmp/wp_dist/
+cp ~/workpulse-app/winagent/dist/installer.bat /tmp/wp_dist/
+cp ~/workpulse-app/winagent/dist/updater.bat /tmp/wp_dist/
+cp ~/workpulse-app/winagent/dist/uninstall.bat /tmp/wp_dist/
+cd /tmp/wp_dist && zip ~/WorkPulse-Agent-Windows.zip *
+rm -rf /tmp/wp_dist
 
 echo "✓ Agent built successfully"
 ls -lh ~/WorkPulse-Agent-Windows.zip
@@ -318,7 +330,7 @@ Run `updater.bat` as Administrator on the employee PC. It reads the server URL f
 
 ### Uninstalling the agent
 
-Run `uninstaller.bat` as Administrator. Type **YES** to confirm. This:
+Run `uninstall.bat` as Administrator. Type **YES** to confirm. This:
 - Stops the agent
 - Removes Task Scheduler entry and startup registry keys
 - Removes Windows Defender exclusion
@@ -356,7 +368,7 @@ Open any employee profile → click **⚡ Set Temp Shift for [date]** → select
 ### Machine Binding
 
 Each employee email is bound to one PC on first install. If an employee changes PC:
-1. Run `uninstaller.bat` on the old PC (releases binding automatically)
+1. Run `uninstall.bat` on the old PC (releases binding automatically)
 2. Run `installer.bat` on the new PC
 
 If the old PC is unavailable, an admin can reset the binding via the employee Settings panel.
@@ -429,8 +441,7 @@ workpulse-app/
 │   │   ├── WorkPulse-Agent.exe
 │   │   ├── installer.bat
 │   │   ├── updater.bat
-│   │   └── uninstaller.bat
-│   └── launch.vbs     # Silent launcher with log redirect
+│   │   └── uninstall.bat
 ├── screenshots/       # Screenshot storage (gitignored)
 ├── backups/           # Backups (gitignored)
 ├── db.js              # PostgreSQL connection pool
@@ -468,7 +479,7 @@ powershell -Command "Add-MpPreference -ExclusionPath 'C:\WorkPulse\'"
 New installs via `installer.bat` handle this automatically.
 
 ### Employee email blocked: "already monitored on another PC"
-**Fix:** Run `uninstaller.bat` on the old PC first. If unavailable, reset via employee Settings in the dashboard.
+**Fix:** Run `uninstall.bat` on the old PC first. If unavailable, reset via employee Settings in the dashboard.
 
 ### Bad Gateway (502)
 ```bash
@@ -480,9 +491,21 @@ pm2 restart workpulse --update-env
 
 ## Changelog
 
+### v2.7.1 (April 2026)
+- **Mobile Responsive** — Full mobile layout with slide-over sidebar, hamburger menu
+- **Custom Alert Rules** — Per-admin alert rules: web activity, app usage, login time, idle, screenshots, system events
+- **Site Categories** — Per-admin domain productivity classification (Productive/Neutral/Non-Productive)
+- **Alert Evaluator** — Background rule evaluation every 5 minutes with 1-hour dedup
+- **Reports for all users** — Non-admin users can queue and schedule reports
+- **System Settings for all users** — Non-admin users can manage their own TOTP authenticator
+- **App Usage fix** — Accurate in-shift/off-shift calculation with shift duration cap
+- **Web Activity fix** — Per-URL accurate in-shift seconds using effective roster (temp override aware)
+- **Installer v2.6** — Silent VBS launcher, 3-attempt email retry, Task Scheduler auto-start, no CMD window
+- **agent.log cleanup** — Removed CLIXML PowerShell noise from log
+
 ### v2.7.0 (April 2026)
 - **Temporary Shift Override** — Set a one-day shift override per employee; all calculations update instantly; orange calendar dot indicator
-- **Machine Binding** — Employee email locked to one PC on install; uninstaller releases binding automatically
+- **Machine Binding** — Employee email locked to one PC on install; uninstall.bat releases binding automatically
 - **Session-based System Activity** — Events grouped into Start→End sessions with duration; shown on dashboard and in reports
 - **Win+L Lock Detection** — Detects screen lock via LockApp.exe process polling (no admin rights required); skips screenshots and URL tracking while locked
 - **Offline Queue** — Failed heartbeats/events queued locally; pending screenshots retried on reconnect

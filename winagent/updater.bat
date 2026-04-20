@@ -6,7 +6,7 @@ cls
 
 echo.
 echo  ================================================
-echo   WorkPulse Agent Updater v2.2
+echo   WorkPulse Agent Updater v2.3
 echo  ================================================
 echo.
 
@@ -26,6 +26,7 @@ if not exist "C:\WorkPulse\config.json" (
 
 echo  Reading configuration...
 for /f "tokens=*" %%a in ('powershell -NoProfile -Command "(Get-Content 'C:\WorkPulse\config.json' | ConvertFrom-Json).server_url"') do set SERVER_URL=%%a
+for /f "tokens=*" %%a in ('powershell -NoProfile -Command "(Get-Content 'C:\WorkPulse\config.json' | ConvertFrom-Json).token"') do set AGENT_TOKEN=%%a
 
 if "!SERVER_URL!"=="" (
     echo  ERROR: Could not read server URL from config.
@@ -55,32 +56,46 @@ if not exist "C:\WorkPulse\WorkPulse-Agent.exe" (
     pause
     exit /b 1
 )
+echo  Agent downloaded OK
 
 echo  Downloading latest launcher...
 powershell -NoProfile -Command "Invoke-WebRequest -Uri '!SERVER_URL!/download/launch-vbs' -OutFile 'C:\WorkPulse\launch.vbs' -UseBasicParsing" >nul 2>&1
+echo  Launcher updated
 
 echo  Trusting agent executable...
 powershell -NoProfile -Command "Unblock-File -Path 'C:\WorkPulse\WorkPulse-Agent.exe'" >nul 2>&1
 powershell -NoProfile -Command "Add-MpPreference -ExclusionPath 'C:\WorkPulse\'" >nul 2>&1
-echo  Fixing Task Scheduler entry...
+
+echo  Updating Task Scheduler entry...
+schtasks /delete /tn "WorkPulseAgent" /f >nul 2>&1
 schtasks /create /tn "WorkPulseAgent" /tr "wscript.exe //B \"C:\WorkPulse\launch.vbs\"" /sc onlogon /rl highest /f >nul 2>&1
-echo  Restarting agent silently...
-wscript.exe //B "C:\WorkPulse\launch.vbs"
-timeout /t 3 /nobreak >nul
+
+echo  Starting updated agent...
+schtasks /run /tn "WorkPulseAgent" >nul 2>&1
+timeout /t 4 /nobreak >nul
+
 tasklist /FI "IMAGENAME eq WorkPulse-Agent.exe" 2>nul | find /I "WorkPulse-Agent.exe" >nul
-if %errorlevel% neq 0 (
-    echo  VBS blocked, switching to Task Scheduler...
-    schtasks /create /tn "WorkPulseAgent" /tr "wscript.exe //B \"C:\WorkPulse\launch.vbs\"" /sc onlogon /rl highest /f >nul 2>&1
-    schtasks /run /tn "WorkPulseAgent" >nul 2>&1
-    echo  Task Scheduler configured
+if %errorlevel%==0 (
+    echo  Agent is running!
+) else (
+    echo  Starting via direct launch...
+    start "" /B cmd /c "cd /d C:\WorkPulse && WorkPulse-Agent.exe >> C:\WorkPulse\agent.log 2>nul"
+    timeout /t 3 /nobreak >nul
+    tasklist /FI "IMAGENAME eq WorkPulse-Agent.exe" 2>nul | find /I "WorkPulse-Agent.exe" >nul
+    if %errorlevel%==0 (
+        echo  Agent started successfully!
+    ) else (
+        echo  WARNING: Agent will start automatically on next login.
+    )
 )
+
 echo.
 echo  ================================================
 echo   Update Complete!
 echo  ================================================
 echo.
-echo   Agent updated and restarted successfully.
-echo   You can close this window.
-echo  ================================================
+echo   Server  : !SERVER_URL!
+echo   Log     : C:\WorkPulse\agent.log
+echo   Status  : Agent updated and running
 echo.
 pause
