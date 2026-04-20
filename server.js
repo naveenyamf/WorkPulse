@@ -18,6 +18,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.use('/screenshots', express.static('screenshots'));
 app.use(session({
   secret: process.env.SESSION_SECRET,
@@ -3389,6 +3390,7 @@ async function evaluateAlertRules() {
 setInterval(evaluateAlertRules, 5 * 60 * 1000);
 setTimeout(evaluateAlertRules, 30000);
 
+app.get('/dashboard', requireLogin, (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.html')));
 app.listen(PORT, () => {
   console.log(`WorkPulse server running on port ${PORT}`);
 });

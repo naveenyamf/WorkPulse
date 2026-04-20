@@ -307,7 +307,7 @@ async function doLogin() {
       startResendTimer('mfaTimer','resendMfaLink');
       goScreen('screen-mfa');
     } else if (data.success) {
-      window.location.href = '/dashboard.html';
+      window.location.href = '/dashboard';
     } else {
       setAlert('login-alert','error', data.error || 'Invalid credentials');
     }
@@ -325,7 +325,7 @@ async function verifyMFA() {
     var res  = await fetch('/api/auth/verify-otp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:currentEmail,otp,purpose:'mfa'})});
     var data = await res.json();
     if (data.success) {
-      window.location.href = '/dashboard.html';
+      window.location.href = '/dashboard';
     } else {
       setAlert('mfa-alert','error', data.error || 'Invalid or expired code');
     }
@@ -343,7 +343,7 @@ async function verifyTOTPLogin() {
     var res  = await fetch('/api/auth/totp/verify-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:code})});
     var data = await res.json();
     if (data.success) {
-      window.location.href = '/dashboard.html';
+      window.location.href = '/dashboard';
     } else {
       setAlert('totp-alert','error', data.error || 'Invalid code. Try again.');
     }
@@ -446,7 +446,7 @@ document.addEventListener('keydown', function(e) {
 
 // Check if already logged in
 fetch('/api/me').then(function(r){return r.json();}).then(function(d){
-  if(d.name) window.location.href='/dashboard.html';
+  if(d.name) window.location.href='/';
 }).catch(function(){});
 </script>
 </body>
