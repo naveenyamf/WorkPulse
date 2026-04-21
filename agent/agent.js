@@ -178,7 +178,7 @@ if (urlInTitle) {
   if (domainMatch) cleanUrl = domainMatch[1].toLowerCase();
 }
 
-      return { url: cleanUrl, browser: i.browser || "Browser", seconds: 60 };
+	return { url: cleanUrl, browser: i.browser || "Browser", seconds: 20 };
     });
   } catch(e) { return []; }
 }
@@ -188,7 +188,7 @@ if (urlInTitle) {
 function getAllApps(activeApp) {
   // Only track the foreground active app — not all open apps
   if (!activeApp || activeApp === 'Desktop' || activeApp === '') return [];
-  return [{ name: activeApp, seconds: 60 }];
+  return [{ name: activeApp, seconds: 20 }];
 }
 
 function takeScreenshot(callback) {
@@ -242,8 +242,8 @@ schedule.scheduleJob('*/5 * * * *', async function() {
   await checkWindowsEvents();
 });
 
-// Heartbeat every 1 minute
-schedule.scheduleJob('*/1 * * * *', async function() {
+// Heartbeat every 20 Seconds
+schedule.scheduleJob('*/20 * * * * *', async function() {
   if (!AGENT_TOKEN) return;
   try {
     const app = getActiveWindow();
