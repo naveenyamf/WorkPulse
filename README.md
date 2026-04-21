@@ -22,7 +22,7 @@
 - **Backup & Restore** — Full PostgreSQL DB backup + screenshot archive backup/restore
 - **Multi-User** — Admin and Monitor (view-only) roles with employee assignment
 - **MFA Support** — Email OTP and TOTP authenticator login verification
-- **Remember This Device** — Skip re-authentication for 30 days on trusted devices (works with password-only, OTP, and TOTP)
+- **Remember This Device** — Skip re-authentication for 30 days on trusted devices
 - **Alert Rules** — Per-admin configurable alert rules with background evaluator and 1-hour dedup
 - **Site Categories** — Per-admin domain productivity classification (Productive / Neutral / Non-Productive)
 - **Audit Log** — Full admin action logging
@@ -45,6 +45,7 @@
 - PostgreSQL 14+
 - Nginx (as reverse proxy)
 - PM2 (process manager)
+- zip (for packaging the Windows agent)
 
 ---
 
@@ -96,7 +97,7 @@ sudo systemctl enable postgresql
 
 ### Step 5 — Create database and user
 
-> ⚠️ **Replace `YourStrongPassword` with your own password everywhere below. Use the same password in all places.**
+> ⚠️ **Replace `YourStrongPassword` with your own password everywhere below.**
 
 ```bash
 sudo -u postgres psql
@@ -111,7 +112,7 @@ GRANT ALL ON SCHEMA public TO workpulse_user;
 \q
 ```
 
-> ⚠️ **Important:** Run this AFTER Step 12 (web installer) once all tables are created. Also run if you see "must be owner of table" errors:
+> ⚠️ **Important:** Run this AFTER Step 13 (web installer) once all tables are created. Also run if you see "must be owner of table" errors:
 
 ```bash
 sudo -u postgres psql -d workpulse -c "
@@ -135,6 +136,7 @@ ALTER TABLE dashboard_users OWNER TO workpulse_user;
 ALTER TABLE alert_rules OWNER TO workpulse_user;
 ALTER TABLE site_categories OWNER TO workpulse_user;
 ALTER TABLE remembered_devices OWNER TO workpulse_user;
+ALTER TABLE departments OWNER TO workpulse_user;
 "
 ```
 
@@ -163,9 +165,17 @@ sudo npm install -g pm2
 
 ---
 
-### Step 8 — Clone the repository
+### Step 8 — Install zip utility
 
-> Make sure you are logged in as `workpulse` user before running:
+> Required for packaging the Windows agent ZIP in Step 14.
+
+```bash
+sudo apt install -y zip
+```
+
+---
+
+### Step 9 — Clone the repository
 
 ```bash
 cd ~
@@ -177,13 +187,13 @@ npm install cookie-parser
 
 ---
 
-### Step 9 — Configure environment
+### Step 10 — Configure environment
 
 ```bash
 nano .env
 ```
 
-Fill in — **replace `YourStrongPassword` with the same password you used in Step 4:**
+Fill in:
 
 ```env
 PORT=3000
@@ -203,13 +213,13 @@ NODE_ENV=development
 
 ---
 
-### Step 10 — Configure Nginx reverse proxy
+### Step 11 — Configure Nginx reverse proxy
 
 ```bash
 sudo nano /etc/nginx/sites-available/workpulse
 ```
 
-Paste this — **replace `your-server-ip-or-domain` with your actual IP or domain:**
+Paste:
 
 ```nginx
 server {
@@ -243,7 +253,7 @@ sudo systemctl reload nginx
 
 ---
 
-### Step 11 — Start the application
+### Step 12 — Start the application
 
 ```bash
 cd ~/workpulse-app
@@ -254,7 +264,7 @@ pm2 startup
 
 ---
 
-### Step 12 — Run the web installer
+### Step 13 — Run the web installer
 
 Open your browser and go to:
 ```
@@ -265,15 +275,59 @@ Follow the steps to create your admin account and initialize the database.
 
 ---
 
-### Step 13 — Build the Windows agent
+### Step 14 — Build the Windows agent
 
+> ⚠️ **Important notes:**
+> - Install `pkg` with `sudo` — regular user lacks permission to install globally
+> - Use `node18` target — `node20` is **not supported** by pkg v5 and will fail
+> - First build downloads ~80MB of Node.js binaries (cached for future builds)
+
+**Step 14a — Install pkg:**
+```bash
+sudo npm install -g pkg
+```
+
+**Step 14b — Install agent dependencies and set build script:**
 ```bash
 cd ~/workpulse-app/winagent
 npm install
+npm pkg set scripts.build="pkg agent.js --targets node18-win-x64 --output dist/WorkPulse-Agent.exe"
+```
+
+**Step 14c — Build the exe:**
+```bash
+mkdir -p dist
 npm run build
 ```
 
-The compiled agent files will be in `winagent/dist/`.
+> 💡 Build takes 1–3 minutes on first run. You should see `fetched-v18.x.x-win-x64 [====================] 100%` then the exe appears in `dist/`.
+
+**Step 14d — Copy support files to dist:**
+```bash
+cp installer.bat dist/
+cp uninstall.bat dist/
+cp updater.bat dist/
+cp launch.vbs dist/
+```
+
+**Step 14e — Copy all files to home directory (required for Download Agent button):**
+```bash
+cd ~/workpulse-app/winagent/dist
+cp WorkPulse-Agent.exe ~/
+cp installer.bat ~/
+cp uninstall.bat ~/
+cp updater.bat ~/
+cp launch.vbs ~/
+```
+
+**Step 14f — Create the ZIP package:**
+```bash
+cd ~
+zip WorkPulse-Agent-Windows.zip WorkPulse-Agent.exe installer.bat uninstall.bat updater.bat launch.vbs
+ls -lh WorkPulse-Agent-Windows.zip
+```
+
+> ✅ You should see a ~16MB ZIP file. The **Download Agent** button in the dashboard will now work.
 
 ---
 
@@ -299,7 +353,7 @@ Go to **Admin → Duty Roster** to create shifts. Assign a roster to each employ
 
 ### Temporary Shift Override
 
-Open any employee profile → click **⚡ Set Temp Shift for [date]** → select a roster. This overrides the shift for that date only. An orange dot appears on the calendar for dates with temp overrides. All calculations update instantly.
+Open any employee profile → click **⚡ Set Temp Shift for [date]** → select a roster. This overrides the shift for that date only. An orange dot appears on the calendar for dates with temp overrides.
 
 ### Screenshot Gallery
 
@@ -311,7 +365,7 @@ Each employee email is bound to one PC on first install. If an employee changes 
 1. Run `uninstall.bat` on the old PC (releases binding automatically)
 2. Run `installer.bat` on the new PC
 
-If the old PC is unavailable, an admin can reset the binding via the employee Settings panel.
+If the old PC is unavailable, reset via employee Settings in the dashboard.
 
 ### Offline Queue
 
@@ -324,8 +378,6 @@ Go to **Reports** to generate or schedule Excel exports. Each report contains 4 
 - **Web Activity** — Per-URL time spent with on/off shift and productivity labels
 - **App Usage** — Per-app time spent within shift hours
 - **System Activity** — Session-based (Start → End event, duration, in-shift indicator)
-
-Temp shift overrides are reflected in all report sheets with amber highlighting.
 
 ---
 
@@ -361,7 +413,7 @@ Go to **Admin → Backup & Restore**:
 | Backend | Node.js + Express |
 | Database | PostgreSQL |
 | Frontend | Vanilla JS + CSS |
-| Agent | Node.js + PowerShell + BAT (v2.6.5) |
+| Agent | Node.js + pkg (compiled .exe, node18-win-x64) |
 | Android | Java + WebView (API 24+) |
 | Web Server | Nginx |
 | Process Manager | PM2 |
@@ -379,12 +431,17 @@ Go to **Admin → Backup & Restore**:
 workpulse-app/
 ├── public/            # Dashboard HTML, login page, installer page
 ├── winagent/          # Windows agent source
-│   ├── agent.js       # Main agent script (v2.6.5)
-│   ├── dist/          # Compiled agent + installer files
-│   │   ├── WorkPulse-Agent.exe
-│   │   ├── installer.bat
-│   │   ├── updater.bat
-│   │   └── uninstall.bat
+│   ├── agent.js       # Main agent script
+│   ├── installer.bat
+│   ├── uninstall.bat
+│   ├── updater.bat
+│   ├── launch.vbs
+│   └── dist/          # Compiled files (after Step 14)
+│       ├── WorkPulse-Agent.exe
+│       ├── installer.bat
+│       ├── updater.bat
+│       ├── uninstall.bat
+│       └── launch.vbs
 ├── screenshots/       # Screenshot storage (gitignored)
 ├── backups/           # Backups (gitignored)
 ├── db.js              # PostgreSQL connection pool
@@ -393,12 +450,15 @@ workpulse-app/
 └── .env               # Environment config (gitignored)
 ```
 
+> 💡 Files in `~/` (home directory) — `WorkPulse-Agent.exe`, `WorkPulse-Agent-Windows.zip` etc. — are served by the Download Agent button. Keep them in sync with `winagent/dist/` after each rebuild.
+
 ---
 
 ## Troubleshooting
 
 ### Signed out immediately after login
-**Cause:** `NODE_ENV=production` requires HTTPS. **Fix:** Set `NODE_ENV=development` in `.env` until SSL is configured.
+**Cause:** `NODE_ENV=production` requires HTTPS.
+**Fix:** Set `NODE_ENV=development` in `.env` until SSL is configured.
 
 ### Database connection error: client password must be a string
 **Fix:** Ensure both `DB_PASSWORD` and `DB_PASS` are in `.env`.
@@ -407,10 +467,26 @@ workpulse-app/
 **Fix:** Run the table ownership commands from Step 5.
 
 ### Download Agent shows "File not found"
-**Fix:** Build the agent (Step 13). If using a non-`workpulse` user:
+**Cause:** Agent not built yet, or files not copied to `~/`.
+**Fix:** Complete Step 14 fully. If using a non-`workpulse` user:
 ```bash
 sed -i "s|/home/workpulse/|${HOME}/|g" ~/workpulse-app/server.js
 pm2 restart workpulse --update-env
+```
+
+### pkg install fails with "EACCES: permission denied"
+**Cause:** Global npm install requires elevated permissions.
+**Fix:**
+```bash
+sudo npm install -g pkg
+```
+
+### pkg build error: "No available node version satisfies 'node20'"
+**Cause:** pkg v5 does not support node20 target.
+**Fix:** Use node18:
+```bash
+npm pkg set scripts.build="pkg agent.js --targets node18-win-x64 --output dist/WorkPulse-Agent.exe"
+npm run build
 ```
 
 ### Agent shows "This app can't run on your PC"
@@ -424,88 +500,89 @@ New installs via `installer.bat` handle this automatically.
 ### Employee email blocked: "already monitored on another PC"
 **Fix:** Run `uninstall.bat` on the old PC first. If unavailable, reset via employee Settings in the dashboard.
 
+### Agent shows offline after employee was deleted and re-added
+**Cause:** Deleting an employee generates a new agent token. The PC still has the old token.
+**Fix:**
+1. Get the new token:
+```bash
+psql -h localhost -U workpulse_user -d workpulse -c "SELECT agent_token FROM employees WHERE email='employee@company.com';"
+```
+2. On the Windows PC open `C:\WorkPulse\config.json` in Notepad and replace the `token` value
+3. Restart the agent via Task Scheduler:
+```cmd
+schtasks /end /tn "WorkPulseAgent"
+schtasks /run /tn "WorkPulseAgent"
+```
+
 ### Certbot fails: "Could not bind to IPv4 or IPv6"
-**Cause:** Nginx is using port 80. Certbot needs it temporarily.
 **Fix:**
 ```bash
 sudo systemctl stop nginx
 sudo certbot certonly --standalone -d your-domain.com
 sudo systemctl start nginx
-# Then manually update Nginx config with the cert paths
 ```
 
 ### SSL certificate not renewing
 ```bash
 sudo certbot renew --dry-run
 sudo systemctl status certbot.timer
-# If timer missing:
 sudo systemctl enable certbot.timer && sudo systemctl start certbot.timer
 ```
 
 ### Remember device not working
-**Cause:** `cookie-parser` not installed or `NODE_ENV=production` with HTTP.
 **Fix:**
 ```bash
 cd ~/workpulse-app && npm install cookie-parser
 pm2 restart workpulse --update-env
 ```
-If on HTTPS, make sure `NODE_ENV=production` is set in `.env`.
 
 ---
 
 ## Changelog
 
 ### v3.0 (April 2026)
-- **UI Redesign** — Softer color palette for both dark and light themes, reduced eye strain
+- **UI Redesign** — Softer color palette, reduced eye strain in both themes
 - **Smooth Theme Switching** — Animated flash transition between dark/light/system modes
 - **Screenshot Gallery** — Full-screen drag/swipe gallery with pinch-to-zoom, pan, double-tap zoom
-- **Employee Navigation** — Arrow key, swipe, and button navigation between employee profiles with slide animation
-- **Browser Back Navigation** — Back button navigates page history one step at a time; overlays (screenshot viewer, employee profile) close before page navigation; dashboard shows toast on back
-- **Android Back Navigation** — Back button navigates pages via JS bridge; exit confirmation toast on dashboard
+- **Employee Navigation** — Arrow key, swipe, and button navigation between profiles with slide animation
+- **Browser Back Navigation** — Back button navigates page history; overlays close first; dashboard shows toast
+- **Android Back Navigation** — Back button navigates via JS bridge; exit toast on dashboard
 - **Sidebar Redesign** — Bolder nav text, theme-aware colors, section dividers
-- **Department Employees** — Employees listed under their department with colored pill badges
-- **Duplicate Email Detection** — Server-side active-employee check + client-side error toast
-- **Editable Employee Name** — Edit name directly from employee Settings panel
+- **Department Employees** — Employees listed under department with colored pill badges
+- **Duplicate Email Detection** — Server-side check prevents overwriting active employees
+- **Editable Employee Name** — Edit name from Settings panel via `/api/employees/:id/name`
 - **Alert Badge** — Loads immediately on login, updates every 15 seconds
-- **Page Animations** — Fade/slide transitions on all page switches, staggered screenshot card loads, shimmer loading state
-- **Zoom Lock** — Navigation locked while screenshot is zoomed; prev/next resets zoom with animation
-- **Bug Fix** — Alert rule query column name corrected (`taken_at` → `recorded_at`)
-- **Bug Fix** — `/dashboard` route now publicly accessible; auth handled client-side
+- **Page Animations** — Fade/slide transitions, staggered card loads, shimmer loading state
+- **Calendar Dropdown Fix** — Positions relative to button, z-index:99999, always fully visible
+- **Installer Fix** — Added `agent_version`, `machine_id`, `remembered_devices`; fixed `alert_rules` schema
+- **Agent Build Fix** — Added `pkg` build script; use `node18` target (node20 not supported by pkg v5)
+- **Bug Fix** — Alert rule query: `taken_at` → `recorded_at`
+- **Bug Fix** — `/dashboard` route publicly accessible; auth handled client-side
+- **Bug Fix** — Adding existing active employee now returns error instead of overwriting
 
 ### v2.7.2 (April 2026)
 - **Remember This Device** — 30-day persistent login cookie
 - **Clean URLs** — Login at `/`, dashboard at `/dashboard`
-- **Installer fix** — Added missing tables to web installer
 
 ### v2.7.1 (April 2026)
 - **Mobile Responsive** — Full mobile layout with slide-over sidebar
 - **Custom Alert Rules** — Per-admin alert rules with background evaluator
-- **Site Categories** — Per-admin domain productivity classification
-- **Reports for all users** — Non-admin users can queue and schedule reports
+- **Site Categories** — Domain productivity classification
 
 ### v2.7.0 (April 2026)
 - **Temporary Shift Override** — One-day shift override per employee
-- **Machine Binding** — Employee email locked to one PC on install
-- **Session-based System Activity** — Events grouped into sessions with duration
-- **Offline Queue** — Failed heartbeats/events queued locally
-- **Redesigned Reports** — 4-sheet Excel export, all shift-aware
+- **Machine Binding** — Employee email locked to one PC
+- **Offline Queue** — Failed data queued locally and synced on reconnect
 - **Agent v2.6.5** — DPI-aware screenshots, 24hr event backfill
 
 ### v2.2 (April 2026)
-- System Settings page (timezone, theme)
-- URL tracking via URL in Title extension
+- System Settings, timezone, URL tracking via browser extension
 
 ### v2.1 (April 2026)
-- Screenshot backup and restore
-- Excel report export
-- Email OTP / MFA login
-- Forgot password flow
+- Screenshot backup/restore, Excel reports, Email OTP/MFA, forgot password
 
 ### v2.0
-- Duty Roster with shift tracking
-- App Usage donut charts
-- Dark / Light mode
-- Multi-user support
+- Duty Roster, App Usage charts, Dark/Light mode, Multi-user support
 
 ### v1.0
 - Initial release
