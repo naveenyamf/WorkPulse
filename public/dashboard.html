@@ -49,6 +49,11 @@ nav{padding:10px 0;flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:v
 .dot{display:inline-block;width:7px;height:7px;background:#10b981;border-radius:50%;margin-right:6px;animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(0.75)}}
 @keyframes themeFlash{0%{opacity:0.18}100%{opacity:0}}
+#calDropdown,#webCalDropdown,#appCalDropdown,#sysCalDropdown{
+  position:fixed !important;
+  z-index:99999 !important;
+  transform:translateZ(0);
+}
 #themeFlashEl{position:fixed;inset:0;z-index:99999;pointer-events:none;opacity:0;transition:opacity 0.6s cubic-bezier(0.4,0,0.2,1)}
 @keyframes fadeSlideIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fadeSlideInLeft{from{opacity:0;transform:translateX(-18px)}to{opacity:1;transform:translateX(0)}}
@@ -513,7 +518,7 @@ tr.emp-row:hover{background:var(--card-hover)}
             </select>
             <div style="position:relative;display:inline-block">
               <button class="btn" id="calBtn" onclick="toggleCal(event)">📅 <span id="calBtnLabel">All Dates</span></button>
-              <div id="calDropdown" style="display:none;position:fixed;right:20px;top:80px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px;z-index:200;width:290px;box-shadow:0 8px 32px rgba(0,0,0,0.7)">
+              <div id="calDropdown" style="display:none;position:fixed;right:20px;top:80px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;z-index:9999;width:290px;box-shadow:0 16px 48px rgba(0,0,0,0.5);backdrop-filter:blur(8px)">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
                   <button class="btn" style="padding:4px 12px" onclick="changeMonth(-1);event.stopPropagation()">‹</button>
                   <span id="calMonthLabel" style="font-size:13px;color:#fff;font-weight:700"></span>
@@ -567,7 +572,7 @@ tr.emp-row:hover{background:var(--card-hover)}
             </select>
             <div style="position:relative;display:inline-block">
               <button class="btn" id="webCalBtn" onclick="toggleWebCal(event)">📅 <span id="webCalBtnLabel">All Dates</span></button>
-              <div id="webCalDropdown" style="display:none;position:fixed;right:20px;top:80px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px;z-index:200;width:290px;box-shadow:0 8px 32px rgba(0,0,0,0.7)">
+              <div id="webCalDropdown" style="display:none;position:fixed;right:20px;top:80px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;z-index:9999;width:290px;box-shadow:0 16px 48px rgba(0,0,0,0.5);backdrop-filter:blur(8px)">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
                   <button class="btn" style="padding:4px 12px" onclick="changeWebMonth(-1);event.stopPropagation()">‹</button>
                   <span id="webCalMonthLabel" style="font-size:13px;color:#fff;font-weight:700"></span>
@@ -603,7 +608,7 @@ tr.emp-row:hover{background:var(--card-hover)}
             </select>
             <div style="position:relative;display:inline-block">
               <button class="btn" id="appCalBtn" onclick="toggleAppCal(event)">📅 <span id="appCalBtnLabel">All Dates</span></button>
-              <div id="appCalDropdown" style="display:none;position:fixed;right:20px;top:80px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px;z-index:200;width:290px;box-shadow:0 8px 32px rgba(0,0,0,0.7)">
+              <div id="appCalDropdown" style="display:none;position:fixed;right:20px;top:80px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;z-index:9999;width:290px;box-shadow:0 16px 48px rgba(0,0,0,0.5);backdrop-filter:blur(8px)">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
                   <button class="btn" style="padding:4px 12px" onclick="changeAppMonth(-1);event.stopPropagation()">‹</button>
                   <span id="appCalMonthLabel" style="font-size:13px;color:#fff;font-weight:700"></span>
@@ -704,7 +709,7 @@ tr.emp-row:hover{background:var(--card-hover)}
         </select>
         <div style="position:relative;display:inline-block">
           <button class="btn" id="sysCalBtn" onclick="toggleSysCal(event)">📅 <span id="sysCalBtnLabel">Today</span></button>
-          <div id="sysCalDropdown" style="display:none;position:fixed;right:20px;top:80px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px;z-index:200;width:290px;box-shadow:0 8px 32px rgba(0,0,0,0.7)">
+          <div id="sysCalDropdown" style="display:none;position:fixed;right:20px;top:80px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;z-index:9999;width:290px;box-shadow:0 16px 48px rgba(0,0,0,0.5);backdrop-filter:blur(8px)">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
               <button class="btn" style="padding:4px 12px" onclick="changeSysMonth(-1);event.stopPropagation()">‹</button>
               <span id="sysCalMonthLabel" style="font-size:13px;color:var(--text);font-weight:700"></span>
@@ -1986,6 +1991,7 @@ function toggleCal(event){
   event.stopPropagation();
   var d=document.getElementById('calDropdown');
   var isHidden=d.style.display==='none'||d.style.display==='';
+  if(isHidden){var btn=event.target.closest('button')||event.target;var r=btn.getBoundingClientRect();d.style.top=(r.bottom+6)+'px';d.style.right=(window.innerWidth-r.right)+'px';}
   d.style.display=isHidden?'block':'none';
   if(isHidden){
     setTimeout(function(){
@@ -3185,6 +3191,7 @@ function toggleWebCal(event){
   event.stopPropagation();
   var d = document.getElementById('webCalDropdown');
   var isHidden = d.style.display === 'none' || d.style.display === '';
+  if(isHidden){var btn=event.target.closest('button')||event.target;var r=btn.getBoundingClientRect();d.style.top=(r.bottom+6)+'px';d.style.right=(window.innerWidth-r.right)+'px';}
   d.style.display = isHidden ? 'block' : 'none';
   if(isHidden){
     setTimeout(function(){
@@ -3308,6 +3315,7 @@ function toggleAppCal(event){
   event.stopPropagation();
   var d = document.getElementById('appCalDropdown');
   var isHidden = d.style.display === 'none' || d.style.display === '';
+  if(isHidden){var btn=event.target.closest('button')||event.target;var r=btn.getBoundingClientRect();d.style.top=(r.bottom+6)+'px';d.style.right=(window.innerWidth-r.right)+'px';}
   d.style.display = isHidden ? 'block' : 'none';
   if(isHidden){
     setTimeout(function(){
@@ -4687,7 +4695,7 @@ function renderAuditPagination(){
 var sysSelectedDate='',sysCalYear=new Date().getFullYear(),sysCalMonth=new Date().getMonth(),sysCalDates={},sysCurrentPage=1,sysTotalPages=1,sysTotalCount=0;
 var SYS_EVENT_ICONS={startup:{icon:'🟢',label:'System ON',color:'#10b981'},shutdown:{icon:'🔴',label:'Shutdown',color:'#ef4444'},locked:{icon:'🔒',label:'Locked',color:'#f59e0b'},unlocked:{icon:'🔓',label:'Unlocked',color:'#00e5ff'},sleep:{icon:'💤',label:'Sleep',color:'#7c3aed'},hibernate:{icon:'❄️',label:'Hibernate',color:'#06b6d4'},idle_lock:{icon:'⏸️',label:'Idle/Away',color:'#f472b6'},wakeup:{icon:'☀️',label:'Wake Up',color:'#84cc16'}};
 function initSysCalendar(){sysCalYear=new Date().getFullYear();sysCalMonth=new Date().getMonth();sysSelectedDate=(function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();sysCurrentPage=1;var lbl=document.getElementById('sysCalBtnLabel');if(lbl)lbl.textContent=sysSelectedDate;var cal=document.getElementById('sysCalDropdown');if(cal)cal.style.display='none';loadSysCalendarDates();}
-function toggleSysCal(event){event.stopPropagation();var d=document.getElementById('sysCalDropdown');var isHidden=d.style.display==='none'||!d.style.display;d.style.display=isHidden?'block':'none';if(isHidden){setTimeout(function(){document.addEventListener('click',function h(e){if(!document.getElementById('sysCalDropdown').contains(e.target)&&e.target.id!=='sysCalBtn'){document.getElementById('sysCalDropdown').style.display='none';document.removeEventListener('click',h);}});},50);}}
+function toggleSysCal(event){event.stopPropagation();var d=document.getElementById('sysCalDropdown');var isHidden=d.style.display==='none'||!d.style.display;if(isHidden){var btn=event.target.closest('button')||event.target;var r=btn.getBoundingClientRect();d.style.top=(r.bottom+6)+'px';d.style.right=(window.innerWidth-r.right)+'px';}d.style.display=isHidden?'block':'none';if(isHidden){setTimeout(function(){document.addEventListener('click',function h(e){if(!document.getElementById('sysCalDropdown').contains(e.target)&&e.target.id!=='sysCalBtn'){document.getElementById('sysCalDropdown').style.display='none';document.removeEventListener('click',h);}});},50);}}
 function changeSysMonth(dir){sysCalMonth+=dir;if(sysCalMonth>11){sysCalMonth=0;sysCalYear++;}if(sysCalMonth<0){sysCalMonth=11;sysCalYear--;}renderSysCalendar();}
 async function loadSysCalendarDates(){
   try{
@@ -6877,6 +6885,11 @@ function closeMobMenu(){
 }
 // Auto-close sidebar on nav item click (mobile)
 document.addEventListener('DOMContentLoaded',function(){
+  // Teleport calendar dropdowns to body to escape stacking contexts
+  ['calDropdown','webCalDropdown','appCalDropdown','sysCalDropdown'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el && el.parentNode !== document.body) document.body.appendChild(el);
+  });
   if(window.innerWidth<=768){
     document.querySelectorAll('.nav-item,.nav-child').forEach(function(el){
       el.addEventListener('click',function(){ setTimeout(closeMobMenu,120); });
