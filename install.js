@@ -130,6 +130,9 @@ router.post('/run', async (req, res) => {
       { name: 'alert_rules',          sql: `CREATE TABLE IF NOT EXISTS alert_rules (id SERIAL PRIMARY KEY, admin_id INTEGER, admin_name VARCHAR(200), name VARCHAR(200) NOT NULL, category VARCHAR(50) NOT NULL, condition VARCHAR(50) NOT NULL, value VARCHAR(200), employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL, employee_name VARCHAR(200), severity VARCHAR(20) DEFAULT 'medium', active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW())` },
       { name: 'site_categories',      sql: `CREATE TABLE IF NOT EXISTS site_categories (id SERIAL PRIMARY KEY, admin_id INTEGER, domain VARCHAR(255) NOT NULL, category VARCHAR(50) NOT NULL DEFAULT 'Neutral', created_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(admin_id, domain))` },
       { name: 'remembered_devices',   sql: `CREATE TABLE IF NOT EXISTS remembered_devices (id SERIAL PRIMARY KEY, admin_id INTEGER NOT NULL, token VARCHAR(200) UNIQUE NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(), expires_at TIMESTAMPTZ NOT NULL)` },
+      { name: 'employee_groups',       sql: `CREATE TABLE IF NOT EXISTS employee_groups (id SERIAL PRIMARY KEY, name VARCHAR(200) NOT NULL UNIQUE, created_at TIMESTAMPTZ DEFAULT NOW())` },
+      { name: 'group_employee_access', sql: `CREATE TABLE IF NOT EXISTS group_employee_access (id SERIAL PRIMARY KEY, group_id INTEGER REFERENCES employee_groups(id) ON DELETE CASCADE, employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE, UNIQUE(group_id, employee_id))` },
+      { name: 'user_group_access',     sql: `CREATE TABLE IF NOT EXISTS user_group_access (id SERIAL PRIMARY KEY, user_id INTEGER REFERENCES dashboard_users(id) ON DELETE CASCADE, group_id INTEGER REFERENCES employee_groups(id) ON DELETE CASCADE, UNIQUE(user_id, group_id))` },
     ];
 
     send(`Creating ${tables.length} tables…`, 'info', 15, 'Creating tables…');
