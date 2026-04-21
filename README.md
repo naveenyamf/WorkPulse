@@ -10,7 +10,7 @@
 - **Screenshots** — Automatic periodic screenshots with flagging system; skipped when screen is locked
 - **Screenshot Gallery** — Mobile-style drag/swipe gallery with pinch-to-zoom, pan, and smooth slide transitions
 - **Web Activity** — Tracks URLs visited per browser with on/off shift breakdown and productivity scoring
-- **App Usage** — Time spent per application within shift hours, with donut chart visualization
+- **App Usage** — Time spent per application within shift hours, with donut chart visualization; overlap-corrected totals using distinct minute counting
 - **System Activity** — Session-based view: Startup → Shutdown, Wake → Sleep, Lock → Unlock with durations
 - **Win+L Detection** — Detects screen lock via LockApp.exe process (no admin rights required)
 - **Duty Roster** — Shift assignment with in-shift vs off-shift time tracking
@@ -21,6 +21,8 @@
 - **Machine Binding** — Each employee email locked to one PC; uninstall.bat releases the binding
 - **Backup & Restore** — Full PostgreSQL DB backup + screenshot archive backup/restore
 - **Multi-User** — Admin and Monitor (view-only) roles with employee assignment
+- **Department & Group Access** — Assign monitoring users access by individual employee, department, or custom group
+- **Groups** — Create custom employee groups (e.g. Night Shift Team) and assign them to monitoring users
 - **MFA Support** — Email OTP and TOTP authenticator login verification
 - **Remember This Device** — Skip re-authentication for 30 days on trusted devices
 - **Alert Rules** — Per-admin configurable alert rules with background evaluator and 1-hour dedup
@@ -35,6 +37,21 @@
 - **Editable Employee Name** — Edit employee name directly from the Settings panel
 - **Browser Back Navigation** — Back button navigates page history; overlays close before page navigation
 - **Android App** — WebView-based APK with session persistence, swipe navigation, and back-button history
+
+---
+
+## Agent Heartbeat
+
+The Windows agent sends a heartbeat to the server **every 20 seconds**.
+
+Each heartbeat includes:
+- Active foreground app (`seconds: 20`)
+- Active browser URLs (`seconds: 20`)
+- Idle state
+
+The server calculates total productive time using **distinct minute counting** (`COUNT(DISTINCT DATE_TRUNC('minute', recorded_at)) * 60`) — this correctly handles simultaneous apps running at the same time without double-counting.
+
+> ⚠️ After rebuilding and redeploying the agent, employees must **restart their agent** on their PC for the new interval to take effect.
 
 ---
 
@@ -137,6 +154,9 @@ ALTER TABLE alert_rules OWNER TO workpulse_user;
 ALTER TABLE site_categories OWNER TO workpulse_user;
 ALTER TABLE remembered_devices OWNER TO workpulse_user;
 ALTER TABLE departments OWNER TO workpulse_user;
+ALTER TABLE employee_groups OWNER TO workpulse_user;
+ALTER TABLE group_employee_access OWNER TO workpulse_user;
+ALTER TABLE user_group_access OWNER TO workpulse_user;
 "
 ```
 
@@ -371,6 +391,22 @@ If the old PC is unavailable, reset via employee Settings in the dashboard.
 
 If the employee's PC loses internet, the agent queues all heartbeats, events and screenshots locally in `C:\WorkPulse\`. When connection is restored, everything syncs automatically.
 
+### Departments & Groups
+
+Go to **Admin → Departments & Groups** to manage:
+
+- **Departments** — Logical employee groupings (e.g. IT, HR). Employees are assigned a department when added.
+- **Groups** — Custom cross-department groupings (e.g. Night Shift Team, Project Alpha). Create a group and assign any employees to it.
+
+When assigning access to a monitoring user (**Assign** button), you can now choose from three tabs:
+- **Employee Access** — Select individual employees
+- **Department Access** — Grant access to all employees in a department
+- **Group Access** — Grant access to all employees in a group
+
+### App Usage — Overlap Correction
+
+The total productive time shown in App Usage is calculated using **distinct minute counting**, not a simple sum of durations. This means if Outlook and Edge are both open from 15:30–15:40, the total shows **10 minutes**, not 20. The agent fires every 20 seconds; overlapping intervals are collapsed at query time.
+
 ### Reports
 
 Go to **Reports** to generate or schedule Excel exports. Each report contains 4 sheets:
@@ -390,6 +426,7 @@ Go to **Reports** to generate or schedule Excel exports. Each report contains 4 
 | Screenshot interval | Employees → ⚙ Settings |
 | Duty Roster | Admin → Duty Roster |
 | Temp shift override | Employee Profile → Set Temp Shift |
+| Groups | Admin → Departments & Groups → Groups tab |
 
 ---
 
@@ -431,7 +468,7 @@ Go to **Admin → Backup & Restore**:
 workpulse-app/
 ├── public/            # Dashboard HTML, login page, installer page
 ├── winagent/          # Windows agent source
-│   ├── agent.js       # Main agent script
+│   ├── agent.js       # Main agent script (heartbeat every 20s)
 │   ├── installer.bat
 │   ├── uninstall.bat
 │   ├── updater.bat
@@ -536,9 +573,40 @@ cd ~/workpulse-app && npm install cookie-parser
 pm2 restart workpulse --update-env
 ```
 
+### Groups table missing after fresh install
+**Cause:** Groups tables (`employee_groups`, `group_employee_access`, `user_group_access`) are not created by the web installer automatically.
+**Fix:** Run manually via `sudo -u postgres psql -d workpulse`:
+```sql
+CREATE TABLE IF NOT EXISTS employee_groups (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(200) NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS group_employee_access (
+  id SERIAL PRIMARY KEY,
+  group_id INTEGER REFERENCES employee_groups(id) ON DELETE CASCADE,
+  employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+  UNIQUE(group_id, employee_id)
+);
+CREATE TABLE IF NOT EXISTS user_group_access (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES dashboard_users(id) ON DELETE CASCADE,
+  group_id INTEGER REFERENCES employee_groups(id) ON DELETE CASCADE,
+  UNIQUE(user_id, group_id)
+);
+```
+
 ---
 
 ## Changelog
+
+### v3.1 (April 2026)
+- **20-Second Heartbeat** — Agent now sends heartbeat every 20 seconds (previously 1 minute) for more granular activity tracking
+- **App Usage Overlap Fix** — Total productive time now uses distinct minute counting — simultaneous apps no longer double-count time
+- **Departments & Groups** — New Groups feature: create custom employee groups and assign them to monitoring users
+- **3-Tab Assign Modal** — Monitoring user access can now be assigned by Employee, Department, or Group
+- **Sidebar Label** — "Departments" renamed to "Departments & Groups"
+- **New DB Tables** — `employee_groups`, `group_employee_access`, `user_group_access`
 
 ### v3.0 (April 2026)
 - **UI Redesign** — Softer color palette, reduced eye strain in both themes

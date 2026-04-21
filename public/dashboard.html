@@ -4248,7 +4248,9 @@ async function loadDashboardUsers(){
         '<div style="color:var(--text3);font-size:10px">'+u.email+'</div>'+
         '<div style="margin-top:4px">'+
         '<span class="chip chip-idle">user</span>'+
-        '<span style="color:var(--text3);font-size:10px;margin-left:8px">'+u.employee_count+' employees assigned</span>'+
+	'<span style="color:var(--text3);font-size:10px;margin-left:8px">'+u.employee_count+' employees assigned</span>'+
+(u.group_names ? '<span style="background:rgba(168,85,247,0.15);color:#a855f7;border:1px solid #a855f744;border-radius:10px;padding:2px 8px;font-size:10px;margin-left:6px">👥 '+u.group_names+'</span>' : '')+
+
         '</div></div>'+
         '<div style="display:flex;gap:6px">'+
         '<button class="btn" style="font-size:10px" onclick="openAssign('+u.id+',\''+u.name+'\')">⚙ Assign</button>'+

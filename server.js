@@ -58,8 +58,11 @@ async function checkRememberCookie(req) {
       const u = await pool.query('SELECT * FROM dashboard_users WHERE id=$1 AND active=true', [d.user_id]);
       if (!u.rows.length) return null;
       const user = u.rows[0];
-      const empResult = await pool.query('SELECT employee_id FROM user_employee_access WHERE user_id=$1', [user.id]);
-      return { adminId: user.id, adminName: user.name, adminRole: user.role, isUser: true, email: user.email, allowedEmployees: empResult.rows.map(r => r.employee_id) };
+const empResult = await pool.query('SELECT employee_id FROM user_employee_access WHERE user_id=$1', [user.id]);
+const grpResult = await pool.query('SELECT gea.employee_id FROM user_group_access uga JOIN group_employee_access gea ON uga.group_id=gea.group_id WHERE uga.user_id=$1', [user.id]);
+const allEmps = [...new Set([...empResult.rows.map(r => r.employee_id), ...grpResult.rows.map(r => r.employee_id)])];
+return { adminId: user.id, adminName: user.name, adminRole: user.role, isUser: true, email: user.email, allowedEmployees: allEmps };
+
     }
   } catch(e) { return null; }
 }
@@ -966,7 +969,9 @@ app.get('/api/dashboard-users', requireLogin, requireAdmin, async (req, res) => 
   try {
     const result = await pool.query(`
       SELECT u.*, 
-        (SELECT COUNT(*) FROM user_employee_access WHERE user_id=u.id) as employee_count
+(SELECT COUNT(*) FROM user_employee_access WHERE user_id=u.id) as employee_count,
+(SELECT COUNT(*) FROM user_group_access WHERE user_id=u.id) as group_count,
+(SELECT STRING_AGG(g.name, ', ') FROM user_group_access uga JOIN employee_groups g ON uga.group_id=g.id WHERE uga.user_id=u.id) as group_names
       FROM dashboard_users u
       WHERE u.active=true
       ORDER BY u.created_at DESC
@@ -1078,8 +1083,11 @@ app.post('/api/user-login', async (req, res) => {
       const user = userResult.rows[0];
       const match = await bcrypt.compare(password, user.password_hash);
       if (!match) return res.status(401).json({ error: 'Invalid credentials' });
-      const empResult = await pool.query('SELECT employee_id FROM user_employee_access WHERE user_id=$1', [user.id]);
-      loginData = { adminId: user.id, adminName: user.name, adminRole: user.role, isUser: true, email: user.email, allowedEmployees: empResult.rows.map(r => r.employee_id) };
+const empResult = await pool.query('SELECT employee_id FROM user_employee_access WHERE user_id=$1', [user.id]);
+const grpResult = await pool.query('SELECT gea.employee_id FROM user_group_access uga JOIN group_employee_access gea ON uga.group_id=gea.group_id WHERE uga.user_id=$1', [user.id]);
+const allEmps = [...new Set([...empResult.rows.map(r => r.employee_id), ...grpResult.rows.map(r => r.employee_id)])];
+loginData = { adminId: user.id, adminName: user.name, adminRole: user.role, isUser: true, email: user.email, allowedEmployees: allEmps };
+
     }
 
     // Check per-user TOTP first
