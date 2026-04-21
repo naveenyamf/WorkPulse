@@ -1,4 +1,4 @@
-# WorkPulse 2.0 — Employee Monitoring Dashboard
+# WorkPulse 3.0 — Employee Monitoring Dashboard
 
 > A self-hosted employee activity monitoring system for Windows environments. Tracks web activity, app usage, screenshots, system events and more — from a real-time dashboard.
 
@@ -8,6 +8,7 @@
 
 - **Live Dashboard** — Real-time employee status, active app, idle detection
 - **Screenshots** — Automatic periodic screenshots with flagging system; skipped when screen is locked
+- **Screenshot Gallery** — Mobile-style drag/swipe gallery with pinch-to-zoom, pan, and smooth slide transitions
 - **Web Activity** — Tracks URLs visited per browser with on/off shift breakdown and productivity scoring
 - **App Usage** — Time spent per application within shift hours, with donut chart visualization
 - **System Activity** — Session-based view: Startup → Shutdown, Wake → Sleep, Lock → Unlock with durations
@@ -25,9 +26,15 @@
 - **Alert Rules** — Per-admin configurable alert rules with background evaluator and 1-hour dedup
 - **Site Categories** — Per-admin domain productivity classification (Productive / Neutral / Non-Productive)
 - **Audit Log** — Full admin action logging
-- **Dark / Light Mode** — System-aware theme with manual override
+- **Dark / Light / System Mode** — Smooth animated theme switching with flash transition
 - **Timezone Settings** — Configurable timezone for all date displays and reports
 - **Clean URLs** — Login at `/`, dashboard at `/dashboard` — no `.html` in URLs
+- **Employee Navigation** — Swipe/arrow key navigation between employee profiles with slide animation
+- **Department View** — Employees listed under their department with pill badges
+- **Duplicate Email Check** — Server-side and client-side duplicate email detection on employee add
+- **Editable Employee Name** — Edit employee name directly from the Settings panel
+- **Browser Back Navigation** — Back button navigates page history; overlays close before page navigation
+- **Android App** — WebView-based APK with session persistence, swipe navigation, and back-button history
 
 ---
 
@@ -230,80 +237,8 @@ Enable the site:
 ```bash
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo ln -s /etc/nginx/sites-available/workpulse /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-```
-
----
-
-### Step 10b — Install SSL with Certbot (HTTPS)
-
-> ⚠️ **Required for production.** Do this only after your domain DNS is pointed to this server and the HTTP site is working.
-
-```bash
-sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d your-domain.com
-```
-
-Certbot will:
-1. Automatically detect your Nginx config
-2. Obtain a free Let's Encrypt certificate
-3. Rewrite your Nginx config to serve HTTPS on port 443
-4. Set up HTTP → HTTPS redirect automatically
-
-After Certbot completes, your Nginx config will look like:
-
-```nginx
-server {
-    listen 443 ssl;
-    server_name your-domain.com;
-    ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
-    client_max_body_size 500M;
-
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_cache_bypass $http_upgrade;
-        proxy_read_timeout 300s;
-        proxy_send_timeout 300s;
-    }
-}
-
-server {
-    listen 80;
-    server_name your-domain.com;
-    return 301 https://$host$request_uri;
-}
-```
-
-**Switch app to production mode after SSL is working:**
-
-```bash
-nano /home/workpulse/workpulse-app/.env
-```
-
-Change:
-```env
-NODE_ENV=production
-```
-
-Then restart:
-```bash
-pm2 restart workpulse --update-env
-```
-
-**Auto-renew certificates** (Let's Encrypt certs expire every 90 days — Certbot sets up auto-renewal automatically):
-
-```bash
-# Test renewal works
-sudo certbot renew --dry-run
-
-# Check auto-renew timer is active
-sudo systemctl status certbot.timer
+sudo nginx -t
+sudo systemctl reload nginx
 ```
 
 ---
@@ -317,120 +252,42 @@ pm2 save
 pm2 startup
 ```
 
-Follow the command PM2 prints to enable auto-start on reboot.
-
 ---
 
 ### Step 12 — Run the web installer
 
 Open your browser and go to:
-
 ```
-http://your-server-ip/install
-```
-
-The wizard will walk you through:
-1. Enter your DB connection details and test the connection
-2. Choose **Fresh Install**
-3. Create your root admin account (name, email, password)
-4. All tables and default data are created automatically
-
-After the wizard completes, restart the server:
-
-```bash
-pm2 restart workpulse --update-env
+http://your-server-ip-or-domain/install
 ```
 
-Then open `http://your-server-ip` and sign in with the admin account you just created.
-
-> ⚠️ Now run the table ownership fix from Step 5 if you haven't already.
+Follow the steps to create your admin account and initialize the database.
 
 ---
 
-### Step 13 — Build the Windows Agent
+### Step 13 — Build the Windows agent
 
 ```bash
-sudo apt install -y zip
-
 cd ~/workpulse-app/winagent
 npm install
-npx pkg . --targets node18-win-x64 --output ~/workpulse-app/winagent/dist/WorkPulse-Agent.exe
-
-cp ~/workpulse-app/winagent/dist/WorkPulse-Agent.exe ~/WorkPulse-Agent.exe
-
-mkdir -p /tmp/wp_dist
-cp ~/workpulse-app/winagent/dist/WorkPulse-Agent.exe /tmp/wp_dist/
-cp ~/workpulse-app/winagent/dist/installer.bat /tmp/wp_dist/
-cp ~/workpulse-app/winagent/dist/updater.bat /tmp/wp_dist/
-cp ~/workpulse-app/winagent/dist/uninstall.bat /tmp/wp_dist/
-cd /tmp/wp_dist && zip ~/WorkPulse-Agent-Windows.zip *
-rm -rf /tmp/wp_dist
-
-echo "✓ Agent built successfully"
-ls -lh ~/WorkPulse-Agent-Windows.zip
+npm run build
 ```
 
----
-
-## Agent Setup (Employee Windows PCs)
-
-### Step 1 — Add the employee in dashboard
-
-1. Login to the dashboard
-2. Go to **Admin → Add Employee for Monitoring**
-3. Fill in name, email, department and duty roster → Click **Add Employee**
-4. Copy the agent token shown
-
-### Step 2 — Download the agent
-
-From the dashboard sidebar, click **⤓ Download Agent** — downloads `WorkPulse-Agent-Windows.zip`.
-
-### Step 3 — Install on employee PC
-
-1. Extract the ZIP on the employee's Windows PC
-2. **Right-click** `installer.bat` → **Run as Administrator**
-3. Enter the WorkPulse server URL (e.g. `https://monitoring.company.com`)
-4. Enter the employee's email address
-5. The installer will:
-   - Fetch the agent token from the server
-   - Check if the email is already registered on another PC (blocked if so)
-   - Install to `C:\WorkPulse\`
-   - Unblock the EXE and add Windows Defender exclusion
-   - Register with Task Scheduler for silent startup
-   - Start the agent immediately (no visible window)
-
-### Step 4 — Verify in dashboard
-
-Within 1–2 minutes the employee appears as **Active** in the Employees list with their agent version.
-
-### Updating the agent
-
-Run `updater.bat` as Administrator on the employee PC. It reads the server URL from config automatically and downloads the latest agent.
-
-### Uninstalling the agent
-
-Run `uninstall.bat` as Administrator. Type **YES** to confirm. This:
-- Stops the agent
-- Removes Task Scheduler entry and startup registry keys
-- Removes Windows Defender exclusion
-- **Releases the machine binding** on the server (employee can be reinstalled on a new PC)
-- Deletes all files from `C:\WorkPulse\`
+The compiled agent files will be in `winagent/dist/`.
 
 ---
 
-## Browser Extension — Required for URL Tracking
+## Android App
 
-> Without this extension, only page titles are captured instead of real URLs.
+WorkPulse includes an Android APK (`com.novelinfra.workpulse`) that wraps the dashboard in a native WebView with:
 
-### Install on Chrome / Edge
-
-[URL in Title — Chrome Web Store](https://chromewebstore.google.com/detail/url-in-title/ignpacbgnbnkaiooknalneoeladjnfgb)
-
-### Configure the extension
-
-1. Click the extension icon → **Options**
-2. Set the title format to: `{url} | {title}`
-3. Click **Save**
+- Server URL entry with connection validation
+- Session persistence across app restarts (cookie flush)
+- Back button history navigation (page by page, not direct exit)
+- Exit confirmation toast on dashboard back press
+- Swipe left/right between employee profiles
+- File download manager
+- Change Server button (floating ⚙)
 
 ---
 
@@ -443,6 +300,10 @@ Go to **Admin → Duty Roster** to create shifts. Assign a roster to each employ
 ### Temporary Shift Override
 
 Open any employee profile → click **⚡ Set Temp Shift for [date]** → select a roster. This overrides the shift for that date only. An orange dot appears on the calendar for dates with temp overrides. All calculations update instantly.
+
+### Screenshot Gallery
+
+Click any screenshot to open the full-screen gallery. Drag left/right (mouse or touch) to slide between screenshots. Pinch or scroll wheel to zoom. Double-click/tap to zoom in to 2.5x. When zoomed, drag with one finger to pan. Back button closes the gallery.
 
 ### Machine Binding
 
@@ -501,6 +362,7 @@ Go to **Admin → Backup & Restore**:
 | Database | PostgreSQL |
 | Frontend | Vanilla JS + CSS |
 | Agent | Node.js + PowerShell + BAT (v2.6.5) |
+| Android | Java + WebView (API 24+) |
 | Web Server | Nginx |
 | Process Manager | PM2 |
 | Auth | express-session + bcryptjs + cookie-parser |
@@ -580,12 +442,8 @@ sudo systemctl status certbot.timer
 sudo systemctl enable certbot.timer && sudo systemctl start certbot.timer
 ```
 
-### Signed out immediately after login (production)
-**Cause:** `NODE_ENV=production` requires HTTPS cookies. If you're on HTTP, sessions won't persist.
-**Fix:** Either set up SSL (Step 10b) or keep `NODE_ENV=development` until SSL is ready.
-
 ### Remember device not working
-**Cause:** `cookie-parser` not installed or `NODE_ENV=production` with HTTP (cookies need HTTPS in production mode).
+**Cause:** `cookie-parser` not installed or `NODE_ENV=production` with HTTP.
 **Fix:**
 ```bash
 cd ~/workpulse-app && npm install cookie-parser
@@ -597,57 +455,57 @@ If on HTTPS, make sure `NODE_ENV=production` is set in `.env`.
 
 ## Changelog
 
+### v3.0 (April 2026)
+- **UI Redesign** — Softer color palette for both dark and light themes, reduced eye strain
+- **Smooth Theme Switching** — Animated flash transition between dark/light/system modes
+- **Screenshot Gallery** — Full-screen drag/swipe gallery with pinch-to-zoom, pan, double-tap zoom
+- **Employee Navigation** — Arrow key, swipe, and button navigation between employee profiles with slide animation
+- **Browser Back Navigation** — Back button navigates page history one step at a time; overlays (screenshot viewer, employee profile) close before page navigation; dashboard shows toast on back
+- **Android Back Navigation** — Back button navigates pages via JS bridge; exit confirmation toast on dashboard
+- **Sidebar Redesign** — Bolder nav text, theme-aware colors, section dividers
+- **Department Employees** — Employees listed under their department with colored pill badges
+- **Duplicate Email Detection** — Server-side active-employee check + client-side error toast
+- **Editable Employee Name** — Edit name directly from employee Settings panel
+- **Alert Badge** — Loads immediately on login, updates every 15 seconds
+- **Page Animations** — Fade/slide transitions on all page switches, staggered screenshot card loads, shimmer loading state
+- **Zoom Lock** — Navigation locked while screenshot is zoomed; prev/next resets zoom with animation
+- **Bug Fix** — Alert rule query column name corrected (`taken_at` → `recorded_at`)
+- **Bug Fix** — `/dashboard` route now publicly accessible; auth handled client-side
+
 ### v2.7.2 (April 2026)
-- **Remember This Device** — 30-day persistent login cookie; works for password-only, OTP, and TOTP flows; logout clears cookie and DB record
-- **Clean URLs** — Login served at `/`, dashboard at `/dashboard`; no `.html` extensions in URLs
-- **Installer fix** — Added missing tables to web installer: `report_schedules`, `alert_rules`, `site_categories`, `settings`, `temp_shift_overrides`, `report_jobs`
-- **cookie-parser** — Added as dependency for remember-device cookie handling
+- **Remember This Device** — 30-day persistent login cookie
+- **Clean URLs** — Login at `/`, dashboard at `/dashboard`
+- **Installer fix** — Added missing tables to web installer
 
 ### v2.7.1 (April 2026)
-- **Mobile Responsive** — Full mobile layout with slide-over sidebar, hamburger menu
-- **Custom Alert Rules** — Per-admin alert rules: web activity, app usage, login time, idle, screenshots, system events
-- **Site Categories** — Per-admin domain productivity classification (Productive/Neutral/Non-Productive)
-- **Alert Evaluator** — Background rule evaluation every 5 minutes with 1-hour dedup
+- **Mobile Responsive** — Full mobile layout with slide-over sidebar
+- **Custom Alert Rules** — Per-admin alert rules with background evaluator
+- **Site Categories** — Per-admin domain productivity classification
 - **Reports for all users** — Non-admin users can queue and schedule reports
-- **System Settings for all users** — Non-admin users can manage their own TOTP authenticator
-- **App Usage fix** — Accurate in-shift/off-shift calculation with shift duration cap
-- **Web Activity fix** — Per-URL accurate in-shift seconds using effective roster (temp override aware)
-- **Installer v2.6** — Silent VBS launcher, 3-attempt email retry, Task Scheduler auto-start, no CMD window
-- **agent.log cleanup** — Removed CLIXML PowerShell noise from log
 
 ### v2.7.0 (April 2026)
-- **Temporary Shift Override** — Set a one-day shift override per employee; all calculations update instantly; orange calendar dot indicator
-- **Machine Binding** — Employee email locked to one PC on install; uninstall.bat releases binding automatically
-- **Session-based System Activity** — Events grouped into Start→End sessions with duration; shown on dashboard and in reports
-- **Win+L Lock Detection** — Detects screen lock via LockApp.exe process polling (no admin rights required); skips screenshots and URL tracking while locked
-- **Offline Queue** — Failed heartbeats/events queued locally; pending screenshots retried on reconnect
-- **Redesigned Reports** — 4-sheet Excel export: Employee Summary, Web Activity, App Usage, System Activity; all shift-aware with temp override support; amber highlighting for temp shift rows
-- **Scheduled Reports** — Configurable report range (Yesterday/Last 7 Days/Last 30 Days/Last 3 Months/Last 6 Months/1 Year)
-- **Agent v2.6.5** — DPI-aware screenshots (fixes laptop scaling), 24hr event backfill on startup, 6-hour periodic backfill, silent startup via Task Scheduler
-- **Add Employee form** — Mandatory fields: name, email, department, duty roster; email format validation; duplicate email/machine checks
-- **Web/App Activity default to today** — All monitoring pages default to current date on load
-- **All-employees view** — When a date is selected, all employees shown on one page (no pagination)
+- **Temporary Shift Override** — One-day shift override per employee
+- **Machine Binding** — Employee email locked to one PC on install
+- **Session-based System Activity** — Events grouped into sessions with duration
+- **Offline Queue** — Failed heartbeats/events queued locally
+- **Redesigned Reports** — 4-sheet Excel export, all shift-aware
+- **Agent v2.6.5** — DPI-aware screenshots, 24hr event backfill
 
 ### v2.2 (April 2026)
 - System Settings page (timezone, theme)
-- All calendars timezone-aware
 - URL tracking via URL in Title extension
-- Admin users separated from Monitor users
 
 ### v2.1 (April 2026)
 - Screenshot backup and restore
 - Excel report export
 - Email OTP / MFA login
 - Forgot password flow
-- Audit log improvements
 
 ### v2.0
 - Duty Roster with shift tracking
 - App Usage donut charts
-- System Activity log
 - Dark / Light mode
 - Multi-user support
-- Flagged screenshots
 
 ### v1.0
 - Initial release

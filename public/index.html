@@ -55,6 +55,9 @@ input.error{border-color:var(--red);}
 .forgot-link{text-align:center;margin-top:14px;}
 .forgot-link a{font-size:11px;color:var(--text3);cursor:pointer;border-bottom:1px dashed var(--border2);padding-bottom:1px;transition:color 0.15s;}
 .forgot-link a:hover{color:var(--text2);}
+.remember-row{display:flex;align-items:center;gap:8px;margin-top:14px;}
+.remember-row input[type=checkbox]{width:15px;height:15px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;}
+.remember-row label{font-size:11px;color:var(--text2);cursor:pointer;letter-spacing:0;text-transform:none;font-weight:400;margin:0;}
 
 /* OTP input styling */
 .otp-hint{text-align:center;font-size:11px;color:var(--text3);margin-bottom:16px;line-height:1.5;}
@@ -91,7 +94,7 @@ input.error{border-color:var(--red);}
       </svg>
     </div>
     <h1>Work<span>Pulse</span></h1>
-    <p>Employee Monitoring · v2.0</p>
+    <p>Employee Monitoring · v3.0</p>
   </div>
 
   <div class="card">
@@ -115,6 +118,10 @@ input.error{border-color:var(--red);}
           </div>
         </div>
         <div class="alert" id="login-alert"></div>
+        <div class="remember-row">
+          <input type="checkbox" id="remember-device">
+          <label for="remember-device">Remember this device for 30 days</label>
+        </div>
         <button class="btn btn-accent" id="loginBtn" onclick="doLogin()">
           <div class="spinner" id="loginSpin"></div>
           <span id="loginBtnText">Sign In →</span>
@@ -296,7 +303,7 @@ async function doLogin() {
   if (!email || !pass) { setAlert('login-alert','error','Please enter email and password.'); return; }
   setBusy('loginBtn','loginSpin','loginBtnText', true, 'Signing in…');
   try {
-    var res  = await fetch('/api/user-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password:pass})});
+    var res  = await fetch('/api/user-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password:pass,remember:document.getElementById('remember-device').checked})});
     var data = await res.json();
     if (data.totp_required) {
       document.getElementById('totp-code').value = '';
@@ -322,7 +329,7 @@ async function verifyMFA() {
   if (otp.length !== 6) { setAlert('mfa-alert','error','Enter the 6-digit code from your email.'); return; }
   setBusy('mfaBtn','mfaSpin','mfaBtnText', true, 'Verifying…');
   try {
-    var res  = await fetch('/api/auth/verify-otp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:currentEmail,otp,purpose:'mfa'})});
+    var res  = await fetch('/api/auth/verify-otp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:currentEmail,otp,purpose:'mfa',remember:document.getElementById('remember-device')?.checked})});
     var data = await res.json();
     if (data.success) {
       window.location.href = '/dashboard';
@@ -340,7 +347,7 @@ async function verifyTOTPLogin() {
   if (code.length !== 6) { setAlert('totp-alert','error','Enter the 6-digit code from your authenticator app.'); return; }
   setBusy('totpLoginBtn','totpLoginSpin','totpLoginBtnText', true, 'Verifying…');
   try {
-    var res  = await fetch('/api/auth/totp/verify-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:code})});
+    var res  = await fetch('/api/auth/totp/verify-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:code,remember:document.getElementById('remember-device')?.checked})});
     var data = await res.json();
     if (data.success) {
       window.location.href = '/dashboard';
@@ -446,7 +453,7 @@ document.addEventListener('keydown', function(e) {
 
 // Check if already logged in
 fetch('/api/me').then(function(r){return r.json();}).then(function(d){
-  if(d.name) window.location.href='/';
+  if(d.name) window.location.href='/dashboard';
 }).catch(function(){});
 </script>
 </body>

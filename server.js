@@ -8,6 +8,7 @@ const session = require('express-session');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const cookieParser = require('cookie-parser');
 const pool = require('./db');
 
 const app = express();
@@ -18,6 +19,58 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
+app.use(cookieParser());
+
+// ── Remembered Devices Setup ──────────────────────────────────────────────────
+pool.query(`CREATE TABLE IF NOT EXISTS remembered_devices (
+  id SERIAL PRIMARY KEY,
+  token VARCHAR(128) UNIQUE NOT NULL,
+  email VARCHAR(200) NOT NULL,
+  user_type VARCHAR(10) NOT NULL DEFAULT 'admin',
+  user_id INTEGER NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+)`).catch(e => console.error('[RememberDevice] Table init error:', e.message));
+
+async function setRememberCookie(res, loginData) {
+  const token = require('crypto').randomBytes(48).toString('hex');
+  const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  await pool.query(
+    'INSERT INTO remembered_devices (token, email, user_type, user_id, expires_at) VALUES ($1,$2,$3,$4,$5)',
+    [token, loginData.email, loginData.isUser ? 'user' : 'admin', loginData.adminId, expires]
+  );
+  res.cookie('wp_remember', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', expires, path: '/', sameSite: 'lax' });
+}
+
+async function checkRememberCookie(req) {
+  const token = req.cookies && req.cookies['wp_remember'];
+  if (!token) return null;
+  try {
+    const r = await pool.query('SELECT * FROM remembered_devices WHERE token=$1 AND expires_at > NOW()', [token]);
+    if (!r.rows.length) return null;
+    const d = r.rows[0];
+    if (d.user_type === 'admin') {
+      const u = await pool.query('SELECT * FROM admins WHERE id=$1', [d.user_id]);
+      if (!u.rows.length) return null;
+      const admin = u.rows[0];
+      return { adminId: admin.id, adminName: admin.name, adminRole: admin.role || 'admin', isUser: false, email: admin.email };
+    } else {
+      const u = await pool.query('SELECT * FROM dashboard_users WHERE id=$1 AND active=true', [d.user_id]);
+      if (!u.rows.length) return null;
+      const user = u.rows[0];
+      const empResult = await pool.query('SELECT employee_id FROM user_employee_access WHERE user_id=$1', [user.id]);
+      return { adminId: user.id, adminName: user.name, adminRole: user.role, isUser: true, email: user.email, allowedEmployees: empResult.rows.map(r => r.employee_id) };
+    }
+  } catch(e) { return null; }
+}
+
+function applyLoginData(req, loginData) {
+  req.session.adminId   = loginData.adminId;
+  req.session.adminName = loginData.adminName;
+  req.session.adminRole = loginData.adminRole;
+  req.session.isUser    = loginData.isUser;
+  if (loginData.allowedEmployees) req.session.allowedEmployees = loginData.allowedEmployees;
+}
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.use('/screenshots', express.static('screenshots'));
 app.use(session({
@@ -124,6 +177,11 @@ app.post('/api/login', async (req, res) => {
 });
 
 app.post('/api/logout', (req, res) => {
+  const token = req.cookies && req.cookies['wp_remember'];
+  if (token) {
+    pool.query('DELETE FROM remembered_devices WHERE token=$1', [token]).catch(()=>{});
+    res.clearCookie('wp_remember', { path: '/' });
+  }
   req.session.destroy();
   res.json({ success: true });
 });
@@ -151,9 +209,10 @@ app.post('/api/employees', requireLogin, async (req, res) => {
   try {
     // Check if employee exists but was deleted
     const existing = await pool.query(
-      'SELECT id FROM employees WHERE email=$1', [email]
+      'SELECT id, active FROM employees WHERE email=$1', [email]
     );
     if (existing.rows.length) {
+      if (existing.rows[0].active) return res.status(400).json({ error: "Email already exists" });
       // Reactivate with new token
       const result = await pool.query(
         'UPDATE employees SET name=$1, department=$2, agent_token=$3, active=true, roster_id=$5 WHERE email=$4 RETURNING *',
@@ -726,6 +785,15 @@ app.post("/api/employees/:id/settings", requireLogin, async (req, res) => {
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
+app.post("/api/employees/:id/name", requireLogin, async (req, res) => {
+  try {
+    const { name } = req.body;
+    if(!name || !name.trim()) return res.status(400).json({ error: "Name is required" });
+    await pool.query("UPDATE employees SET name=$1 WHERE id=$2", [name.trim(), req.params.id]);
+    await auditLog(req, "Employee Renamed", req.params.id + " → " + name.trim());
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
 
 
 // Agent gets its settings
@@ -980,9 +1048,16 @@ app.post('/api/dashboard-users/:id/reset-password', requireLogin, requireAdmin, 
 
 // ---- USER LOGIN ----
 app.post('/api/user-login', async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, remember } = req.body;
   const bcrypt = require('bcryptjs');
   try {
+    // Check remember cookie first — skip password check if valid
+    const remembered = await checkRememberCookie(req);
+    if (remembered && remembered.email === email) {
+      applyLoginData(req, remembered);
+      return res.json({ success: true, name: remembered.adminName, role: remembered.adminRole });
+    }
+
     // Check MFA setting
     const mfaCfg = await pool.query('SELECT mfa_enabled FROM email_config LIMIT 1');
     const mfaOn  = mfaCfg.rows[0]?.mfa_enabled === true;
@@ -1018,13 +1093,12 @@ app.post('/api/user-login', async (req, res) => {
     } catch(e) {}
 
     if (userTotpEnabled) {
-      req.session.pendingLogin = loginData;
+      req.session.pendingLogin = { ...loginData, remember: !!remember };
       return res.json({ totp_required: true });
     }
 
     if (mfaOn) {
-      // Store pending login, send OTP
-      req.session.pendingLogin = loginData;
+      req.session.pendingLogin = { ...loginData, remember: !!remember };
       const otp = generateOTP();
       await pool.query("INSERT INTO otp_tokens (email,otp,purpose,expires_at) VALUES ($1,$2,'mfa',NOW()+INTERVAL '10 minutes')", [loginData.email, otp]);
       await sendOTP(loginData.email, otp, 'mfa');
@@ -1032,11 +1106,8 @@ app.post('/api/user-login', async (req, res) => {
     }
 
     // No MFA — log in directly
-    req.session.adminId   = loginData.adminId;
-    req.session.adminName = loginData.adminName;
-    req.session.adminRole = loginData.adminRole;
-    req.session.isUser    = loginData.isUser;
-    if (loginData.allowedEmployees) req.session.allowedEmployees = loginData.allowedEmployees;
+    applyLoginData(req, loginData);
+    if (remember) await setRememberCookie(res, loginData);
     return res.json({ success: true, name: loginData.adminName, role: loginData.adminRole });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -1947,6 +2018,7 @@ app.post('/api/admin/email-config', requireLogin, requireAdmin, async (req, res)
   try {
     const existing = await pool.query('SELECT id FROM email_config LIMIT 1');
     if (existing.rows.length) {
+      if (existing.rows[0].active) return res.status(400).json({ error: "Email already exists" });
       const updates = ['smtp_host=$1','smtp_port=$2','smtp_user=$3','smtp_from_name=$4','smtp_tls=$5','updated_at=NOW()'];
       const params  = [smtp_host, smtp_port||587, smtp_user, smtp_from_name||'WorkPulse', smtp_tls!==false];
       if (smtp_pass) { updates.push('smtp_pass=$'+(params.length+1)); params.push(smtp_pass); }
@@ -1987,6 +2059,7 @@ app.post('/api/admin/email-config/mfa', requireLogin, requireAdmin, async (req, 
   try {
     const existing = await pool.query('SELECT id FROM email_config LIMIT 1');
     if (existing.rows.length) {
+      if (existing.rows[0].active) return res.status(400).json({ error: "Email already exists" });
       await pool.query('UPDATE email_config SET mfa_enabled=$1, totp_global_enabled=$2 WHERE id=$3', [mfa_enabled, totp_global_enabled !== false, existing.rows[0].id]);
     } else {
       await pool.query('INSERT INTO email_config (mfa_enabled) VALUES ($1)', [mfa_enabled]);
@@ -2022,11 +2095,8 @@ app.post('/api/auth/verify-otp', async (req, res) => {
     // MFA — complete the login that was pending
     if (!req.session.pendingLogin) return res.status(401).json({ error: 'No pending login' });
     const p = req.session.pendingLogin;
-    req.session.adminId   = p.adminId;
-    req.session.adminName = p.adminName;
-    req.session.adminRole = p.adminRole;
-    req.session.isUser    = p.isUser;
-    if (p.allowedEmployees) req.session.allowedEmployees = p.allowedEmployees;
+    applyLoginData(req, p);
+    if (p.remember) await setRememberCookie(res, p);
     delete req.session.pendingLogin;
     res.json({ success: true, name: p.adminName, role: p.adminRole });
   } catch(err) { res.status(500).json({ error: err.message }); }
@@ -2191,11 +2261,8 @@ app.post('/api/auth/totp/verify-login', async (req, res) => {
     const valid = speakeasy.totp.verify({ secret: row.totp_secret, encoding: 'base32', token: String(token), window: 2 });
     if (!valid) return res.status(401).json({ error: 'Invalid code. Check your authenticator app.' });
     // Complete login
-    req.session.adminId   = p.adminId;
-    req.session.adminName = p.adminName;
-    req.session.adminRole = p.adminRole;
-    req.session.isUser    = p.isUser;
-    if (p.allowedEmployees) req.session.allowedEmployees = p.allowedEmployees;
+    applyLoginData(req, p);
+    if (p.remember) await setRememberCookie(res, p);
     delete req.session.pendingLogin;
     res.json({ success: true, name: p.adminName, role: p.adminRole });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -3254,7 +3321,7 @@ async function evaluateRule(rule) {
       const rows = await pool.query(`
         SELECT w.employee_id, e.name, ROUND(SUM(w.duration_seconds)/60) as m
         FROM web_activity w JOIN employees e ON w.employee_id=e.id
-        WHERE w.visited_at::date=$1 AND w.productivity='Non-productive' ${empCond}
+	WHERE w.recorded_at::date=$1 AND EXISTS (SELECT 1 FROM site_categories sc WHERE sc.admin_id=${rule.admin_id} AND LOWER(w.url) LIKE LOWER('%'||sc.domain||'%') AND sc.category='Non-Productive') ${empCond}
         GROUP BY w.employee_id,e.name HAVING SUM(w.duration_seconds)/60>$2
       `, [today, mins]);
       for (const r of rows.rows) await triggerAlert(rule, r.employee_id, r.name,
@@ -3264,7 +3331,7 @@ async function evaluateRule(rule) {
       const rows = await pool.query(`
         SELECT DISTINCT w.employee_id, e.name FROM web_activity w
         JOIN employees e ON w.employee_id=e.id
-        WHERE w.visited_at::date=$1 AND LOWER(w.url) LIKE LOWER($2) ${empCond}
+        WHERE w.recorded_at::date=$1 AND LOWER(w.url) LIKE LOWER($2) ${empCond}
       `, [today, `%${rule.value||''}%`]);
       for (const r of rows.rows) await triggerAlert(rule, r.employee_id, r.name,
         `${r.name} visited "${rule.value}" today`);
@@ -3274,7 +3341,7 @@ async function evaluateRule(rule) {
       const rows = await pool.query(`
         SELECT w.employee_id, e.name, ROUND(SUM(w.duration_seconds)/60) as m
         FROM web_activity w JOIN employees e ON w.employee_id=e.id
-        WHERE w.visited_at::date=$1 ${empCond}
+        WHERE w.recorded_at::date=$1 ${empCond}
         GROUP BY w.employee_id,e.name HAVING SUM(w.duration_seconds)/60>$2
       `, [today, mins]);
       for (const r of rows.rows) await triggerAlert(rule, r.employee_id, r.name,
@@ -3348,7 +3415,7 @@ async function evaluateRule(rule) {
     const rows = await pool.query(`
       SELECT DISTINCT s.employee_id, e.name FROM screenshots s
       JOIN employees e ON s.employee_id=e.id
-      WHERE s.flagged=true AND s.taken_at::date=CURRENT_DATE ${empCond}
+      WHERE s.flagged=true AND s.recorded_at::date=CURRENT_DATE ${empCond}
     `);
     for (const r of rows.rows) await triggerAlert(rule, r.employee_id, r.name,
       `${r.name} has flagged screenshots today`);
@@ -3388,9 +3455,14 @@ async function evaluateAlertRules() {
 }
 
 setInterval(evaluateAlertRules, 5 * 60 * 1000);
+
+// Clean up expired remember-device tokens daily
+setInterval(() => {
+  pool.query('DELETE FROM remembered_devices WHERE expires_at < NOW()').catch(e => console.error('[RememberCleanup]', e.message));
+}, 24 * 60 * 60 * 1000);
 setTimeout(evaluateAlertRules, 30000);
 
-app.get('/dashboard', requireLogin, (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.html')));
+app.get('/dashboard', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.html')));
 app.listen(PORT, () => {
   console.log(`WorkPulse server running on port ${PORT}`);
 });
