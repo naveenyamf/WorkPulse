@@ -390,7 +390,7 @@ tr.emp-row:hover{background:var(--card-hover)}
       <span class="nav-icon">👤</span><span>Admin / Monitor Users</span>
     </div>
     <div class="nav-item admin-only" onclick="showPage('departments',this)" id="nav-departments">
-      <span class="nav-icon">🏢</span><span>Departments</span>
+	<span class="nav-icon">🏢</span><span>Departments & Groups</span>
     </div>
     <div class="nav-item admin-only" onclick="showPage('roster',this)" id="nav-roster">
       <span class="nav-icon">🕐</span><span>Duty Roster</span>
@@ -673,15 +673,41 @@ tr.emp-row:hover{background:var(--card-hover)}
   <div id="assignModal" style="display:none">
     <div class="panel">
       <div class="panel-header">
-        <div class="panel-title">Assign Employees to <span id="assignUserName" style="color:#00e5ff"></span></div>
+        <div class="panel-title">Assign Access to <span id="assignUserName" style="color:#00e5ff"></span></div>
         <button class="btn" onclick="document.getElementById('assignModal').style.display='none'">✕ Close</button>
       </div>
-      <div id="assignEmpList" style="padding:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px"></div>
-      <div style="padding:16px;border-top:1px solid #1e242e">
-        <button class="btn btn-accent" onclick="saveAssignment()">Save Assignment</button>
+      <!-- Access Tabs -->
+      <div style="display:flex;gap:6px;padding:12px 16px;border-bottom:1px solid var(--border)">
+        <button class="btn btn-accent" id="assignTab-employees" onclick="switchAssignTab('employees')" style="font-size:11px">👤 Employee Access</button>
+        <button class="btn" id="assignTab-departments" onclick="switchAssignTab('departments')" style="font-size:11px">🏢 Department Access</button>
+        <button class="btn" id="assignTab-groups" onclick="switchAssignTab('groups')" style="font-size:11px">👥 Group Access</button>
+      </div>
+      <!-- Employee Tab -->
+      <div id="assignSection-employees">
+        <div id="assignEmpList" style="padding:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px"></div>
+        <div style="padding:16px;border-top:1px solid #1e242e">
+          <button class="btn btn-accent" onclick="saveAssignment()">Save Employee Access</button>
+        </div>
+      </div>
+      <!-- Department Tab -->
+      <div id="assignSection-departments" style="display:none">
+        <div id="assignDeptList" style="padding:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px"></div>
+        <div style="padding:16px;border-top:1px solid #1e242e">
+          <div style="font-size:11px;color:var(--text3);margin-bottom:10px">User will see all employees in selected departments.</div>
+          <button class="btn btn-accent" onclick="saveDeptAssignment()">Save Department Access</button>
+        </div>
+      </div>
+      <!-- Group Tab -->
+      <div id="assignSection-groups" style="display:none">
+        <div id="assignGroupList" style="padding:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px"></div>
+        <div style="padding:16px;border-top:1px solid #1e242e">
+          <div style="font-size:11px;color:var(--text3);margin-bottom:10px">User will see all employees in selected groups.</div>
+          <button class="btn btn-accent" onclick="saveGroupAssignment()">Save Group Access</button>
+        </div>
       </div>
     </div>
   </div>
+
 </div>
 
 
@@ -1326,27 +1352,67 @@ tr.emp-row:hover{background:var(--card-hover)}
 <div class="page" id="page-departments">
   <div style="max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:16px">
 
-    <!-- Add Department Card -->
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px 20px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 4px var(--shadow)">
-      <div style="width:38px;height:38px;border-radius:10px;background:var(--accent-bg);border:1px solid rgba(0,229,255,0.2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🏢</div>
-      <div style="flex:1">
-        <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px">New Department</div>
-        <input type="text" id="new-dept-name" placeholder="e.g. Engineering" class="filter-select" style="width:100%;padding:8px 12px;font-size:12px">
-      </div>
-      <button class="btn btn-accent" onclick="addDepartment()" style="flex-shrink:0;padding:9px 18px;font-size:12px;white-space:nowrap">+ Add</button>
+    <!-- Tabs -->
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-accent" id="deptTab-departments" onclick="switchDeptTab('departments')" style="font-size:12px">🏢 Departments</button>
+      <button class="btn" id="deptTab-groups" onclick="switchDeptTab('groups')" style="font-size:12px">👥 Groups</button>
     </div>
 
-    <!-- All Departments -->
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 1px 4px var(--shadow)">
-      <div style="padding:12px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--bg3)">
-        <div style="font-size:13px;font-weight:700;color:var(--text)">All Departments</div>
-        <button class="btn" onclick="loadDepartments()" style="font-size:11px;padding:5px 12px">↻ Refresh</button>
+    <!-- DEPARTMENTS TAB -->
+    <div id="deptSection-departments">
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px 20px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 4px var(--shadow);margin-bottom:12px">
+        <div style="width:38px;height:38px;border-radius:10px;background:var(--accent-bg);border:1px solid rgba(0,229,255,0.2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🏢</div>
+        <div style="flex:1">
+          <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px">New Department</div>
+          <input type="text" id="new-dept-name" placeholder="e.g. Engineering" class="filter-select" style="width:100%;padding:8px 12px;font-size:12px">
+        </div>
+        <button class="btn btn-accent" onclick="addDepartment()" style="flex-shrink:0;padding:9px 18px;font-size:12px;white-space:nowrap">+ Add</button>
       </div>
-      <div id="deptList"></div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 1px 4px var(--shadow)">
+        <div style="padding:12px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--bg3)">
+          <div style="font-size:13px;font-weight:700;color:var(--text)">All Departments</div>
+          <button class="btn" onclick="loadDepartments()" style="font-size:11px;padding:5px 12px">↻ Refresh</button>
+        </div>
+        <div id="deptList"></div>
+      </div>
+    </div>
+
+    <!-- GROUPS TAB -->
+    <div id="deptSection-groups" style="display:none">
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px 20px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 4px var(--shadow);margin-bottom:12px">
+        <div style="width:38px;height:38px;border-radius:10px;background:rgba(168,85,247,0.15);border:1px solid rgba(168,85,247,0.3);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">👥</div>
+        <div style="flex:1">
+          <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px">New Group</div>
+          <input type="text" id="new-group-name" placeholder="e.g. Night Shift Team" class="filter-select" style="width:100%;padding:8px 12px;font-size:12px">
+        </div>
+        <button class="btn" onclick="addGroup()" style="flex-shrink:0;padding:9px 18px;font-size:12px;white-space:nowrap;background:rgba(168,85,247,0.15);color:#a855f7;border-color:#a855f744">+ Add Group</button>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 1px 4px var(--shadow)">
+        <div style="padding:12px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--bg3)">
+          <div style="font-size:13px;font-weight:700;color:var(--text)">All Groups</div>
+          <button class="btn" onclick="loadGroups()" style="font-size:11px;padding:5px 12px">↻ Refresh</button>
+        </div>
+        <div id="groupList"></div>
+      </div>
+    </div>
+
+    <!-- Group Member Assignment Panel -->
+    <div id="groupAssignPanel" style="display:none">
+      <div style="background:var(--bg2);border:1px solid rgba(168,85,247,0.4);border-radius:12px;overflow:hidden;box-shadow:0 1px 4px var(--shadow)">
+        <div style="padding:12px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--bg3)">
+          <div style="font-size:13px;font-weight:700;color:var(--text)">Assign Members to <span id="groupAssignName" style="color:#a855f7"></span></div>
+          <button class="btn" onclick="document.getElementById('groupAssignPanel').style.display='none'">✕ Close</button>
+        </div>
+        <div id="groupAssignEmpList" style="padding:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px"></div>
+        <div style="padding:16px;border-top:1px solid var(--border)">
+          <button class="btn" onclick="saveGroupMembers()" style="background:rgba(168,85,247,0.15);color:#a855f7;border-color:#a855f744">Save Members</button>
+        </div>
+      </div>
     </div>
 
   </div>
 </div>
+
 
 <!-- ALERTS PAGE -->
     <div class="page" id="page-alerts">
@@ -1775,7 +1841,7 @@ function showPage(name,el,isBack){
     var p=document.getElementById('nav-webactivity-parent');
     if(g){g.style.display='block';if(a)a.style.transform='rotate(90deg)';if(p)p.classList.add('open');}
   }
-  var titles={dashboard:'Dashboard',employees:'Employees',addemployee:'Add Employee for Monitoring',screenshots:'Screenshots',webactivity:'Web Activity',appusage:'App Usage',alerts:'Alerts',flagged:'Flagged Screenshots',deleted:'Deleted Users',users:'Admin / Monitor Users',roster:'Duty Roster',sysactivity:'System Activity',auditlog:'Audit Log',syssettings:'System Settings',departments:'Departments',backup:'Backup & Restore',reports:'Reports',emailconfig:'Email Configuration'};
+  var titles={dashboard:'Dashboard',employees:'Employees',addemployee:'Add Employee for Monitoring',screenshots:'Screenshots',webactivity:'Web Activity',appusage:'App Usage',alerts:'Alerts',flagged:'Flagged Screenshots',deleted:'Deleted Users',users:'Admin / Monitor Users',roster:'Duty Roster',sysactivity:'System Activity',auditlog:'Audit Log',syssettings:'System Settings',departments:'Departments & Groups',backup:'Backup & Restore',reports:'Reports',emailconfig:'Email Configuration'};
   document.getElementById('pageTitle').textContent=titles[name]||name;
   if(name==='dashboard'){loadStats();loadEmployees();}
   if(name==='employees'){loadEmployeesFull();}
@@ -4641,6 +4707,173 @@ async function deleteDepartment(id,name){
     if(data.success){toast('✓ Department removed','#f59e0b');loadDepartments();}
     else{toast('Error: '+(data.error||'Failed'),'#ef4444');}
   }catch(e){toast('Error removing department','#ef4444');}
+}
+
+// ---- DEPT/GROUP TABS ----
+function switchDeptTab(tab){
+  ['departments','groups'].forEach(function(t){
+    document.getElementById('deptSection-'+t).style.display = t===tab?'':'none';
+    var btn = document.getElementById('deptTab-'+t);
+    btn.classList.toggle('btn-accent', t===tab);
+  });
+  if(tab==='groups') loadGroups();
+  if(tab==='departments') loadDepartments();
+}
+
+// ---- GROUPS ----
+var currentGroupId = null;
+async function loadGroups(){
+  var list=document.getElementById('groupList');
+  if(!list) return;
+  list.innerHTML='<div class="empty">Loading...</div>';
+  try{
+    var rows=await fetch('/api/groups').then(function(r){return r.json();});
+    if(!rows.length){list.innerHTML='<div class="empty">No groups yet.</div>';return;}
+    var colors=['#a855f7','#00e5ff','#10b981','#f59e0b','#ef4444','#3b82f6'];
+    list.innerHTML='<div style="padding:14px;display:flex;flex-direction:column;gap:10px">'+rows.map(function(g,i){
+      var color=colors[i%colors.length];
+      var initials=g.name.substring(0,2).toUpperCase();
+      var members=g.employees||[];
+      var empHtml=members.length
+        ?'<div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px 12px 14px;border-top:1px solid var(--border)">'+
+            members.map(function(e){
+              return '<div style="display:flex;align-items:center;gap:5px;background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:4px 10px 4px 6px;font-size:11px;color:var(--text2)">'+
+                '<div style="width:18px;height:18px;border-radius:50%;background:'+color+'22;border:1px solid '+color+'44;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:'+color+'">'+e.name.substring(0,1).toUpperCase()+'</div>'+
+                e.name+'</div>';
+            }).join('')+'</div>'
+        :'<div style="padding:8px 14px 12px;border-top:1px solid var(--border);font-size:11px;color:var(--text3);font-style:italic">No members assigned</div>';
+      return '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;overflow:hidden">'+
+        '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px">'+
+          '<div style="width:38px;height:38px;border-radius:10px;background:'+color+'18;border:1px solid '+color+'33;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:'+color+';flex-shrink:0">'+initials+'</div>'+
+          '<div style="flex:1">'+
+            '<div style="font-size:13px;font-weight:700;color:var(--text)">'+g.name+'</div>'+
+            '<div style="font-size:10px;color:var(--text3)">'+members.length+' member'+(members.length!==1?'s':'')+'</div>'+
+          '</div>'+
+          '<div style="display:flex;gap:6px">'+
+            '<button class="btn" style="font-size:10px;background:rgba(168,85,247,0.15);color:#a855f7;border-color:#a855f744" onclick="openGroupAssign('+g.id+',\''+g.name+'\')">👤 Members</button>'+
+            '<button class="btn btn-danger" style="font-size:10px;padding:5px 10px" onclick="deleteGroup('+g.id+',\''+g.name+'\')">Remove</button>'+
+          '</div>'+
+        '</div>'+empHtml+'</div>';
+    }).join('')+'</div>';
+  }catch(e){list.innerHTML='<div class="empty">Error loading.</div>';}
+}
+
+async function addGroup(){
+  var name=document.getElementById('new-group-name').value.trim();
+  if(!name){toast('Enter group name','#ef4444');return;}
+  try{
+    var res=await fetch('/api/groups',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})});
+    var data=await res.json();
+    if(data.id){toast('✓ Group added','#10b981');document.getElementById('new-group-name').value='';loadGroups();}
+    else{toast('Error: '+(data.error||'Failed'),'#ef4444');}
+  }catch(e){toast('Error adding group','#ef4444');}
+}
+
+async function deleteGroup(id,name){
+  if(!confirm('Remove group "'+name+'"?')) return;
+  try{
+    var res=await fetch('/api/groups/'+id,{method:'DELETE'});
+    var data=await res.json();
+    if(data.success){toast('✓ Group removed','#f59e0b');loadGroups();}
+    else{toast('Error: '+(data.error||'Failed'),'#ef4444');}
+  }catch(e){toast('Error removing group','#ef4444');}
+}
+
+async function openGroupAssign(groupId, groupName){
+  currentGroupId=groupId;
+  document.getElementById('groupAssignName').textContent=groupName;
+  document.getElementById('groupAssignPanel').style.display='block';
+  var empList=document.getElementById('groupAssignEmpList');
+  empList.innerHTML='<div class="empty">Loading...</div>';
+  var employees=await fetch('/api/employees').then(function(r){return r.json();});
+  var groupData=await fetch('/api/groups').then(function(r){return r.json();});
+  var group=groupData.find(function(g){return g.id===groupId;})||{employees:[]};
+  var assignedIds=group.employees.map(function(e){return e.id;});
+  empList.innerHTML=employees.map(function(e){
+    var sel=assignedIds.indexOf(e.id)>-1;
+    return '<div onclick="toggleAssignItem(this,'+e.id+')" style="padding:10px;background:'+(sel?'rgba(168,85,247,0.1)':'#181c22')+';border:1px solid '+(sel?'#a855f7':'#1e242e')+';border-radius:4px;cursor:pointer" data-id="'+e.id+'" data-selected="'+(sel?'1':'0')+'">'+
+      '<div style="color:'+(sel?'#a855f7':'#e2e8f0')+';font-size:12px;font-weight:600">'+e.name+'</div>'+
+      '<div style="color:#64748b;font-size:10px">'+(e.department||'')+'</div></div>';
+  }).join('');
+}
+
+async function saveGroupMembers(){
+  var selected=Array.from(document.querySelectorAll('#groupAssignEmpList [data-selected="1"]')).map(function(el){return parseInt(el.dataset.id);});
+  await fetch('/api/groups/'+currentGroupId+'/members',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({employee_ids:selected})});
+  toast('✓ Group members saved!','#10b981');
+  document.getElementById('groupAssignPanel').style.display='none';
+  loadGroups();
+}
+
+// ---- ASSIGN MODAL TABS ----
+function switchAssignTab(tab){
+  ['employees','departments','groups'].forEach(function(t){
+    document.getElementById('assignSection-'+t).style.display=t===tab?'':'none';
+    var btn=document.getElementById('assignTab-'+t);
+    btn.classList.toggle('btn-accent',t===tab);
+  });
+  if(tab==='departments') loadAssignDepts();
+  if(tab==='groups') loadAssignGroups();
+}
+
+async function loadAssignDepts(){
+  var list=document.getElementById('assignDeptList');
+  list.innerHTML='<div class="empty">Loading...</div>';
+  var depts=await fetch('/api/departments').then(function(r){return r.json();});
+  var assigned=await fetch('/api/dashboard-users/'+currentAssignUserId+'/employees').then(function(r){return r.json();});
+  var emps=await fetch('/api/employees').then(function(r){return r.json();});
+  // Find which depts have all employees assigned
+  list.innerHTML=depts.map(function(d){
+    var deptEmps=emps.filter(function(e){return e.department===d.name;});
+    var allAssigned=deptEmps.length>0&&deptEmps.every(function(e){return assigned.indexOf(e.id)>-1;});
+    return '<div onclick="toggleAssignItem(this,\'dept_'+d.name+'\')" style="padding:10px;background:'+(allAssigned?'rgba(0,229,255,0.1)':'#181c22')+';border:1px solid '+(allAssigned?'#00e5ff':'#1e242e')+';border-radius:4px;cursor:pointer" data-id="dept_'+d.name+'" data-selected="'+(allAssigned?'1':'0')+'" data-dept="'+d.name+'" data-empids="'+deptEmps.map(function(e){return e.id;}).join(',')+'">' +
+      '<div style="color:'+(allAssigned?'#00e5ff':'#e2e8f0')+';font-size:12px;font-weight:600">'+d.name+'</div>'+
+      '<div style="color:#64748b;font-size:10px">'+deptEmps.length+' employee'+(deptEmps.length!==1?'s':'')+'</div></div>';
+  }).join('');
+}
+
+async function saveDeptAssignment(){
+  var selected=[];
+  document.querySelectorAll('#assignDeptList [data-selected="1"]').forEach(function(el){
+    var ids=el.dataset.empids;
+    if(ids) ids.split(',').forEach(function(id){if(id) selected.push(parseInt(id));});
+  });
+  await fetch('/api/dashboard-users/'+currentAssignUserId+'/employees',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({employee_ids:selected})});
+  toast('✓ Department access saved!','#10b981');
+  document.getElementById('assignModal').style.display='none';
+  loadDashboardUsers();
+}
+
+async function loadAssignGroups(){
+  var list=document.getElementById('assignGroupList');
+  list.innerHTML='<div class="empty">Loading...</div>';
+  var groups=await fetch('/api/groups').then(function(r){return r.json();});
+  var assignedGroups=await fetch('/api/admin/users/'+currentAssignUserId+'/groups').then(function(r){return r.json();});
+  if(!groups.length){list.innerHTML='<div class="empty">No groups created yet. Create groups in Departments & Groups → Groups tab.</div>';return;}
+  list.innerHTML=groups.map(function(g){
+    var sel=assignedGroups.indexOf(g.id)>-1;
+    return '<div onclick="toggleAssignItem(this,'+g.id+')" style="padding:10px;background:'+(sel?'rgba(168,85,247,0.1)':'#181c22')+';border:1px solid '+(sel?'#a855f7':'#1e242e')+';border-radius:4px;cursor:pointer" data-id="'+g.id+'" data-selected="'+(sel?'1':'0')+'">'+
+      '<div style="color:'+(sel?'#a855f7':'#e2e8f0')+';font-size:12px;font-weight:600">'+g.name+'</div>'+
+      '<div style="color:#64748b;font-size:10px">'+(g.employees||[]).length+' members</div></div>';
+  }).join('');
+}
+
+async function saveGroupAssignment(){
+  var selected=Array.from(document.querySelectorAll('#assignGroupList [data-selected="1"]')).map(function(el){return parseInt(el.dataset.id);});
+  await fetch('/api/admin/users/'+currentAssignUserId+'/groups',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({group_ids:selected})});
+  toast('✓ Group access saved!','#10b981');
+  document.getElementById('assignModal').style.display='none';
+  loadDashboardUsers();
+}
+
+function toggleAssignItem(el,id){
+  var sel=el.dataset.selected==='1';
+  el.dataset.selected=sel?'0':'1';
+  var isGroup=typeof id==='number'&&el.closest('#assignGroupList');
+  var color=isGroup?'#a855f7':'#00e5ff';
+  el.style.background=sel?'#181c22':'rgba('+(isGroup?'168,85,247':'0,229,255')+',0.1)';
+  el.style.borderColor=sel?'#1e242e':color;
+  el.querySelector('div').style.color=sel?'#e2e8f0':color;
 }
 
 // ---- AUDIT LOG ----

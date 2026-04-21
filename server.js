@@ -600,12 +600,14 @@ app.get('/api/dashboard/app-usage', requireLogin, async (req, res) => {
           FROM normalized
           GROUP BY app_name
         ),
-        totals AS (
-          SELECT
-            SUM(duration_seconds) as grand_total,
-            SUM(CASE WHEN in_shift THEN duration_seconds ELSE 0 END) as shift_total
-          FROM normalized
-        )
+totals AS (
+  SELECT
+    COUNT(DISTINCT DATE_TRUNC('minute', recorded_at)) * 60 AS grand_total,
+    COUNT(DISTINCT CASE WHEN in_shift THEN DATE_TRUNC('minute', recorded_at) END) * 60 AS shift_total
+  FROM normalized
+)
+
+
         SELECT
           p.app_name,
           p.total_seconds,
@@ -1441,7 +1443,69 @@ app.delete('/api/departments/:id', requireLogin, requireAdmin, async (req, res) 
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
+// ---- GROUPS ----
+app.get('/api/groups', requireLogin, async (req, res) => {
+  try {
+    const groups = await pool.query('SELECT * FROM employee_groups ORDER BY name');
+    for (const g of groups.rows) {
+      const emps = await pool.query(
+        `SELECT e.id, e.name, e.department FROM group_employee_access ga
+         JOIN employees e ON ga.employee_id=e.id WHERE ga.group_id=$1 AND e.active=true`, [g.id]);
+      g.employees = emps.rows;
+    }
+    res.json(groups.rows);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
 
+app.post('/api/groups', requireLogin, requireAdmin, async (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: 'Name required' });
+  try {
+    const result = await pool.query('INSERT INTO employee_groups (name) VALUES ($1) RETURNING *', [name]);
+    await auditLog(req, 'Group Created', name);
+    res.json(result.rows[0]);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/groups/:id', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const g = await pool.query('SELECT name FROM employee_groups WHERE id=$1', [req.params.id]);
+    await pool.query('DELETE FROM employee_groups WHERE id=$1', [req.params.id]);
+    await auditLog(req, 'Group Deleted', g.rows[0]?.name);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/groups/:id/members', requireLogin, requireAdmin, async (req, res) => {
+  const { employee_ids } = req.body;
+  try {
+    await pool.query('DELETE FROM group_employee_access WHERE group_id=$1', [req.params.id]);
+    for (const empId of (employee_ids || [])) {
+      await pool.query('INSERT INTO group_employee_access (group_id, employee_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [req.params.id, empId]);
+    }
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Get user's group assignments
+app.get('/api/admin/users/:id/groups', requireLogin, async (req, res) => {
+  try {
+    const rows = await pool.query('SELECT group_id FROM user_group_access WHERE user_id=$1', [req.params.id]);
+    res.json(rows.rows.map(r => r.group_id));
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Save user's group assignments
+app.post('/api/admin/users/:id/groups', requireLogin, requireAdmin, async (req, res) => {
+  const { group_ids } = req.body;
+  try {
+    await pool.query('DELETE FROM user_group_access WHERE user_id=$1', [req.params.id]);
+    for (const gId of (group_ids || [])) {
+      await pool.query('INSERT INTO user_group_access (user_id, group_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [req.params.id, gId]);
+    }
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
 
 // ---- BACKUP & RESTORE ----
 const { execFile } = require('child_process');
