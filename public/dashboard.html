@@ -54,6 +54,15 @@ nav{padding:10px 0;flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:v
   z-index:99999 !important;
   transform:translateZ(0);
 }
+@media(max-width:768px){
+  #calDropdown,#webCalDropdown,#appCalDropdown,#sysCalDropdown{
+    width:calc(100vw - 24px) !important;
+    left:12px !important;
+    right:12px !important;
+    max-width:320px;
+  }
+}
+
 #themeFlashEl{position:fixed;inset:0;z-index:99999;pointer-events:none;opacity:0;transition:opacity 0.6s cubic-bezier(0.4,0,0.2,1)}
 @keyframes fadeSlideIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fadeSlideInLeft{from{opacity:0;transform:translateX(-18px)}to{opacity:1;transform:translateX(0)}}
@@ -176,7 +185,7 @@ tr.emp-row:hover{background:var(--card-hover)}
 
 /* ── MOBILE HAMBURGER BUTTON ── */
 .mob-menu-btn{display:none;position:fixed;top:12px;left:14px;z-index:200;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:8px 10px;cursor:pointer;line-height:1;box-shadow:0 2px 10px var(--shadow)}
-.sidebar.mob-open .logo{padding-left:54px}
+.sidebar.mob-open .logo{padding-left:64px}
 .mob-menu-btn span{display:block;width:18px;height:2px;background:var(--text2);border-radius:2px;transition:all 0.22s}
 .mob-menu-btn span+span{margin-top:4px}
 .mob-menu-btn.open span:nth-child(1){transform:translateY(6px) rotate(45deg)}
@@ -1789,8 +1798,19 @@ window.addEventListener('popstate',function(e){
   }
 
   // Already at dashboard root
-  history.pushState({wp:'dashboard'},'','');
+history.pushState({wp:'dashboard'},'','');
+if(typeof Android !== 'undefined'){
+  if(window._wpExitReady){
+    Android.onBackResult('exit');
+    return;
+  }
+  window._wpExitReady = true;
+  setTimeout(function(){ window._wpExitReady = false; }, 2000);
+  _showExitToast('Press back again to exit WorkPulse');
+} else {
   _showExitToast('You are on the Dashboard — use the menu to navigate');
+}
+
   _isPopping=false;
 });
 
@@ -1806,8 +1826,18 @@ function wpGoBack(){
     showPage(prev,document.getElementById('nav-'+prev),true);
     return 'navigated';
   }
+if(typeof Android !== 'undefined'){
+  if(window._wpExitReady){
+    Android.onBackResult('exit');
+    return 'toast';
+  }
+  window._wpExitReady = true;
+  setTimeout(function(){ window._wpExitReady = false; }, 2000);
   _showExitToast('Press back again to exit WorkPulse');
   return 'toast';
+}
+_showExitToast('Press back again to exit WorkPulse');
+return 'toast';
 }
 
 function showPage(name,el,isBack){
@@ -2057,7 +2087,7 @@ function toggleCal(event){
   event.stopPropagation();
   var d=document.getElementById('calDropdown');
   var isHidden=d.style.display==='none'||d.style.display==='';
-  if(isHidden){var btn=event.target.closest('button')||event.target;var r=btn.getBoundingClientRect();d.style.top=(r.bottom+6)+'px';d.style.right=(window.innerWidth-r.right)+'px';}
+if(isHidden){var btn=event.target.closest('button')||event.target;var r=btn.getBoundingClientRect();d.style.top=(r.bottom+6)+'px';if(window.innerWidth<=768){d.style.left='12px';d.style.right='12px';}else{d.style.right=(window.innerWidth-r.right)+'px';d.style.left='';}}
   d.style.display=isHidden?'block':'none';
   if(isHidden){
     setTimeout(function(){
