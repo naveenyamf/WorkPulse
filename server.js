@@ -428,13 +428,13 @@ app.get("/api/dashboard/web-activity", requireLogin, async (req, res) => {
         dateFilter = 'AND w.recorded_at::date=$2';
       }
 
-      const webQuery = `
-        WITH url_data AS (
+
+const webQuery = `
+        WITH raw AS (
           SELECT
             w.url, w.browser,
-            COUNT(DISTINCT date_trunc('minute', w.recorded_at)) * 60 AS url_seconds,
-            COUNT(DISTINCT CASE WHEN ${shiftFilter} THEN date_trunc('minute', w.recorded_at) END) * 60 AS url_shift_seconds,
-            COUNT(*) AS visits
+            w.recorded_at,
+            date_trunc('minute', w.recorded_at) AS minute_bucket
           FROM web_activity w
           WHERE w.employee_id = $1
             ${dateFilter}
@@ -442,19 +442,42 @@ app.get("/api/dashboard/web-activity", requireLogin, async (req, res) => {
             AND w.url != 'Desktop' AND w.url != 'Unknown'
             AND w.url != 'New Tab' AND w.url != 'New tab'
             AND w.url != 'Speed Dial' AND length(w.url) < 150
-          GROUP BY w.url, w.browser
         ),
+        -- Count how many distinct (url, browser) pairs share each minute
+        minute_share AS (
+          SELECT
+            minute_bucket,
+            url,
+            browser,
+            COUNT(*) AS url_hits_in_minute,
+            SUM(COUNT(*)) OVER (PARTITION BY minute_bucket) AS total_hits_in_minute
+          FROM raw
+          GROUP BY minute_bucket, url, browser
+        ),
+        -- Each URL gets a fractional share of each minute (avoids double-counting)
+        url_data AS (
+          SELECT
+            url, browser,
+            SUM(60.0 * url_hits_in_minute / total_hits_in_minute) AS url_seconds,
+            SUM(CASE WHEN ${shiftFilter.replace(/w\.recorded_at/g, 'minute_bucket')}
+                THEN 60.0 * url_hits_in_minute / total_hits_in_minute
+                ELSE 0 END) AS url_shift_seconds,
+            COUNT(*) AS visits
+          FROM minute_share
+          GROUP BY url, browser
+        ),
+        -- Total is count of DISTINCT minutes across all URLs (no double-counting)
         totals AS (
           SELECT
-            SUM(url_seconds) as emp_total_seconds,
-            SUM(url_shift_seconds) as emp_duty_seconds
-          FROM url_data
+            COUNT(DISTINCT minute_bucket) * 60 AS emp_total_seconds,
+            COUNT(DISTINCT CASE WHEN ${shiftFilter.replace(/w\.recorded_at/g, 'minute_bucket')} THEN minute_bucket END) * 60 AS emp_duty_seconds
+          FROM (SELECT DISTINCT minute_bucket FROM raw) m
         )
         SELECT
           u.url, u.browser,
-          u.url_seconds as total_seconds,
-          u.url_seconds as active_seconds,
-          u.url_shift_seconds as duty_seconds,
+          ROUND(u.url_seconds)::int as total_seconds,
+          ROUND(u.url_seconds)::int as active_seconds,
+          ROUND(u.url_shift_seconds)::int as duty_seconds,
           u.visits,
           t.emp_total_seconds,
           t.emp_duty_seconds
