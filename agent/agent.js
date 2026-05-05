@@ -288,13 +288,14 @@ schedule.scheduleJob('*/20 * * * * *', async function() {
       active_app: app,
       idle: isIdle,
       apps: apps,
-      urls: urls
+      urls: urls,
+      version: '3.0.1'
     }, {
       headers: { 'x-agent-token': AGENT_TOKEN },
       timeout: 10000
     });
 
-    log('[' + new Date().toLocaleTimeString() + '] OK - ' + app + ' - Idle: ' + idleSeconds + 's - URLs: ' + urls.length + ' - Apps: ' + apps.length);
+    log('OK - ' + app + ' - Idle: ' + idleSeconds + 's - URLs: ' + urls.length + ' - Apps: ' + apps.length);
   } catch (e) {
     log('Heartbeat error:', e.message);
   }
@@ -342,7 +343,7 @@ function scheduleScreenshot() {
 }
 
 if (loadConfig()) {
-  log('WorkPulse Agent v3.0');
+  log('WorkPulse Agent v3.0.1');
   log('WorkPulse Agent running...');
   log('Server: ' + SERVER_URL);
 axios.post(SERVER_URL + '/api/agent/system-event',
