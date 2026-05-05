@@ -6,6 +6,23 @@ const path = require('path');
 const os = require('os');
 const { execSync, exec } = require('child_process');
 
+const LOG_FILE = 'C:\\WorkPulse\\agent.log';
+const MAX_LOG_SIZE = 1 * 1024 * 1024; // 1MB
+
+function log(msg) {
+  const line = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+  try {
+    if (fs.existsSync(LOG_FILE) && fs.statSync(LOG_FILE).size > MAX_LOG_SIZE) {
+      fs.writeFileSync(LOG_FILE, line + '\n');
+    } else {
+      fs.appendFileSync(LOG_FILE, line + '\n');
+    }
+  } catch(e) {}
+  process.stdout.write(line + '\n');
+}
+
+
+
 const CONFIG_FILE = 'C:\\WorkPulse\\config.json';
 let SERVER_URL = 'http://10.10.11.251';
 
@@ -20,11 +37,11 @@ function loadConfig() {
     const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
     AGENT_TOKEN = config.token;
     if (config.server_url) SERVER_URL = config.server_url;
-    console.log('Agent started for:', config.email);
-    console.log('Server:', SERVER_URL);
+    log('Agent started for:', config.email);
+    log('Server:', SERVER_URL);
     return true;
   } catch (e) {
-    console.error('Config not found at', CONFIG_FILE);
+    log('Config not found at', CONFIG_FILE);
     return false;
   }
 }
@@ -277,9 +294,9 @@ schedule.scheduleJob('*/20 * * * * *', async function() {
       timeout: 10000
     });
 
-    console.log('[' + new Date().toLocaleTimeString() + '] OK - ' + app + ' - Idle: ' + idleSeconds + 's - URLs: ' + urls.length + ' - Apps: ' + apps.length);
+    log('[' + new Date().toLocaleTimeString() + '] OK - ' + app + ' - Idle: ' + idleSeconds + 's - URLs: ' + urls.length + ' - Apps: ' + apps.length);
   } catch (e) {
-    console.error('Heartbeat error:', e.message);
+    log('Heartbeat error:', e.message);
   }
 });
 
@@ -293,7 +310,7 @@ async function fetchSettings() {
       timeout: 5000
     });
     screenshotInterval = res.data.screenshot_interval || 5;
-    console.log('Screenshot interval: ' + screenshotInterval + ' mins');
+    log('Screenshot interval: ' + screenshotInterval + ' mins');
   } catch(e) {}
 }
 
@@ -301,7 +318,7 @@ function scheduleScreenshot() {
   setTimeout(async function() {
     if (!AGENT_TOKEN) { scheduleScreenshot(); return; }
     takeScreenshot(async function(err, tmpFile) {
-	console.log('[SS] Taking screenshot...');
+	log('[SS] Taking screenshot...');
       if (!err) {
         try {
           var form = new FormData();
@@ -311,12 +328,12 @@ function scheduleScreenshot() {
             timeout: 30000
           });
           fs.unlinkSync(tmpFile);
-		console.log('[SS] Screenshot sent OK - ' + new Date().toLocaleTimeString());
+		log('[SS] Screenshot sent OK - ' + new Date().toLocaleTimeString());
         } catch(e) {
-          console.error('Screenshot upload error:', e.message);
+          log('Screenshot upload error:', e.message);
         }
       } else {
-		console.error('Screenshot error:', err.message, err.stack||'');
+		log('Screenshot error:', err.message, err.stack||'');
       }
       await fetchSettings();
       scheduleScreenshot();
@@ -325,8 +342,9 @@ function scheduleScreenshot() {
 }
 
 if (loadConfig()) {
-  console.log('WorkPulse Agent running...');
-  console.log('Server: ' + SERVER_URL);
+  log('WorkPulse Agent v3.0');
+  log('WorkPulse Agent running...');
+  log('Server: ' + SERVER_URL);
 axios.post(SERVER_URL + '/api/agent/system-event',
     { event_type: 'startup' },
     { headers: { 'x-agent-token': AGENT_TOKEN }, timeout: 5000 }
