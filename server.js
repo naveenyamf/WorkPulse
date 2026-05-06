@@ -281,10 +281,18 @@ app.post('/api/agent/heartbeat', requireAgent, async (req, res) => {
 
 app.post('/api/agent/screenshot', requireAgent, upload.single('screenshot'), async (req, res) => {
   try {
-    await pool.query(
-      'INSERT INTO screenshots (employee_id, filename) VALUES ($1,$2)',
-      [req.employee.id, req.file.filename]
-    );
+    const capturedAt = req.body.captured_at || null;
+    if (capturedAt) {
+      await pool.query(
+        'INSERT INTO screenshots (employee_id, filename, recorded_at) VALUES ($1,$2,$3)',
+        [req.employee.id, req.file.filename, capturedAt]
+      );
+    } else {
+      await pool.query(
+        'INSERT INTO screenshots (employee_id, filename) VALUES ($1,$2)',
+        [req.employee.id, req.file.filename]
+      );
+    }
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

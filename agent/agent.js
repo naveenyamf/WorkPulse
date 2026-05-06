@@ -78,6 +78,8 @@ async function retryPendingScreenshots() {
     try {
       var form = new FormData();
       form.append('screenshot', fs.createReadStream(filePath));
+      var tsMatch = file.match(/ss_(\d+)\.png/);
+      if (tsMatch) form.append('captured_at', new Date(parseInt(tsMatch[1])).toISOString());
       await axios.post(SERVER_URL + '/api/agent/screenshot', form, {
         headers: Object.assign({ 'x-agent-token': AGENT_TOKEN }, form.getHeaders()),
         timeout: 30000
@@ -433,6 +435,7 @@ function scheduleScreenshot() {
         try {
           var form = new FormData();
           form.append('screenshot', fs.createReadStream(tmpFile));
+          form.append('captured_at', new Date().toISOString());
           await axios.post(SERVER_URL + '/api/agent/screenshot', form, {
             headers: Object.assign({ 'x-agent-token': AGENT_TOKEN }, form.getHeaders()),
             timeout: 30000
