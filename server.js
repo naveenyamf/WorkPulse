@@ -620,9 +620,9 @@ app.get('/api/dashboard/app-usage', requireLogin, async (req, res) => {
         per_app AS (
           SELECT
             app_name,
-            SUM(duration_seconds) as total_seconds,
-            SUM(CASE WHEN in_shift THEN duration_seconds ELSE 0 END) as shift_seconds,
-            ROUND(SUM(duration_seconds)/60.0) as app_minutes
+            COUNT(DISTINCT DATE_TRUNC('minute', recorded_at)) * 60 as total_seconds,
+            COUNT(DISTINCT CASE WHEN in_shift THEN DATE_TRUNC('minute', recorded_at) END) * 60 as shift_seconds,
+            COUNT(DISTINCT DATE_TRUNC('minute', recorded_at)) as app_minutes
           FROM normalized
           GROUP BY app_name
         ),
