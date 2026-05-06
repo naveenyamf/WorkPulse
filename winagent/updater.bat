@@ -6,7 +6,7 @@ cls
 
 echo.
 echo  ================================================
-echo   WorkPulse Agent Updater v2.3
+echo   WorkPulse Agent Updater v2.7
 echo  ================================================
 echo.
 
@@ -50,7 +50,7 @@ taskkill /F /IM wscript.exe >nul 2>&1
 timeout /t 2 /nobreak >nul
 
 echo  Downloading latest agent...
-powershell -NoProfile -Command "Invoke-WebRequest -Uri '!SERVER_URL!/download/agent-exe' -OutFile 'C:\WorkPulse\WorkPulse-Agent.exe' -UseBasicParsing" >nul 2>&1
+powershell -NoProfile -Command "Invoke-WebRequest -Uri '!SERVER_URL!/download/WorkPulseAgent.exe' -OutFile 'C:\WorkPulse\WorkPulse-Agent.exe' -UseBasicParsing" >nul 2>&1
 if not exist "C:\WorkPulse\WorkPulse-Agent.exe" (
     echo  ERROR: Failed to download agent. Check server connection.
     pause
@@ -58,35 +58,30 @@ if not exist "C:\WorkPulse\WorkPulse-Agent.exe" (
 )
 echo  Agent downloaded OK
 
-echo  Downloading latest launcher...
-powershell -NoProfile -Command "Invoke-WebRequest -Uri '!SERVER_URL!/download/launch-vbs' -OutFile 'C:\WorkPulse\launch.vbs' -UseBasicParsing" >nul 2>&1
-echo  Launcher updated
+echo  Recreating silent launcher...
+powershell -NoProfile -Command "$a='Set oShell = CreateObject(' + [char]34 + 'WScript.Shell' + [char]34 + ')'; $b='oShell.CurrentDirectory = ' + [char]34 + 'C:\WorkPulse' + [char]34; $c='oShell.Run ' + [char]34 + 'C:\WorkPulse\WorkPulse-Agent.exe' + [char]34 + ', 0, False'; [System.IO.File]::WriteAllLines('C:\WorkPulse\launch.vbs',@($a,$b,$c))"
 
 echo  Trusting agent executable...
 powershell -NoProfile -Command "Unblock-File -Path 'C:\WorkPulse\WorkPulse-Agent.exe'" >nul 2>&1
 powershell -NoProfile -Command "Add-MpPreference -ExclusionPath 'C:\WorkPulse\'" >nul 2>&1
 
-echo  Updating Task Scheduler entry...
-schtasks /delete /tn "WorkPulseAgent" /f >nul 2>&1
-schtasks /create /tn "WorkPulseAgent" /tr "wscript.exe //B \"C:\WorkPulse\launch.vbs\"" /sc onlogon /rl highest /f >nul 2>&1
+echo  Updating auto-start...
+schtasks /delete /tn "WorkPulseAgent"    /f >nul 2>&1
+schtasks /delete /tn "WorkPulseWatchdog" /f >nul 2>&1
+sc stop WorkPulse_Service >nul 2>&1
+sc delete WorkPulse_Service >nul 2>&1
+reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "WorkPulseAgent" /t REG_SZ /d "wscript.exe //B \"C:\WorkPulse\launch.vbs\"" /f >nul 2>&1
+echo  Auto-start configured OK
 
 echo  Starting updated agent...
-schtasks /run /tn "WorkPulseAgent" >nul 2>&1
-timeout /t 4 /nobreak >nul
+wscript.exe //B "C:\WorkPulse\launch.vbs"
+timeout /t 5 /nobreak >nul
 
 tasklist /FI "IMAGENAME eq WorkPulse-Agent.exe" 2>nul | find /I "WorkPulse-Agent.exe" >nul
 if %errorlevel%==0 (
     echo  Agent is running!
 ) else (
-    echo  Starting via direct launch...
-    start "" /B cmd /c "cd /d C:\WorkPulse && WorkPulse-Agent.exe >> C:\WorkPulse\agent.log 2>nul"
-    timeout /t 3 /nobreak >nul
-    tasklist /FI "IMAGENAME eq WorkPulse-Agent.exe" 2>nul | find /I "WorkPulse-Agent.exe" >nul
-    if %errorlevel%==0 (
-        echo  Agent started successfully!
-    ) else (
-        echo  WARNING: Agent will start automatically on next login.
-    )
+    echo  WARNING: Agent will start automatically on next login.
 )
 
 echo.

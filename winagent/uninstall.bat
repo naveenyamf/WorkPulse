@@ -6,7 +6,7 @@ cls
 
 echo.
 echo  ================================================
-echo   WorkPulse Agent Uninstaller v2.3
+echo   WorkPulse Agent Uninstaller v2.7
 echo  ================================================
 echo.
 
@@ -31,14 +31,16 @@ taskkill /F /IM WorkPulse-Agent.exe >nul 2>&1
 taskkill /F /IM wscript.exe >nul 2>&1
 timeout /t 2 /nobreak >nul
 
-echo  Removing Task Scheduler entry...
-schtasks /delete /tn "WorkPulseAgent" /f >nul 2>&1
-
-echo  Removing startup registry entries...
+echo  Removing auto-start entries...
+schtasks /delete /tn "WorkPulseAgent"    /f >nul 2>&1
+schtasks /delete /tn "WorkPulseWatchdog" /f >nul 2>&1
+sc stop WorkPulse_Service >nul 2>&1
+sc delete WorkPulse_Service >nul 2>&1
+reg delete "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "WorkPulseAgent" /f >nul 2>&1
+reg delete "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "WorkPulseAgent" /f >nul 2>&1
 reg delete "HKLM\Software\Microsoft\Windows\CurrentVersion\Run" /v "WorkPulse" /f >nul 2>&1
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "WorkPulse" /f >nul 2>&1
-reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "WorkPulseAgent" /f >nul 2>&1
-reg delete "HKLM\Software\Microsoft\Windows\CurrentVersion\Run" /v "WorkPulseAgent" /f >nul 2>&1
+del "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup\WorkPulse.lnk" >nul 2>&1
 
 echo  Notifying server to release machine binding...
 if not "!SERVER_URL!"=="" (
