@@ -113,7 +113,7 @@ function requireAdmin(req, res, next) {
 }
 
 function getAllowedEmployees(req) {
-  if (req.session.isUser && req.session.allowedEmployees) {
+  if (req.session.isUser && req.session.adminRole !== 'admin' && req.session.allowedEmployees) {
     return req.session.allowedEmployees;
   }
   return null; // null means all employees (admin)
@@ -860,8 +860,11 @@ app.get('/api/employees/:id/stats', requireLogin, async (req, res) => {
     const NONPROD = ['youtube','facebook','instagram','twitter','tiktok','netflix','reddit','whatsapp','telegram','snapchat','pinterest','tumblr','twitch'];
 
     function inShiftFn(recordedAt, shiftStart, shiftEnd) {
+      const tz = global.sysTimezone || 'Asia/Kolkata';
       const t = new Date(recordedAt);
-      const tM = t.getHours()*60+t.getMinutes();
+      const localTime = t.toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false });
+      const parts = localTime.split(':');
+      const tM = parseInt(parts[0])*60+parseInt(parts[1]);
       const s = shiftStart.split(':'); const sM=parseInt(s[0])*60+parseInt(s[1]);
       const e = shiftEnd.split(':'); const eM=parseInt(e[0])*60+parseInt(e[1]);
       return eM>sM ? (tM>=sM&&tM<eM) : (tM>=sM||tM<eM);
@@ -1009,7 +1012,7 @@ app.post('/api/dashboard-users', requireLogin, requireAdmin, async (req, res) =>
     const hash = await require('bcryptjs').hash(password, 10);
     const result = await pool.query(
       'INSERT INTO dashboard_users (name, email, password_hash, role, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING id, name, email, role',
-      [name, email, hash, role || 'user', req.session.adminId]
+      [name, email, hash, role || 'user', req.session.isUser ? null : req.session.adminId]
     );
     await auditLog(req, 'Monitoring User Created', name + ' (' + email + ') - Role: ' + (role||'user'));
     res.json(result.rows[0]);
@@ -2523,7 +2526,11 @@ async function generateReportJob(job) {
     const [sh,sm]=ss.slice(0,5).split(':').map(Number);
     const [eh,em]=se.slice(0,5).split(':').map(Number);
     const sM=sh*60+sm, eM=eh*60+em;
-    const dt=new Date(t); const tM=dt.getHours()*60+dt.getMinutes();
+    const tz = global.sysTimezone || 'Asia/Kolkata';
+    const dt = new Date(t);
+    const localTime = dt.toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false });
+    const parts = localTime.split(':');
+    const tM = parseInt(parts[0])*60+parseInt(parts[1]);
     return eM>sM ? (tM>=sM&&tM<eM) : (tM>=sM||tM<eM);
   }
   function addTitle(ws, text, cols) {
@@ -2771,18 +2778,23 @@ async function generateReportJob(job) {
   await pool.query("UPDATE report_jobs SET status='done', progress=100, filename=$1, file_path=$2, completed_at=NOW() WHERE id=$3", [filename, filePath, job.id]);
   console.log('[Report Job] Done:', filename);
 
-    // Send email notification to admin
+    // Send email — use override_email if set (exclusive), else admin account email
   try {
-    const adminRow = await pool.query('SELECT email FROM admins WHERE id=$1', [job.admin_id]);
-    const adminEmail = adminRow.rows[0]?.email;
-    if (adminEmail) {
+    let recipientEmail;
+    if (job.override_email && job.override_email.trim()) {
+      recipientEmail = job.override_email.trim();
+    } else {
+      const adminRow = await pool.query('SELECT email FROM admins WHERE id=$1', [job.admin_id]);
+      recipientEmail = adminRow.rows[0]?.email;
+    }
+    if (recipientEmail) {
       const mailer = await getMailer();
       const fromDate2 = pgDateToStr ? pgDateToStr(job.from_date) : job.from_date.toISOString().split('T')[0];
       const toDate2   = pgDateToStr ? pgDateToStr(job.to_date) : job.to_date.toISOString().split('T')[0];
       const smtpUser = (await pool.query('SELECT smtp_user FROM email_config LIMIT 1')).rows[0]?.smtp_user;
       await mailer.sendMail({
         from: `"WorkPulse" <${smtpUser}>`,
-        to: adminEmail,
+        to: recipientEmail,
         subject: `WorkPulse Report Ready — ${job.employee_name} (${fromDate2} to ${toDate2})`,
         html: `<div style="font-family:sans-serif;padding:24px;max-width:500px">
           <h2 style="color:#00e5ff;margin-bottom:8px">📊 Your Report is Ready</h2>
@@ -2799,7 +2811,7 @@ async function generateReportJob(job) {
           path: filePath
         }]
       });
-      console.log('[Report Job] Email sent to:', adminEmail);
+      console.log('[Report Job] Email sent to:', recipientEmail);
     }
   } catch(emailErr) {
     console.error('[Report Job] Email notification failed:', emailErr.message);
@@ -2998,8 +3010,8 @@ schedule.scheduleJob('*/5 * * * *', async function() {
           fromDate = fmtLocal(yesterday);
         }
         await pool.query(
-          "INSERT INTO report_jobs (admin_id, admin_name, employee_id, employee_name, from_date, to_date, status, progress) VALUES ($1,$2,$3,$4,$5,$6,'queued',0)",
-          [sched.admin_id, sched.admin_name, sched.employee_id, sched.employee_name, fromDate, toDate]
+          "INSERT INTO report_jobs (admin_id, admin_name, employee_id, employee_name, from_date, to_date, status, progress, override_email) VALUES ($1,$2,$3,$4,$5,$6,'queued',0,$7)",
+          [sched.admin_id, sched.admin_name, sched.employee_id, sched.employee_name, fromDate, toDate, sched.email||null]
         );
         const nextRun = calcNextRun(sched.frequency, sched.day_of_week, sched.day_of_month, sched.send_hour||8);
         await pool.query('UPDATE report_schedules SET last_run=NOW(), next_run=$1 WHERE id=$2', [nextRun, sched.id]);
