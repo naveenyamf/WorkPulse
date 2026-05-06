@@ -911,7 +911,7 @@ app.get('/api/employees/:id/stats', requireLogin, async (req, res) => {
     // SYSTEM EVENTS — first seen / last seen
     let firstSeen=null, lastSeen=null;
     let sysActiveMins=0, sysOnShiftMins=0, sysOffShiftMins=0;
-    const tz = 'Asia/Kolkata';
+    const tz = global.sysTimezone || 'Asia/Kolkata';
     // Get all system events for the day to calculate active/on-shift/off-shift time
     const sysAllRows = await pool.query(
       "SELECT event_type, recorded_at FROM system_events WHERE employee_id=$1"+dateFilter+" ORDER BY recorded_at ASC", params
@@ -933,8 +933,10 @@ app.get('/api/employees/:id/stats', requireLogin, async (req, res) => {
           sysActiveMins += durMins;
           // Check if in shift
           if(emp.shift_start && emp.shift_end) {
-            const t = sessStart; const h=t.getHours(); const m=t.getMinutes();
-            const tMins=h*60+m;
+            const tz2 = global.sysTimezone || 'Asia/Kolkata';
+            const localTime = sessStart.toLocaleTimeString('en-GB', { timeZone: tz2, hour: '2-digit', minute: '2-digit', hour12: false });
+            const tParts = localTime.split(':');
+            const tMins = parseInt(tParts[0])*60+parseInt(tParts[1]);
             const [sh,sm]=emp.shift_start.split(':').map(Number); const sMins=sh*60+sm;
             const [eh,em]=emp.shift_end.split(':').map(Number);   const eMins=eh*60+em;
             const inShift = eMins>sMins?(tMins>=sMins&&tMins<eMins):(tMins>=sMins||tMins<eMins);
@@ -2616,8 +2618,8 @@ async function generateReportJob(job) {
       const sysQ=await pool.query(
         `SELECT MIN(recorded_at) as first_seen, MAX(recorded_at) as last_seen FROM system_events WHERE employee_id=$1 AND (recorded_at AT TIME ZONE '${tz}')::date=$2::date`,
         [emp.id, date]);
-      const firstSeen=sysQ.rows[0]?.first_seen?new Date(sysQ.rows[0].first_seen).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'}):'—';
-      const lastSeen=sysQ.rows[0]?.last_seen?new Date(sysQ.rows[0].last_seen).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'}):'—';
+      const firstSeen=sysQ.rows[0]?.first_seen?new Date(sysQ.rows[0].first_seen).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:global.sysTimezone||'Asia/Kolkata'}):'—';
+      const lastSeen=sysQ.rows[0]?.last_seen?new Date(sysQ.rows[0].last_seen).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:global.sysTimezone||'Asia/Kolkata'}):'—';
       const row=ws1.addRow({name:emp.name,dept:emp.department||'—',date,
         roster:shift.name||'Not Assigned',hours:ss&&se?ss+' – '+se:'—',
         temp:shift.isTemp?'⚡ Yes':'No',firstSeen,lastSeen,
@@ -2750,8 +2752,8 @@ async function generateReportJob(job) {
         const shift=getShift(parseInt(eid),date);
         const ss=shift.start?.slice(0,5),se=shift.end?.slice(0,5);
         const onShift=inShift(sessStart.recorded_at,ss,se);
-        const startTime=new Date(sessStart.recorded_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'});
-        const endTime=sessEnd?new Date(sessEnd.recorded_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'}):'Active';
+        const startTime=new Date(sessStart.recorded_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:global.sysTimezone||'Asia/Kolkata'});
+        const endTime=sessEnd?new Date(sessEnd.recorded_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:global.sysTimezone||'Asia/Kolkata'}):'Active';
         const endLabel=sessEnd?EL[sessEnd.event_type]||sessEnd.event_type:'—';
         let dur='Active';
         if(sessEnd){ const dm=Math.round((new Date(sessEnd.recorded_at)-new Date(sessStart.recorded_at))/60000); dur=fmtMins(dm); }
