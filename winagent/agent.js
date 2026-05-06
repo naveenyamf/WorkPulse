@@ -6,7 +6,7 @@ const path = require('path');
 const os = require('os');
 const { execSync, exec } = require('child_process');
 
-const AGENT_VERSION = '2.6.5';
+const AGENT_VERSION = '3.0.1';
 const CONFIG_FILE = 'C:\\WorkPulse\\config.json';
 let SERVER_URL = 'http://10.10.11.251';
 
@@ -16,7 +16,21 @@ let appStartTime = Date.now();
 var lastIdleState = false;
 var lastLockState = false;
 
-// Offline queue - stores failed requests for retry
+const LOG_FILE = 'C:\\WorkPulse\\agent.log';
+const MAX_LOG_SIZE = 1 * 1024 * 1024;
+
+function log(msg) {
+  const line = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+  try {
+    if (fs.existsSync(LOG_FILE) && fs.statSync(LOG_FILE).size > MAX_LOG_SIZE) {
+      fs.writeFileSync(LOG_FILE, line + '\n');
+    } else {
+      fs.appendFileSync(LOG_FILE, line + '\n');
+    }
+  } catch(e) {}
+  process.stdout.write(line + '\n');
+}
+
 var offlineQueue = [];
 var isRetrying = false;
 var QUEUE_FILE = 'C:\\WorkPulse\\offline_queue.json';
@@ -29,7 +43,7 @@ function loadQueue() {
   try {
     if (fs.existsSync(QUEUE_FILE)) {
       offlineQueue = JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8')) || [];
-      console.log('[Queue] Loaded ' + offlineQueue.length + ' offline items');
+      log('[Queue] Loaded ' + offlineQueue.length + ' offline items');
     }
   } catch(e) { offlineQueue = []; }
 }
@@ -44,15 +58,12 @@ async function retryQueue() {
         headers: Object.assign({ 'x-agent-token': AGENT_TOKEN }, item.headers||{}),
         timeout: 10000
       });
-    } catch(e) {
-      remaining.push(item);
-    }
+    } catch(e) { remaining.push(item); }
   }
   offlineQueue = remaining;
   saveQueue();
   isRetrying = false;
-  if (offlineQueue.length === 0) console.log('[Queue] All offline items synced');
-  // Also retry pending screenshots
+  if (offlineQueue.length === 0) log('[Queue] All offline items synced');
   retryPendingScreenshots();
 }
 
@@ -61,7 +72,7 @@ async function retryPendingScreenshots() {
   if (!fs.existsSync(pendingDir)) return;
   var files = fs.readdirSync(pendingDir).filter(function(f){ return f.endsWith('.png'); });
   if (!files.length) return;
-  console.log('[SS] Retrying ' + files.length + ' pending screenshots...');
+  log('[SS] Retrying ' + files.length + ' pending screenshots...');
   for (var file of files) {
     var filePath = pendingDir + '\\' + file;
     try {
@@ -72,10 +83,8 @@ async function retryPendingScreenshots() {
         timeout: 30000
       });
       fs.unlinkSync(filePath);
-      console.log('[SS] Retry sent: ' + file);
-    } catch(e) {
-      break; // still offline, stop trying
-    }
+      log('[SS] Retry sent: ' + file);
+    } catch(e) { break; }
   }
 }
 
@@ -85,33 +94,31 @@ async function safePost(path, body, headers) {
       headers: Object.assign({ 'x-agent-token': AGENT_TOKEN }, headers||{}),
       timeout: 10000
     });
-    // If successful, retry any queued items
     if (offlineQueue.length > 0) retryQueue();
   } catch(e) {
-    // Queue for later retry
     if (offlineQueue.length < 500) {
       offlineQueue.push({ path: path, body: body, headers: headers||{} });
       saveQueue();
     }
   }
 }
-var systemCheckInterval = 60; // seconds
+
+var systemCheckInterval = 60;
 
 function loadConfig() {
   try {
     const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
     AGENT_TOKEN = config.token;
     if (config.server_url) SERVER_URL = config.server_url;
-    console.log('WorkPulse Agent v' + AGENT_VERSION);
-    console.log('Agent started for:', config.email);
-    console.log('Server:', SERVER_URL);
+    log('WorkPulse Agent v' + AGENT_VERSION);
+    log('Agent started for: ' + config.email);
+    log('Server: ' + SERVER_URL);
     return true;
   } catch (e) {
-    console.error('Config not found at', CONFIG_FILE);
+    log('Config not found at ' + CONFIG_FILE);
     return false;
   }
 }
-
 
 function runPS(script) {
   try {
@@ -120,12 +127,13 @@ function runPS(script) {
       'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ' + encoded,
       { timeout: 8000, windowsHide: true }
     ).toString().trim();
-  } catch (e) {
-    return '';
-  }
+  } catch (e) { return ''; }
 }
 
-function getActiveWindow() {
+var cachedActiveWindow = 'Desktop';
+var lastPolledWindow = 'Desktop';
+
+setInterval(function() {
   try {
     var psScript = [
       'Add-Type @"',
@@ -152,31 +160,36 @@ function getActiveWindow() {
       '  }',
       '} catch { Write-Output "Desktop" }'
     ].join('\n');
-    const result = runPS(psScript);
-    return result || 'Desktop';
-  } catch (e) {
-    return 'Desktop';
-  }
+    var result = runPS(psScript);
+    if (result && result !== 'Desktop' && result !== '') {
+      if (result === lastPolledWindow) {
+        cachedActiveWindow = result;
+      }
+      lastPolledWindow = result;
+    }
+  } catch(e) {}
+}, 3000);
+
+function getActiveWindow() {
+  return cachedActiveWindow;
 }
 
-var lastEventCheck = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24hr lookback on startup
+var lastEventCheck = new Date(Date.now() - 24 * 60 * 60 * 1000);
 var lastFullBackfill = Date.now();
 
 async function checkWindowsEvents() {
   try {
-    // Every 6 hours do a full 24hr backfill to catch missed events
     var now = Date.now();
     if (now - lastFullBackfill > 6 * 60 * 60 * 1000) {
       lastEventCheck = new Date(now - 24 * 60 * 60 * 1000);
       lastFullBackfill = now;
-      console.log('[Events] 6hr backfill - checking last 24hrs');
+      log('[Events] 6hr backfill - checking last 24hrs');
     }
     var since = lastEventCheck.toISOString();
     lastEventCheck = new Date();
     var script = `
 $since = [DateTime]::Parse('${since}').ToLocalTime()
 $events = @()
-# Security log - lock/unlock (needs admin)
 try {
   $lock = Get-WinEvent -FilterHashtable @{LogName='Security';Id=4800,4801;StartTime=$since} -ErrorAction SilentlyContinue
   foreach($e in $lock) {
@@ -184,7 +197,6 @@ try {
     $events += [PSCustomObject]@{type=$type;time=$e.TimeCreated.ToUniversalTime().ToString('o')}
   }
 } catch {}
-# System log - sleep/wake/shutdown
 try {
   $sys = Get-WinEvent -FilterHashtable @{LogName='System';Id=1,12,13,42,6006,6008;StartTime=$since} -ErrorAction SilentlyContinue
   foreach($e in $sys) {
@@ -230,9 +242,7 @@ public class IdleTimer {
 [IdleTimer]::GetIdle()`;
     const result = runPS(script);
     return parseInt(result) || 0;
-  } catch (e) {
-    return 0;
-  }
+  } catch (e) { return 0; }
 }
 
 function getBrowserActivity() {
@@ -256,26 +266,21 @@ if ($result.Count -eq 0) { Write-Output "[]" } else {
     let items;
     try { items = JSON.parse(result); } catch(e) { return []; }
     const arr = Array.isArray(items) ? items : [items];
-return arr.filter(function(i){ return i && i.url && i.url.length > 2; }).map(function(i){
+    return arr.filter(function(i){ return i && i.url && i.url.length > 2; }).map(function(i){
       var cleanUrl = i.url;
-var urlInTitle = i.url.match(/https?:\/\/(?:www\.)?([a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2})?)/);
-if (urlInTitle) {
-  cleanUrl = urlInTitle[1].toLowerCase();
-} else {
-  // Try to extract domain if title starts with domain-like pattern
-  var domainMatch = i.url.match(/^([a-zA-Z0-9][a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2})?)/);
-  if (domainMatch) cleanUrl = domainMatch[1].toLowerCase();
-}
-
+      var urlInTitle = i.url.match(/https?:\/\/(?:www\.)?([a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2})?)/);
+      if (urlInTitle) {
+        cleanUrl = urlInTitle[1].toLowerCase();
+      } else {
+        var domainMatch = i.url.match(/^([a-zA-Z0-9][a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2})?)/);
+        if (domainMatch) cleanUrl = domainMatch[1].toLowerCase();
+      }
       return { url: cleanUrl, browser: i.browser || "Browser", seconds: 60 };
     });
   } catch(e) { return []; }
 }
 
-
-
 function getAllApps(activeApp) {
-  // Only track foreground active app — not background/minimized apps
   if (!activeApp || activeApp === 'Desktop' || activeApp === '') return [];
   return [{ name: activeApp, seconds: 20 }];
 }
@@ -283,7 +288,7 @@ function getAllApps(activeApp) {
 function takeScreenshot(callback) {
   try {
     const tmpFile = path.join(os.tmpdir(), 'wp_screenshot.png').replace(/\\/g, '/');
-const script = `
+    const script = `
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 Add-Type @"
@@ -328,9 +333,6 @@ foreach ($screen in $screens) {
 $bitmap.Save("${tmpFile}")
 $graphics.Dispose()
 $bitmap.Dispose()`;
-
-
-
     const encoded = Buffer.from(script, 'utf16le').toString('base64');
     exec(
       'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ' + encoded,
@@ -342,18 +344,14 @@ $bitmap.Dispose()`;
         else callback(new Error('Screenshot not created'));
       }
     );
-  } catch(e) {
-    callback(e);
-  }
+  } catch(e) { callback(e); }
 }
 
-// Check Windows Event Log every 5 minutes
 schedule.scheduleJob('*/5 * * * *', async function() {
   if (!AGENT_TOKEN) return;
   await checkWindowsEvents();
 });
 
-// Heartbeat every 20 seconds
 schedule.scheduleJob('*/20 * * * * *', async function() {
   if (!AGENT_TOKEN) return;
   try {
@@ -361,41 +359,32 @@ schedule.scheduleJob('*/20 * * * * *', async function() {
     const idleSeconds = getIdleSeconds();
     const isIdle = idleSeconds > 300;
 
-    // Detect Win+L lock by checking if LockApp has a visible main window
-    const lockCheckScript = `
-$lockProc = Get-Process -Name 'LockApp' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 }
-$logonProc = Get-Process -Name 'LogonUI' -ErrorAction SilentlyContinue
-if ($lockProc -or $logonProc) { Write-Output 'locked' } else { Write-Output 'unlocked' }
-`;
+    const lockCheckScript = [
+      '$lockProc = Get-Process -Name "LockApp" -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 }',
+      '$logonProc = Get-Process -Name "LogonUI" -ErrorAction SilentlyContinue',
+      'if ($lockProc -or $logonProc) { Write-Output "locked" } else { Write-Output "unlocked" }'
+    ].join('\n');
     const lockState = runPS(lockCheckScript).trim();
     const isLocked = (lockState === 'locked');
+
     if (isLocked && !lastLockState) {
-      try {
-        await safePost('/api/agent/system-event', { event_type: 'locked' });
-        console.log('[Lock] Screen locked detected via LockApp.exe');
-      } catch(e) {}
+      await safePost('/api/agent/system-event', { event_type: 'locked' });
+      log('[Lock] Screen locked');
     }
     if (!isLocked && lastLockState) {
-      try {
-        await safePost('/api/agent/system-event', { event_type: 'unlocked' });
-        console.log('[Lock] Screen unlocked detected');
-      } catch(e) {}
+      await safePost('/api/agent/system-event', { event_type: 'unlocked' });
+      log('[Lock] Screen unlocked');
     }
     lastLockState = isLocked;
 
-// Detect idle/away transition
     if (!lastIdleState && isIdle && idleSeconds > 600) {
-      try {
-        await safePost('/api/agent/system-event', { event_type: 'idle_lock' });
-      } catch(e) {}
+      await safePost('/api/agent/system-event', { event_type: 'idle_lock' });
     }
     lastIdleState = isIdle;
 
-    // Don't track URLs or apps when screen is locked
     const urls = isLocked ? [] : getBrowserActivity().map(function(u) {
       return Object.assign({}, u, { idle_seconds: isIdle ? idleSeconds : 0 });
     });
-    // Only track app if not idle and not locked
     const apps = (isIdle || isLocked) ? [] : getAllApps(app);
 
     await safePost('/api/agent/heartbeat', {
@@ -406,21 +395,16 @@ if ($lockProc -or $logonProc) { Write-Output 'locked' } else { Write-Output 'unl
       version: AGENT_VERSION
     });
 
-    if (isLocked && !lastLockState) {
-      console.log('[' + new Date().toLocaleTimeString() + '] [LOCKED] System Locked');
-    } else if (!isLocked && lastLockState) {
-      console.log('[' + new Date().toLocaleTimeString() + '] [UNLOCKED] System Unlocked - ' + app);
-    } else if (isLocked) {
-      console.log('[' + new Date().toLocaleTimeString() + '] [LOCKED] System Locked - Idle: ' + idleSeconds + 's');
+    if (isLocked) {
+      log('[LOCKED] System Locked - Idle: ' + idleSeconds + 's');
     } else {
-      console.log('[' + new Date().toLocaleTimeString() + '] OK - ' + app + ' - Idle: ' + idleSeconds + 's - URLs: ' + urls.length + ' - Apps: ' + apps.length);
+      log('OK - ' + app + ' - Idle: ' + idleSeconds + 's - URLs: ' + urls.length + ' - Apps: ' + apps.length);
     }
   } catch (e) {
-    console.error('Heartbeat error:', e.message);
+    log('Heartbeat error: ' + e.message);
   }
 });
 
-// Dynamic screenshot interval
 var screenshotInterval = 5;
 
 async function fetchSettings() {
@@ -430,7 +414,7 @@ async function fetchSettings() {
       timeout: 5000
     });
     screenshotInterval = res.data.screenshot_interval || 5;
-    console.log('Screenshot interval: ' + screenshotInterval + ' mins');
+    log('Screenshot interval: ' + screenshotInterval + ' mins');
   } catch(e) {}
 }
 
@@ -438,13 +422,13 @@ function scheduleScreenshot() {
   setTimeout(async function() {
     if (!AGENT_TOKEN) { scheduleScreenshot(); return; }
     if (lastLockState) {
-      console.log('[SS] Skipped - screen locked');
+      log('[SS] Skipped - screen locked');
       await fetchSettings();
       scheduleScreenshot();
       return;
     }
     takeScreenshot(async function(err, tmpFile) {
-	console.log('[SS] Taking screenshot...');
+      log('[SS] Taking screenshot...');
       if (!err) {
         try {
           var form = new FormData();
@@ -454,19 +438,19 @@ function scheduleScreenshot() {
             timeout: 30000
           });
           fs.unlinkSync(tmpFile);
-		console.log('[SS] Screenshot sent OK - ' + new Date().toLocaleTimeString());
-		if (offlineQueue.length > 0) retryQueue();
+          log('[SS] Screenshot sent OK - ' + new Date().toLocaleTimeString());
+          if (offlineQueue.length > 0) retryQueue();
         } catch(e) {
           var pendingDir = 'C:\\WorkPulse\\pending_screenshots';
           try {
-            if (!fs.existsSync(pendingDir)) fs.mkdirSync(pendingDir,{recursive:true});
+            if (!fs.existsSync(pendingDir)) fs.mkdirSync(pendingDir, { recursive: true });
             var pendingFile = pendingDir + '\\ss_' + Date.now() + '.png';
             fs.renameSync(tmpFile, pendingFile);
-            console.log('[SS] Offline - saved for retry: ' + pendingFile);
-          } catch(e2) { console.error('Screenshot upload error:', e.message); }
+            log('[SS] Offline - saved for retry: ' + pendingFile);
+          } catch(e2) { log('Screenshot upload error: ' + e.message); }
         }
       } else {
-		console.error('Screenshot error:', err.message, err.stack||'');
+        log('Screenshot error: ' + err.message);
       }
       await fetchSettings();
       scheduleScreenshot();
@@ -476,13 +460,12 @@ function scheduleScreenshot() {
 
 if (loadConfig()) {
   loadQueue();
-  console.log('WorkPulse Agent running...');
-  console.log('Server: ' + SERVER_URL);
-axios.post(SERVER_URL + '/api/agent/system-event',
+  log('WorkPulse Agent running...');
+  log('Server: ' + SERVER_URL);
+  axios.post(SERVER_URL + '/api/agent/system-event',
     { event_type: 'startup' },
     { headers: { 'x-agent-token': AGENT_TOKEN }, timeout: 5000 }
   ).catch(function(){});
-
   fetchSettings().then(function() {
     scheduleScreenshot();
   });
