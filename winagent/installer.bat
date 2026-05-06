@@ -102,11 +102,13 @@ if exist "C:\WorkPulse\nssm.exe" (
     "C:\WorkPulse\nssm.exe" stop WorkPulse_Service >nul 2>&1
     "C:\WorkPulse\nssm.exe" remove WorkPulse_Service confirm >nul 2>&1
 )
-
-echo  Setting up Task Scheduler...
+echo  Setting up auto-start...
 schtasks /delete /tn "WorkPulseAgent"    /f >nul 2>&1
-
-schtasks /create /tn "WorkPulseAgent"    /tr "wscript.exe //B \"C:\WorkPulse\launch.vbs\"" /sc onlogon /rl highest /f >nul
+schtasks /delete /tn "WorkPulseWatchdog" /f >nul 2>&1
+sc stop WorkPulse_Service >nul 2>&1
+sc delete WorkPulse_Service >nul 2>&1
+reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "WorkPulseAgent" /t REG_SZ /d "wscript.exe //B \"C:\WorkPulse\launch.vbs\"" /f >nul 2>&1
+echo  Auto-start configured OK
 
 powershell -NoProfile -Command "$t=Get-ScheduledTask -TaskName 'WorkPulseAgent'; $t.Settings.DisallowStartIfOnBatteries=$false; $t.Settings.StopIfGoingOnBatteries=$false; Set-ScheduledTask -InputObject $t" >nul 2>&1
 
@@ -144,7 +146,7 @@ echo   Employee : !EMPLOYEE_EMAIL!
 echo   Server   : !SERVER_URL!
 echo   Machine  : !MACHINE_ID!
 echo   Location : C:\WorkPulse\
-echo   Auto-start: On every login (Task Scheduler)
+echo   Auto-start: Registry Run key (all users)
 echo   Log file : C:\WorkPulse\agent.log
 echo.
 pause
