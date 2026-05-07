@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { execSync, exec } = require('child_process');
+const activeWin = require('active-win');
 
 const AGENT_VERSION = '3.0.1';
 const CONFIG_FILE = 'C:\\WorkPulse\\config.json';
@@ -79,7 +80,7 @@ async function retryPendingScreenshots() {
       var form = new FormData();
       form.append('screenshot', fs.createReadStream(filePath));
       var tsMatch = file.match(/ss_(\d+)\.png/);
-      if (tsMatch) form.append('captured_at', new Date(parseInt(tsMatch[1])).toISOString());
+      if (tsMatch) { var ts = parseInt(tsMatch[1]); form.append('captured_at', new Date(ts + (5*60+30)*60*1000).toISOString().replace('Z', '+05:30')); }
       await axios.post(SERVER_URL + '/api/agent/screenshot', form, {
         headers: Object.assign({ 'x-agent-token': AGENT_TOKEN }, form.getHeaders()),
         timeout: 30000
@@ -175,6 +176,7 @@ setInterval(function() {
 function getActiveWindow() {
   return cachedActiveWindow;
 }
+
 
 var lastEventCheck = new Date(Date.now() - 24 * 60 * 60 * 1000);
 var lastFullBackfill = Date.now();
@@ -435,7 +437,7 @@ function scheduleScreenshot() {
         try {
           var form = new FormData();
           form.append('screenshot', fs.createReadStream(tmpFile));
-          form.append('captured_at', new Date().toISOString());
+          form.append('captured_at', new Date(Date.now() + (5*60+30)*60*1000).toISOString().replace('Z', '+05:30'));
           await axios.post(SERVER_URL + '/api/agent/screenshot', form, {
             headers: Object.assign({ 'x-agent-token': AGENT_TOKEN }, form.getHeaders()),
             timeout: 30000
