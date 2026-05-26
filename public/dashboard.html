@@ -4158,14 +4158,14 @@ async function loadFlaggedPage(page){
       renderFlagPagination2();
       return;
     }
-    grid.innerHTML = rows.map(function(s){
-      return '<div class="ss-card flagged" onclick="viewFlaggedPage('+s.id+')" oncontextmenu="showFlagCtxMenu2(event,'+s.id+')">'+
+    grid.innerHTML = rows.map(function(s,i){
+      return '<div class="ss-card flagged" style="animation:fadeSlideIn 0.3s cubic-bezier(0.4,0,0.2,1) '+(i*0.04)+'s both" onclick="viewFlaggedPage('+s.id+')" oncontextmenu="showFlagCtxMenu2(event,'+s.id+')">'+
         '<div style="height:130px;position:relative;background:var(--bg);overflow:hidden">'+
-        '<img src="/screenshots/'+s.filename+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.onerror=null;this.style.display=\'none\'"/>'+
+        '<img src="/screenshots/'+s.filename+'" style="width:100%;height:100%;object-fit:cover;display:block;transition:transform 0.3s ease" onerror="this.onerror=null;this.style.display=\'none\'"/>'+
         '<div style="position:absolute;top:6px;right:6px;background:#ef4444;color:#fff;font-size:9px;padding:2px 6px;border-radius:3px;font-weight:700">FLAGGED</div>'+
         '</div>'+
         '<div style="padding:8px 10px;background:#111418">'+
-        '<div style="color:#ef4444;font-size:11px;font-weight:600">'+s.employee_name+'</div>'+
+        '<div style="color:#00e5ff;font-size:11px;font-weight:600">'+s.employee_name+'</div>'+
         '<div style="color:#64748b;font-size:10px;margin-top:2px">'+new Date(s.recorded_at).toLocaleString()+'</div>'+
         '</div></div>';
     }).join('');
@@ -4195,6 +4195,11 @@ function renderFlagPagination2(){
 }
 
 function viewFlaggedPage(id){
+  // Use the same full-featured viewer as All Screenshots
+  ssCache = flaggedCache2;
+  viewScreenshot(id);
+}
+function viewFlaggedPage_old(id){
   var idx = flaggedCache2.findIndex(function(x){ return x.id === id; });
   if(idx < 0) return;
   var s = flaggedCache2[idx];
