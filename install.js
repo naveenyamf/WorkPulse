@@ -119,20 +119,21 @@ router.post('/run', async (req, res) => {
       { name: 'admins',               sql: `CREATE TABLE IF NOT EXISTS admins (id SERIAL PRIMARY KEY, name VARCHAR(200) NOT NULL, email VARCHAR(200) UNIQUE NOT NULL, password_hash VARCHAR(300) NOT NULL, role VARCHAR(20) DEFAULT 'admin', created_at TIMESTAMPTZ DEFAULT NOW())` },
       { name: 'dashboard_users',      sql: `CREATE TABLE IF NOT EXISTS dashboard_users (id SERIAL PRIMARY KEY, name VARCHAR(200) NOT NULL, email VARCHAR(200) UNIQUE NOT NULL, password_hash VARCHAR(300) NOT NULL, role VARCHAR(20) DEFAULT 'user', active BOOLEAN DEFAULT true, created_by INTEGER, created_at TIMESTAMPTZ DEFAULT NOW())` },
       { name: 'user_employee_access', sql: `CREATE TABLE IF NOT EXISTS user_employee_access (user_id INTEGER NOT NULL REFERENCES dashboard_users(id) ON DELETE CASCADE, employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE, PRIMARY KEY (user_id, employee_id))` },
-      { name: 'alerts',               sql: `CREATE TABLE IF NOT EXISTS alerts (id SERIAL PRIMARY KEY, employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE, message TEXT, severity VARCHAR(20) DEFAULT 'medium', resolved BOOLEAN DEFAULT false, created_at TIMESTAMPTZ DEFAULT NOW())` },
+      { name: 'alerts',               sql: `CREATE TABLE IF NOT EXISTS alerts (id SERIAL PRIMARY KEY, employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE, message TEXT, severity VARCHAR(20) DEFAULT 'medium', resolved BOOLEAN DEFAULT false, admin_id INTEGER, rule_id INTEGER, rule_name VARCHAR(200), created_at TIMESTAMPTZ DEFAULT NOW())` },
       { name: 'audit_log',            sql: `CREATE TABLE IF NOT EXISTS audit_log (id SERIAL PRIMARY KEY, admin_id INTEGER, admin_name VARCHAR(200), action VARCHAR(200), details TEXT, created_at TIMESTAMPTZ DEFAULT NOW())` },
       { name: 'email_config',         sql: `CREATE TABLE IF NOT EXISTS email_config (id SERIAL PRIMARY KEY, smtp_host VARCHAR(200), smtp_port INTEGER DEFAULT 587, smtp_user VARCHAR(200), smtp_pass VARCHAR(500), smtp_from_name VARCHAR(100) DEFAULT 'WorkPulse', smtp_tls BOOLEAN DEFAULT true, mfa_enabled BOOLEAN DEFAULT false, updated_at TIMESTAMPTZ DEFAULT NOW())` },
       { name: 'otp_tokens',           sql: `CREATE TABLE IF NOT EXISTS otp_tokens (id SERIAL PRIMARY KEY, email VARCHAR(200) NOT NULL, otp VARCHAR(10) NOT NULL, purpose VARCHAR(20) DEFAULT 'mfa', expires_at TIMESTAMPTZ NOT NULL, used BOOLEAN DEFAULT false, created_at TIMESTAMPTZ DEFAULT NOW())` },
       { name: 'settings',             sql: `CREATE TABLE IF NOT EXISTS settings (id SERIAL PRIMARY KEY, key VARCHAR(100) UNIQUE NOT NULL, value TEXT, updated_at TIMESTAMPTZ DEFAULT NOW())` },
       { name: 'temp_shift_overrides', sql: `CREATE TABLE IF NOT EXISTS temp_shift_overrides (id SERIAL PRIMARY KEY, employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE, override_date DATE NOT NULL, roster_id INTEGER REFERENCES duty_rosters(id) ON DELETE SET NULL, is_day_off BOOLEAN DEFAULT false, created_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(employee_id, override_date))` },
       { name: 'report_jobs',          sql: `CREATE TABLE IF NOT EXISTS report_jobs (id SERIAL PRIMARY KEY, admin_id INTEGER, report_type VARCHAR(50), parameters JSONB, status VARCHAR(20) DEFAULT 'pending', result_path VARCHAR(500), created_at TIMESTAMPTZ DEFAULT NOW(), completed_at TIMESTAMPTZ)` },
-      { name: 'report_schedules',     sql: `CREATE TABLE IF NOT EXISTS report_schedules (id SERIAL PRIMARY KEY, admin_id INTEGER, report_type VARCHAR(50), frequency VARCHAR(20), recipients TEXT, parameters JSONB, enabled BOOLEAN DEFAULT true, last_run TIMESTAMPTZ, next_run TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW())` },
+      { name: 'report_schedules',     sql: `CREATE TABLE IF NOT EXISTS report_schedules (id SERIAL PRIMARY KEY, admin_id INTEGER, report_type VARCHAR(50), frequency VARCHAR(20), recipients TEXT, parameters JSONB, enabled BOOLEAN DEFAULT true, active BOOLEAN DEFAULT true, last_run TIMESTAMPTZ, next_run TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW())` },
       { name: 'alert_rules',          sql: `CREATE TABLE IF NOT EXISTS alert_rules (id SERIAL PRIMARY KEY, admin_id INTEGER, admin_name VARCHAR(200), name VARCHAR(200) NOT NULL, category VARCHAR(50) NOT NULL, condition VARCHAR(50) NOT NULL, value VARCHAR(200), employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL, employee_name VARCHAR(200), severity VARCHAR(20) DEFAULT 'medium', active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW())` },
       { name: 'site_categories',      sql: `CREATE TABLE IF NOT EXISTS site_categories (id SERIAL PRIMARY KEY, admin_id INTEGER, domain VARCHAR(255) NOT NULL, category VARCHAR(50) NOT NULL DEFAULT 'Neutral', created_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(admin_id, domain))` },
       { name: 'remembered_devices',   sql: `CREATE TABLE IF NOT EXISTS remembered_devices (id SERIAL PRIMARY KEY, admin_id INTEGER NOT NULL, token VARCHAR(200) UNIQUE NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(), expires_at TIMESTAMPTZ NOT NULL)` },
       { name: 'employee_groups',       sql: `CREATE TABLE IF NOT EXISTS employee_groups (id SERIAL PRIMARY KEY, name VARCHAR(200) NOT NULL UNIQUE, created_at TIMESTAMPTZ DEFAULT NOW())` },
       { name: 'group_employee_access', sql: `CREATE TABLE IF NOT EXISTS group_employee_access (id SERIAL PRIMARY KEY, group_id INTEGER REFERENCES employee_groups(id) ON DELETE CASCADE, employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE, UNIQUE(group_id, employee_id))` },
       { name: 'user_group_access',     sql: `CREATE TABLE IF NOT EXISTS user_group_access (id SERIAL PRIMARY KEY, user_id INTEGER REFERENCES dashboard_users(id) ON DELETE CASCADE, group_id INTEGER REFERENCES employee_groups(id) ON DELETE CASCADE, UNIQUE(user_id, group_id))` },
+      { name: 'sys_settings',          sql: `CREATE TABLE IF NOT EXISTS sys_settings (id SERIAL PRIMARY KEY, timezone VARCHAR(100) DEFAULT 'Asia/Kolkata', company_name VARCHAR(200) DEFAULT 'WorkPulse', date_format VARCHAR(20) DEFAULT 'DD/MM/YYYY', default_theme VARCHAR(20) DEFAULT 'system', updated_at TIMESTAMPTZ DEFAULT NOW())` },
     ];
 
     send(`Creating ${tables.length} tables…`, 'info', 15, 'Creating tables…');
@@ -161,6 +162,18 @@ router.post('/run', async (req, res) => {
       `CREATE INDEX IF NOT EXISTS idx_temp_overrides_emp     ON temp_shift_overrides (employee_id, override_date)`,
     ]) await client.query(idx);
     send('✓ Indexes created', 'ok', 66, 'Indexes done');
+
+    // Set DB timezone to Asia/Kolkata (fixes shift in/off-shift calculation)
+    send('Setting database timezone…', 'info', 67, 'Timezone…');
+    await client.query(`ALTER DATABASE ${db.name} SET timezone TO 'Asia/Kolkata'`);
+    send('✓ DB timezone set to Asia/Kolkata', 'ok', 68, 'Timezone done');
+
+    // Seed sys_settings default row
+    const sc = await client.query('SELECT COUNT(*) FROM sys_settings');
+    if (parseInt(sc.rows[0].count) === 0) {
+      await client.query(`INSERT INTO sys_settings (timezone, company_name, date_format, default_theme) VALUES ('Asia/Kolkata', 'WorkPulse', 'DD/MM/YYYY', 'system')`);
+      send('✓ sys_settings seeded', 'ok');
+    }
 
     // Seed default rosters
     send('Seeding default rosters…', 'info', 69, 'Rosters…');
