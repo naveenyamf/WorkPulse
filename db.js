@@ -7,6 +7,13 @@ const pool = new Pool({
   database: process.env.DB_NAME,
   user: process.env.DB_USER,
   password: process.env.DB_PASS,
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
+});
+
+pool.on('error', (err, client) => {
+  console.error('Unexpected error on idle client', err.message);
 });
 
 pool.connect((err) => {

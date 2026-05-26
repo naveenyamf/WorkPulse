@@ -33,6 +33,7 @@ function log(msg) {
 
 var offlineQueue = [];
 var isRetrying = false;
+var hbCounter = 0;
 var QUEUE_FILE = 'C:\\WorkPulse\\offline_queue.json';
 
 function saveQueue() {
@@ -43,6 +44,11 @@ function loadQueue() {
   try {
     if (fs.existsSync(QUEUE_FILE)) {
       offlineQueue = JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8')) || [];
+      if (offlineQueue.length > 20) {
+        log('[Queue] Queue too large (' + offlineQueue.length + '), trimming to last 20');
+        offlineQueue = offlineQueue.slice(-20);
+        saveQueue();
+      }
       log('[Queue] Loaded ' + offlineQueue.length + ' offline items');
     }
   } catch(e) { offlineQueue = []; }
@@ -51,20 +57,35 @@ function loadQueue() {
 async function retryQueue() {
   if (isRetrying || !offlineQueue.length) return;
   isRetrying = true;
-  var remaining = [];
-  for (var item of offlineQueue) {
-    try {
-      await axios.post(SERVER_URL + item.path, item.body, {
-        headers: Object.assign({ 'x-agent-token': AGENT_TOKEN }, item.headers||{}),
-        timeout: 10000
-      });
-    } catch(e) { remaining.push(item); }
+  try {
+    var remaining = [];
+    var total = offlineQueue.length;
+    for (var i = 0; i < offlineQueue.length; i++) {
+      var item = offlineQueue[i];
+      var num = (i + 1) + '/' + total;
+      log('[Queue] Retrying ' + num + ': ' + item.path);
+      try {
+        await axios.post(SERVER_URL + item.path, item.body, {
+          headers: Object.assign({ 'x-agent-token': AGENT_TOKEN }, item.headers||{}),
+          timeout: 0
+        });
+        log('[Queue] ' + num + ' Sent OK');
+      } catch(e) {
+        log('[Queue] ' + num + ' Failed - keeping (' + (e.message||'unknown') + ')');
+        remaining.push(item);
+      }
+    }
+    offlineQueue = remaining;
+    saveQueue();
+    if (offlineQueue.length === 0) {
+      log('[Queue] All items synced');
+    } else {
+      log('[Queue] ' + offlineQueue.length + ' items still pending');
+    }
+    retryPendingScreenshots();
+  } finally {
+    isRetrying = false;
   }
-  offlineQueue = remaining;
-  saveQueue();
-  isRetrying = false;
-  if (offlineQueue.length === 0) log('[Queue] All offline items synced');
-  retryPendingScreenshots();
 }
 
 async function retryPendingScreenshots() {
@@ -80,7 +101,7 @@ async function retryPendingScreenshots() {
       form.append('screenshot', fs.createReadStream(filePath));
       await axios.post(SERVER_URL + '/api/agent/screenshot', form, {
         headers: Object.assign({ 'x-agent-token': AGENT_TOKEN }, form.getHeaders()),
-        timeout: 30000
+        timeout: 0
       });
       fs.unlinkSync(filePath);
       log('[SS] Retry sent: ' + file);
@@ -92,14 +113,12 @@ async function safePost(path, body, headers) {
   try {
     await axios.post(SERVER_URL + path, body, {
       headers: Object.assign({ 'x-agent-token': AGENT_TOKEN }, headers||{}),
-      timeout: 10000
+      timeout: 0
     });
-    if (offlineQueue.length > 0) retryQueue();
+    if (offlineQueue.length > 0 && !isRetrying) retryQueue();
   } catch(e) {
-    if (offlineQueue.length < 500) {
-      offlineQueue.push({ path: path, body: body, headers: headers||{} });
-      saveQueue();
-    }
+    offlineQueue.push({ path: path, body: body, headers: headers||{} });
+    saveQueue();
   }
 }
 
@@ -382,24 +401,37 @@ schedule.scheduleJob('*/20 * * * * *', async function() {
     }
     lastIdleState = isIdle;
 
-    const urls = isLocked ? [] : getBrowserActivity().map(function(u) {
-      return Object.assign({}, u, { idle_seconds: isIdle ? idleSeconds : 0 });
-    });
-    const apps = (isIdle || isLocked) ? [] : getAllApps(app);
-
-    await safePost('/api/agent/heartbeat', {
-      active_app: app,
-      idle: isIdle,
-      apps: apps,
-      urls: urls,
-      version: AGENT_VERSION
-    });
-
     if (isLocked) {
       log('[LOCKED] System Locked - Idle: ' + idleSeconds + 's');
-    } else {
-      log('OK - ' + app + ' - Idle: ' + idleSeconds + 's - URLs: ' + urls.length + ' - Apps: ' + apps.length);
+      return;
     }
+
+    const urls = getBrowserActivity().map(function(u) {
+      return Object.assign({}, u, { idle_seconds: isIdle ? idleSeconds : 0 });
+    });
+    const apps = isIdle ? [] : getAllApps(app);
+
+    hbCounter++;
+    var hbNum = hbCounter;
+    try {
+      await axios.post(SERVER_URL + '/api/agent/heartbeat', {
+        active_app: app,
+        idle: isIdle,
+        apps: apps,
+        urls: urls,
+        version: AGENT_VERSION
+      }, {
+        headers: { 'x-agent-token': AGENT_TOKEN },
+        timeout: 0
+      });
+      log('[HB #' + hbNum + '] Sent - ' + app + ' - Idle: ' + idleSeconds + 's - URLs: ' + urls.length + ' - Apps: ' + apps.length);
+      if (offlineQueue.length > 0 && !isRetrying) retryQueue();
+    } catch(e) {
+      offlineQueue.push({ path: '/api/agent/heartbeat', body: { active_app: app, idle: isIdle, apps: apps, urls: urls, version: AGENT_VERSION }, headers: {} });
+      saveQueue();
+      log('[HB #' + hbNum + '] Offline queued (' + offlineQueue.length + ' in queue) - ' + app + ' - Idle: ' + idleSeconds + 's');
+    }
+
   } catch (e) {
     log('Heartbeat error: ' + e.message);
   }
@@ -435,11 +467,11 @@ function scheduleScreenshot() {
           form.append('screenshot', fs.createReadStream(tmpFile));
           await axios.post(SERVER_URL + '/api/agent/screenshot', form, {
             headers: Object.assign({ 'x-agent-token': AGENT_TOKEN }, form.getHeaders()),
-            timeout: 30000
+            timeout: 0
           });
           fs.unlinkSync(tmpFile);
           log('[SS] Screenshot sent OK - ' + new Date().toLocaleTimeString());
-          if (offlineQueue.length > 0) retryQueue();
+          if (offlineQueue.length > 0 && !isRetrying) retryQueue();
         } catch(e) {
           var pendingDir = 'C:\\WorkPulse\\pending_screenshots';
           try {
