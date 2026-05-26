@@ -2380,7 +2380,7 @@ function showSSOverlay(idx){
       return;
     }
     if(newIdx>=ssCache.length){
-      if(currentSSPage<totalSSPages) loadScreenshots(currentSSPage+1).then(function(){currentIdx=0;loadSlots();});
+      if(!window._viewingFlagged && currentSSPage<totalSSPages) loadScreenshots(currentSSPage+1).then(function(){currentIdx=0;loadSlots();});
       return;
     }
     var dir=newIdx>currentIdx?1:-1;
@@ -4196,8 +4196,14 @@ function renderFlagPagination2(){
 
 function viewFlaggedPage(id){
   // Use the same full-featured viewer as All Screenshots
+  window._viewingFlagged = true;
   ssCache = flaggedCache2;
   viewScreenshot(id);
+  // Reset flag after overlay is closed
+  var observer = new MutationObserver(function(){
+    if(!document.getElementById('ssOverlay')){ window._viewingFlagged = false; observer.disconnect(); }
+  });
+  observer.observe(document.body, {childList:true});
 }
 function viewFlaggedPage_old(id){
   var idx = flaggedCache2.findIndex(function(x){ return x.id === id; });
