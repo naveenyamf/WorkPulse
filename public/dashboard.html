@@ -1697,6 +1697,23 @@ tr.emp-row:hover{background:var(--card-hover)}
       <select id="settings-roster" class="filter-select" style="width:100%;padding:9px 12px;margin-bottom:20px">
         <option value="">— No Roster Assigned —</option>
       </select>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:10px;letter-spacing:1.5px;text-transform:uppercase;font-weight:700">Capture Schedule</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:12px">
+        <span style="font-size:13px;color:var(--text);font-weight:600">Enable Capture Schedule</span>
+        <div id="captureToggle" onclick="toggleCaptureSchedule()" style="width:44px;height:24px;border-radius:12px;background:#ccc;cursor:pointer;position:relative;transition:background 0.2s">
+          <div id="captureToggleKnob" style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:left 0.2s;box-shadow:0 1px 4px rgba(0,0,0,0.2)"></div>
+        </div>
+      </div>
+      <div id="captureScheduleConfig" style="display:none;margin-bottom:18px">
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <div onclick="setCaptureMode('roster')" id="capMode-roster" class="int-btn selected" data-val="roster" style="flex:1;text-align:center">Use Roster Timing</div>
+          <div onclick="setCaptureMode('custom')" id="capMode-custom" class="int-btn" data-val="custom" style="flex:1;text-align:center">Custom</div>
+        </div>
+        <div id="captureCustomDays" style="display:none">
+          <div style="font-size:11px;color:var(--text3);margin-bottom:10px;font-weight:600">Configure capture time per day</div>
+          <div id="capDayRows"></div>
+        </div>
+      </div>
       <button class="btn btn-accent" onclick="saveSettings()" style="width:100%;padding:11px">Save Settings</button>
     </div>
   </div>
@@ -3926,10 +3943,36 @@ async function openSettings(id,name,interval,retention,rosterId,dept){
   currentSettingsInterval=interval||5;
   currentRetentionDays=retention||0;
   currentRosterId=rosterId||null;
+  currentCaptureEnabled=false;
+  currentCaptureMode='roster';
+  currentCaptureDays={};
   document.getElementById("settingsEmpName").value=name;
   document.getElementById("settingsModal").style.display="flex";
   updateIntBtns(currentSettingsInterval);
   updateRetBtns(currentRetentionDays);
+  // Reset capture UI
+  setCaptureToggleUI(false);
+  document.getElementById('captureScheduleConfig').style.display='none';
+  // Load capture schedule
+  try{
+    var cs=await fetch('/api/employees/'+id+'/capture-schedule').then(function(r){return r.json();});
+    currentCaptureEnabled=!!cs.enabled;
+    currentCaptureMode=cs.mode||'roster';
+    currentCaptureDays={
+      mon_start:cs.mon_start||'',mon_end:cs.mon_end||'',
+      tue_start:cs.tue_start||'',tue_end:cs.tue_end||'',
+      wed_start:cs.wed_start||'',wed_end:cs.wed_end||'',
+      thu_start:cs.thu_start||'',thu_end:cs.thu_end||'',
+      fri_start:cs.fri_start||'',fri_end:cs.fri_end||'',
+      sat_start:cs.sat_start||'',sat_end:cs.sat_end||'',
+      sun_start:cs.sun_start||'',sun_end:cs.sun_end||''
+    };
+    setCaptureToggleUI(currentCaptureEnabled);
+    if(currentCaptureEnabled){
+      document.getElementById('captureScheduleConfig').style.display='block';
+      setCaptureMode(currentCaptureMode);
+    }
+  }catch(e){}
   // Load departments
   try{
     var depts=await fetch('/api/departments').then(function(r){return r.json();});
@@ -3978,6 +4021,132 @@ function setRetention(val){
   updateRetBtns(val);
 }
 
+var currentCaptureEnabled=false;
+var currentCaptureMode='roster';
+var currentCaptureDays={};
+
+function setCaptureToggleUI(enabled){
+  currentCaptureEnabled=enabled;
+  var tog=document.getElementById('captureToggle');
+  var knob=document.getElementById('captureToggleKnob');
+  if(enabled){
+    tog.style.background='#2563eb';
+    knob.style.left='23px';
+  } else {
+    tog.style.background='#ccc';
+    knob.style.left='3px';
+  }
+}
+
+function toggleCaptureSchedule(){
+  setCaptureToggleUI(!currentCaptureEnabled);
+  var cfg=document.getElementById('captureScheduleConfig');
+  cfg.style.display=currentCaptureEnabled?'block':'none';
+  if(currentCaptureEnabled) setCaptureMode(currentCaptureMode);
+}
+
+function setCaptureMode(mode){
+  currentCaptureMode=mode;
+  document.getElementById('capMode-roster').classList.toggle('selected',mode==='roster');
+  document.getElementById('capMode-custom').classList.toggle('selected',mode==='custom');
+  var customDiv=document.getElementById('captureCustomDays');
+  customDiv.style.display=mode==='custom'?'block':'none';
+  if(mode==='custom'){
+    if(!window._capRosters){
+      fetch('/api/rosters').then(function(r){return r.json();}).then(function(data){
+        window._capRosters=data;
+        renderCaptureDayRows();
+      }).catch(function(){ renderCaptureDayRows(); });
+    } else {
+      renderCaptureDayRows();
+    }
+  }
+}
+
+function renderCaptureDayRows(){
+  var days=[['mon','Mon'],['tue','Tue'],['wed','Wed'],['thu','Thu'],['fri','Fri'],['sat','Sat'],['sun','Sun']];
+  var rosterOpts='<option value="">-- Custom Time --</option>';
+  if(window._capRosters){
+    window._capRosters.forEach(function(r){
+      rosterOpts+='<option value="'+r.id+'" data-start="'+(r.start_time||'').slice(0,5)+'" data-end="'+(r.end_time||'').slice(0,5)+'">'+r.name+' ('+fmtRosterTime(r.start_time)+'–'+fmtRosterTime(r.end_time)+')</option>';
+    });
+  }
+  var html='';
+  days.forEach(function(d){
+    var key=d[0]; var label=d[1];
+    var s=currentCaptureDays[key+'_start']||'';
+    var e=currentCaptureDays[key+'_end']||'';
+    var enabled=!!(s&&e);
+    html+='<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;transition:all 0.2s">';
+    // Row 1: Day label + toggle
+    html+='<div style="display:flex;align-items:center;justify-content:space-between">';
+    html+='<div style="display:flex;align-items:center;gap:8px">';
+    html+='<span style="font-size:13px;font-weight:800;color:var(--text);min-width:32px">'+label+'</span>';
+    html+='<span id="capday-time-'+key+'" style="font-size:11px;color:#2563eb;font-weight:600">'+(enabled?'🕐 '+s+' – '+e:'')+'</span>';
+    html+='</div>';
+    // Toggle switch
+    html+='<div onclick="toggleCapDay(this.dataset.day)" data-day="'+key+'" id="capday-tog-'+key+'" style="width:40px;height:22px;border-radius:11px;background:'+(enabled?'#2563eb':'var(--border)')+';cursor:pointer;position:relative;transition:background 0.25s;flex-shrink:0">';
+    html+='<div id="capday-knob-'+key+'" style="position:absolute;top:3px;left:'+(enabled?'20px':'3px')+';width:16px;height:16px;border-radius:50%;background:#fff;transition:left 0.25s;box-shadow:0 1px 4px rgba(0,0,0,0.25)"></div>';
+    html+='</div>';
+    html+='</div>';
+    // Row 2: Roster select + time inputs (shown when enabled)
+    html+='<div id="caprow-'+key+'" style="display:'+(enabled?'block':'none')+';margin-top:10px">';
+    html+='<select onchange="applyCapRoster(this.dataset.day,this)" data-day="'+key+'" style="width:100%;padding:6px 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;margin-bottom:7px">'+rosterOpts+'</select>';
+    html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
+    html+='<div>';
+    html+='<div style="font-size:10px;color:var(--text3);margin-bottom:3px;font-weight:600">START</div>';
+    html+='<input type="time" id="captime-'+key+'-start" value="'+s+'" onchange="currentCaptureDays[this.dataset.k]=this.value;updateCapDayLabel(this.dataset.day)" data-k="'+key+'_start" data-day="'+key+'" style="width:100%;padding:6px 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;font-weight:600">';
+    html+='</div>';
+    html+='<div>';
+    html+='<div style="font-size:10px;color:var(--text3);margin-bottom:3px;font-weight:600">END</div>';
+    html+='<input type="time" id="captime-'+key+'-end" value="'+e+'" onchange="currentCaptureDays[this.dataset.k]=this.value;updateCapDayLabel(this.dataset.day)" data-k="'+key+'_end" data-day="'+key+'" style="width:100%;padding:6px 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;font-weight:600">';
+    html+='</div>';
+    html+='</div>';
+    html+='</div>';
+    html+='</div>';
+  });
+  document.getElementById('capDayRows').innerHTML=html;
+}
+
+function applyCapRoster(key, sel){
+  var opt=sel.options[sel.selectedIndex];
+  if(!opt||!opt.dataset.start) return;
+  var s=opt.dataset.start; var e=opt.dataset.end;
+  currentCaptureDays[key+'_start']=s;
+  currentCaptureDays[key+'_end']=e;
+  var si=document.getElementById('captime-'+key+'-start');
+  var ei=document.getElementById('captime-'+key+'-end');
+  if(si) si.value=s;
+  if(ei) ei.value=e;
+  updateCapDayLabel(key);
+}
+
+function updateCapDayLabel(key){
+  var s=currentCaptureDays[key+'_start']||'';
+  var e=currentCaptureDays[key+'_end']||'';
+  var lbl=document.getElementById('capday-time-'+key);
+  if(lbl) lbl.textContent=(s&&e)?'🕐 '+s+' – '+e:'';
+}
+
+function toggleCapDay(key){
+  var tog=document.getElementById('capday-tog-'+key);
+  var knob=document.getElementById('capday-knob-'+key);
+  var row=document.getElementById('caprow-'+key);
+  var isOn=row.style.display!=='none';
+  if(isOn){
+    row.style.display='none';
+    tog.style.background='var(--border)';
+    knob.style.left='3px';
+    currentCaptureDays[key+'_start']='';
+    currentCaptureDays[key+'_end']='';
+    updateCapDayLabel(key);
+  } else {
+    row.style.display='block';
+    tog.style.background='#2563eb';
+    knob.style.left='20px';
+  }
+}
+
 function closeSettings(){
   document.getElementById('settingsModal').style.display='none';
 }
@@ -4009,6 +4178,12 @@ async function saveSettings(){
       body:JSON.stringify({department:dept})
     });
   }
+  // Save capture schedule
+  var csPayload=Object.assign({enabled:currentCaptureEnabled,mode:currentCaptureMode},currentCaptureDays);
+  await fetch("/api/employees/"+currentSettingsId+"/capture-schedule",{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(csPayload)
+  });
   toast("✓ Settings saved!","#10b981");
   closeSettings();
   loadEmployeesFull();

@@ -6,7 +6,7 @@ const path = require('path');
 const os = require('os');
 const { execSync, exec } = require('child_process');
 
-const AGENT_VERSION = '3.0.1';
+const AGENT_VERSION = '3.0.2';
 const CONFIG_FILE = 'C:\\WorkPulse\\config.json';
 let SERVER_URL = 'http://10.10.11.251';
 
@@ -373,6 +373,14 @@ schedule.scheduleJob('*/5 * * * *', async function() {
 
 schedule.scheduleJob('*/20 * * * * *', async function() {
   if (!AGENT_TOKEN) return;
+  logCaptureWindowOnce();
+  if (!isWithinCaptureWindow()) {
+    var win = captureSchedule.window;
+    var winStr = (win && win.start) ? (win.start.slice(0,5) + ' - ' + win.end.slice(0,5)) : 'not set';
+    log('[HB] Skipped - outside capture window (' + winStr + ')');
+    await fetchSettings();
+    return;
+  }
   try {
     const app = getActiveWindow();
     const idleSeconds = getIdleSeconds();
@@ -438,6 +446,30 @@ schedule.scheduleJob('*/20 * * * * *', async function() {
 });
 
 var screenshotInterval = 5;
+var captureSchedule = { enabled: false, window: null };
+var captureLoggedDate = '';
+
+function isWithinCaptureWindow() {
+  if (!captureSchedule.enabled || !captureSchedule.window) return true;
+  var win = captureSchedule.window;
+  if (!win.start || !win.end) return true;
+  var now = new Date();
+  var nowMins = now.getHours() * 60 + now.getMinutes();
+  var start = win.start.slice(0,5).split(':');
+  var end = win.end.slice(0,5).split(':');
+  var startMins = parseInt(start[0]) * 60 + parseInt(start[1]);
+  var endMins = parseInt(end[0]) * 60 + parseInt(end[1]);
+  return nowMins >= startMins && nowMins < endMins;
+}
+
+function logCaptureWindowOnce() {
+  if (!captureSchedule.enabled || !captureSchedule.window) return;
+  var today = new Date().toISOString().slice(0,10);
+  if (captureLoggedDate === today) return;
+  captureLoggedDate = today;
+  var win = captureSchedule.window;
+  log('[CaptureSchedule] Capture time set from ' + (win.start||'').slice(0,5) + ' to ' + (win.end||'').slice(0,5) + ' for today (source: ' + (win.source||'custom') + ')');
+}
 
 async function fetchSettings() {
   try {
@@ -446,6 +478,10 @@ async function fetchSettings() {
       timeout: 5000
     });
     screenshotInterval = res.data.screenshot_interval || 5;
+    if (res.data.captureSchedule) {
+      captureSchedule = res.data.captureSchedule;
+      logCaptureWindowOnce();
+    }
     log('Screenshot interval: ' + screenshotInterval + ' mins');
   } catch(e) {}
 }
@@ -455,6 +491,13 @@ function scheduleScreenshot() {
     if (!AGENT_TOKEN) { scheduleScreenshot(); return; }
     if (lastLockState) {
       log('[SS] Skipped - screen locked');
+      await fetchSettings();
+      scheduleScreenshot();
+      return;
+    }
+    if (!isWithinCaptureWindow()) {
+      var win = captureSchedule.window;
+      log('[SS] Skipped - outside capture window (' + (win&&win.start||'').slice(0,5) + '-' + (win&&win.end||'').slice(0,5) + ')');
       await fetchSettings();
       scheduleScreenshot();
       return;

@@ -821,6 +821,42 @@ app.post("/api/employees/:id/settings", requireLogin, async (req, res) => {
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
+
+// ---- CAPTURE SCHEDULE ----
+app.get('/api/employees/:id/capture-schedule', requireLogin, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM employee_capture_schedule WHERE employee_id=$1', [req.params.id]);
+    res.json(r.rows[0] || { enabled: false, mode: 'roster' });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/employees/:id/capture-schedule', requireLogin, async (req, res) => {
+  const { enabled, mode, mon_start, mon_end, tue_start, tue_end,
+    wed_start, wed_end, thu_start, thu_end, fri_start, fri_end,
+    sat_start, sat_end, sun_start, sun_end } = req.body;
+  try {
+    await pool.query(`
+      INSERT INTO employee_capture_schedule
+        (employee_id, enabled, mode, mon_start, mon_end, tue_start, tue_end,
+         wed_start, wed_end, thu_start, thu_end, fri_start, fri_end,
+         sat_start, sat_end, sun_start, sun_end, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17, NOW())
+      ON CONFLICT (employee_id) DO UPDATE SET
+        enabled=$2, mode=$3,
+        mon_start=$4, mon_end=$5, tue_start=$6, tue_end=$7,
+        wed_start=$8, wed_end=$9, thu_start=$10, thu_end=$11,
+        fri_start=$12, fri_end=$13, sat_start=$14, sat_end=$15,
+        sun_start=$16, sun_end=$17, updated_at=NOW()
+    `, [req.params.id, enabled, mode,
+        mon_start||null, mon_end||null, tue_start||null, tue_end||null,
+        wed_start||null, wed_end||null, thu_start||null, thu_end||null,
+        fri_start||null, fri_end||null, sat_start||null, sat_end||null,
+        sun_start||null, sun_end||null]);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+// ---- END CAPTURE SCHEDULE ----
+
 app.post("/api/employees/:id/name", requireLogin, async (req, res) => {
   try {
     const { name } = req.body;
@@ -835,8 +871,30 @@ app.post("/api/employees/:id/name", requireLogin, async (req, res) => {
 // Agent gets its settings
 app.get("/api/agent/settings", requireAgent, async (req, res) => {
   try {
-    const result = await pool.query("SELECT screenshot_interval FROM employees WHERE id=$1", [req.employee.id]);
-    res.json({ screenshot_interval: result.rows[0].screenshot_interval || 5 });
+    const empId = req.employee.id;
+    const result = await pool.query("SELECT screenshot_interval FROM employees WHERE id=$1", [empId]);
+    const cs = await pool.query('SELECT * FROM employee_capture_schedule WHERE employee_id=$1', [empId]);
+    const schedule = cs.rows[0] || { enabled: false, mode: 'roster' };
+    let captureWindow = null;
+    if (schedule.enabled) {
+      if (schedule.mode === 'roster') {
+        const r = await pool.query(`SELECT dr.start_time, dr.end_time FROM employees e JOIN duty_rosters dr ON e.roster_id=dr.id WHERE e.id=$1`, [empId]);
+        if (r.rows.length) captureWindow = { source: 'roster', start: r.rows[0].start_time, end: r.rows[0].end_time };
+      } else {
+        const days = ['sun','mon','tue','wed','thu','fri','sat'];
+        const day = days[new Date().getDay()];
+        const start = schedule[`${day}_start`];
+        const end = schedule[`${day}_end`];
+        if (start && end) captureWindow = { source: 'custom', start, end };
+      }
+      if (captureWindow) {
+        await pool.query(`INSERT INTO capture_schedule_log (employee_id, log_date, source, window_start, window_end) VALUES ($1, CURRENT_DATE, $2, $3, $4) ON CONFLICT (employee_id, log_date) DO NOTHING`, [empId, captureWindow.source, captureWindow.start, captureWindow.end]);
+      }
+    }
+    res.json({
+      screenshot_interval: result.rows[0].screenshot_interval || 5,
+      captureSchedule: { enabled: schedule.enabled, window: captureWindow }
+    });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 app.get('/api/employees/:id/stats', requireLogin, async (req, res) => {
