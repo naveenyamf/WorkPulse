@@ -743,6 +743,33 @@ app.get('/download/extension', (req, res) => {
   res.sendFile(file);
 });
 
+// Download Chromebook agent zip
+app.get('/download/chromebook-agent', (req, res) => {
+  const file = '/home/workpulse/workpulse-app/chromeagent/workpulse-chromebook-agent.zip';
+  if (!fs.existsSync(file)) return res.status(404).send('Chromebook agent not found');
+  res.setHeader('Content-Disposition', 'attachment; filename=WorkPulse-Chromebook-Agent.zip');
+  res.setHeader('Content-Type', 'application/zip');
+  res.sendFile(file);
+});
+
+// Download Mac agent source files
+app.get('/download/mac-agent-js', (req, res) => {
+  const file = '/home/workpulse/workpulse-app/macagent/agent.js';
+  if (!fs.existsSync(file)) return res.status(404).send('Not found');
+  res.setHeader('Content-Disposition', 'attachment; filename=agent.js');
+  res.setHeader('Content-Type', 'text/javascript');
+  res.sendFile(file);
+});
+
+// Download Mac agent zip
+app.get('/download/mac-agent', (req, res) => {
+  const file = '/home/workpulse/workpulse-app/macagent/workpulse-mac-agent.zip';
+  if (!fs.existsSync(file)) return res.status(404).send('Mac agent not found');
+  res.setHeader('Content-Disposition', 'attachment; filename=WorkPulse-Mac-Agent.zip');
+  res.setHeader('Content-Type', 'application/zip');
+  res.sendFile(file);
+});
+
 // Serve dashboard for all other routes
 app.get('/api/dashboard/screenshot-dates', requireLogin, async (req, res) => {
   try {
@@ -1415,13 +1442,24 @@ app.post("/api/employees/:id/department", requireLogin, requireAdmin, async (req
 
 app.post('/api/agent/system-event', requireAgent, async (req, res) => {
   const { event_type, recorded_at } = req.body;
-  const valid = ['startup','shutdown','locked','unlocked','sleep','hibernate','idle_lock','wakeup'];
+  const valid = ['startup','shutdown','locked','unlocked','sleep','hibernate','idle_lock','wakeup','screenshot_failed'];
   if (!valid.includes(event_type)) return res.status(400).json({ error: 'Invalid event' });
   try {
     if (recorded_at) {
       await pool.query('INSERT INTO system_events (employee_id, event_type, recorded_at) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [req.employee.id, event_type, new Date(recorded_at)]);
     } else {
       await pool.query('INSERT INTO system_events (employee_id, event_type) VALUES ($1,$2) ON CONFLICT DO NOTHING', [req.employee.id, event_type]);
+    }
+    // Alert when Chromebook extension is disabled/removed (shutdown event from chrome agent)
+    if (event_type === 'shutdown') {
+      const emp = req.employee;
+      const agentType = req.headers['x-agent-version'] ? 'Chromebook' : 'Device';
+      await pool.query(
+        `INSERT INTO alerts (employee_id, message, severity, resolved, rule_name)
+         VALUES ($1, $2, 'high', false, 'Chromebook Agent Shutdown')
+         ON CONFLICT DO NOTHING`,
+        [emp.id, `⚠️ WorkPulse Agent stopped on ${agentType} for ${emp.name} at ${new Date().toLocaleTimeString('en-IN', {timeZone:'Asia/Kolkata'})}`]
+      );
     }
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
@@ -3630,6 +3668,68 @@ async function evaluateAlertRules() {
 }
 
 setInterval(evaluateAlertRules, 5 * 60 * 1000);
+
+// ── Chromebook Agent Heartbeat Monitor ───────────────────────────────────────
+async function checkChromebookAgents() {
+  try {
+    const tz = global.sysTimezone || 'Asia/Kolkata';
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: tz }));
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+
+    // Get all Chromebook employees identified by machine_id starting with 'chromebook-'
+    const emps = await pool.query(`
+      SELECT DISTINCT e.id, e.name, e.email,
+        (SELECT recorded_at FROM heartbeats WHERE employee_id=e.id ORDER BY recorded_at DESC LIMIT 1) as last_hb
+      FROM employees e
+      WHERE e.active = true
+      AND e.machine_id ILIKE 'chromebook-%'
+    `);
+
+    for (const emp of emps.rows) {
+      if (!emp.last_hb) continue;
+
+      // Check capture schedule for this employee (day-aware)
+      const days = ['sun','mon','tue','wed','thu','fri','sat'];
+      const dayName = days[now.getDay()];
+      const schedRes = await pool.query(
+        `SELECT ${dayName}_start as day_start, ${dayName}_end as day_end FROM employee_capture_schedule WHERE employee_id=$1`,
+        [emp.id]
+      );
+
+      let withinWindow = true;
+      if (schedRes.rows.length && schedRes.rows[0].day_start && schedRes.rows[0].day_end) {
+        const [sh, sm] = schedRes.rows[0].day_start.slice(0,5).split(':').map(Number);
+        const [eh, em] = schedRes.rows[0].day_end.slice(0,5).split(':').map(Number);
+        withinWindow = nowMins >= (sh*60+sm) && nowMins < (eh*60+em);
+      }
+
+      if (!withinWindow) continue; // outside work hours, skip
+
+      const lastHb = new Date(emp.last_hb);
+      const gapMins = Math.round((now - lastHb) / 60000);
+
+      if (gapMins >= 15) {
+        // Check if we already alerted today to avoid spam
+        const existing = await pool.query(
+          `SELECT id FROM alerts WHERE employee_id=$1 AND rule_name='Chromebook Agent Offline' AND created_at > NOW() - INTERVAL '4 hours'`,
+          [emp.id]
+        );
+        if (existing.rows.length) continue;
+
+        await pool.query(
+          `INSERT INTO alerts (employee_id, message, severity, resolved, rule_name)
+           VALUES ($1, $2, 'high', false, 'Chromebook Agent Offline')`,
+          [emp.id, `⚠️ Chromebook Agent offline for ${emp.name} — no heartbeat for ${gapMins} minutes during work hours`]
+        );
+        console.log(`[ChromebookMonitor] Alert created for ${emp.name} - no HB for ${gapMins} mins`);
+      }
+    }
+  } catch(e) {
+    console.error('[ChromebookMonitor] Error:', e.message);
+  }
+}
+setInterval(checkChromebookAgents, 5 * 60 * 1000);
+setTimeout(checkChromebookAgents, 10000);
 
 // Clean up expired remember-device tokens daily
 setInterval(() => {

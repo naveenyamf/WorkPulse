@@ -1949,7 +1949,43 @@ async function doLogout(){
   window.location.href='/';
 }
 
-function downloadAgent(){window.location.href='/download/agent';}
+function downloadAgent(){
+  var existing = document.getElementById('agentDownloadModal');
+  if (existing) existing.remove();
+
+  var modal = document.createElement('div');
+  modal.id = 'agentDownloadModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML = `
+    <div style="background:#141a22;border:1px solid #232d3a;border-radius:14px;padding:28px 24px;width:320px;font-family:inherit;">
+      <div style="font-size:15px;font-weight:800;color:#ccd6e0;margin-bottom:6px;">Download Agent</div>
+      <div style="font-size:11px;color:#7f93a8;margin-bottom:20px;">Select the agent for your device type</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <button onclick="window.location.href='/download/agent';document.getElementById('agentDownloadModal').remove();"
+          style="background:#1a2030;border:1px solid #232d3a;color:#ccd6e0;padding:14px 16px;border-radius:10px;cursor:pointer;text-align:left;font-family:inherit;">
+          <div style="font-size:13px;font-weight:700;">🖥️ Windows Agent</div>
+          <div style="font-size:10px;color:#7f93a8;margin-top:3px;">WorkPulse-Agent.exe installer for Windows</div>
+        </button>
+        <button onclick="window.location.href='/download/chromebook-agent';document.getElementById('agentDownloadModal').remove();"
+          style="background:#1a2030;border:1px solid #232d3a;color:#ccd6e0;padding:14px 16px;border-radius:10px;cursor:pointer;text-align:left;font-family:inherit;">
+          <div style="font-size:13px;font-weight:700;">💻 Chromebook Agent</div>
+          <div style="font-size:10px;color:#7f93a8;margin-top:3px;">Chrome Extension zip for Chromebook devices</div>
+        </button>
+        <button onclick="window.location.href='/download/mac-agent';document.getElementById('agentDownloadModal').remove();"
+          style="background:#1a2030;border:1px solid #232d3a;color:#ccd6e0;padding:14px 16px;border-radius:10px;cursor:pointer;text-align:left;font-family:inherit;">
+          <div style="font-size:13px;font-weight:700;">🍎 Mac Agent</div>
+          <div style="font-size:10px;color:#7f93a8;margin-top:3px;">Installer zip for macOS (Intel & Apple Silicon)</div>
+        </button>
+      </div>
+      <button onclick="document.getElementById('agentDownloadModal').remove();"
+        style="margin-top:16px;width:100%;background:transparent;border:1px solid #232d3a;color:#536478;padding:8px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:11px;">
+        Cancel
+      </button>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', function(e){ if(e.target===modal) modal.remove(); });
+}
 
 function toast(msg,color){
   var t=document.getElementById('toast');
@@ -3073,6 +3109,38 @@ var APP_ICONS = {
   'Snipping Tool':     null,
   'Notepad':           null,
   'MS Paint':          null,
+  // Mac apps
+  'Safari':            'https://www.google.com/s2/favicons?domain=apple.com&sz=32',
+  'Finder':            null,
+  'Terminal':          null,
+  'iTerm2':            null,
+  'Xcode':             'https://www.google.com/s2/favicons?domain=developer.apple.com&sz=32',
+  'Spotlight':         null,
+  'System Preferences':'https://www.google.com/s2/favicons?domain=apple.com&sz=32',
+  'System Settings':   'https://www.google.com/s2/favicons?domain=apple.com&sz=32',
+  'App Store':         'https://www.google.com/s2/favicons?domain=apple.com&sz=32',
+  'Mail':              'https://www.google.com/s2/favicons?domain=apple.com&sz=32',
+  'Calendar':          'https://www.google.com/s2/favicons?domain=apple.com&sz=32',
+  'Notes':             'https://www.google.com/s2/favicons?domain=apple.com&sz=32',
+  'Pages':             'https://www.google.com/s2/favicons?domain=apple.com&sz=32',
+  'Numbers':           'https://www.google.com/s2/favicons?domain=apple.com&sz=32',
+  'Keynote':           'https://www.google.com/s2/favicons?domain=apple.com&sz=32',
+  'FaceTime':          'https://www.google.com/s2/favicons?domain=apple.com&sz=32',
+  'Messages':          'https://www.google.com/s2/favicons?domain=apple.com&sz=32',
+  'Preview':           null,
+  'TextEdit':          null,
+  'Activity Monitor':  null,
+  'Disk Utility':      null,
+  'AnyDesk':           'https://www.google.com/s2/favicons?domain=anydesk.com&sz=32',
+  'zoom.us':           'https://www.google.com/s2/favicons?domain=zoom.us&sz=32',
+  'Figma':             'https://www.google.com/s2/favicons?domain=figma.com&sz=32',
+  'Notion':            'https://www.google.com/s2/favicons?domain=notion.so&sz=32',
+  'Slack':             'https://www.google.com/s2/favicons?domain=slack.com&sz=32',
+  'Discord':           'https://www.google.com/s2/favicons?domain=discord.com&sz=32',
+  'Spotify':           'https://www.google.com/s2/favicons?domain=spotify.com&sz=32',
+  'Google Chrome':     'https://www.google.com/s2/favicons?domain=google.com&sz=32',
+  'Arc':               'https://www.google.com/s2/favicons?domain=arc.net&sz=32',
+  'Brave Browser':     'https://www.google.com/s2/favicons?domain=brave.com&sz=32',
 };
 
 var APP_EMOJI_FALLBACK = {
@@ -3083,6 +3151,14 @@ var APP_EMOJI_FALLBACK = {
   'Slack':'💬','Zoom':'📹','WhatsApp':'💬','Telegram':'✈️',
   'UltraViewer':'🖥️','ScreenRec':'📹','Adobe Acrobat':'📄','Adobe Acrobat Reader':'📄',
   'Notepad++':'📝','Notepad':'📄','File Explorer':'📁','Task Manager':'⚙️','Snipping Tool':'✂️','MS Paint':'🎨',
+  // Mac emoji fallbacks
+  'Safari':'🧭','Finder':'📁','Terminal':'⬛','iTerm2':'⬛','Xcode':'🔨',
+  'System Preferences':'⚙️','System Settings':'⚙️','App Store':'🛍️',
+  'Mail':'📧','Calendar':'📅','Notes':'📝','Pages':'📄','Numbers':'📊','Keynote':'📊',
+  'FaceTime':'📹','Messages':'💬','Preview':'🖼️','TextEdit':'📝',
+  'Activity Monitor':'📊','Disk Utility':'💽','AnyDesk':'🖥️',
+  'zoom.us':'📹','Figma':'🎨','Notion':'📓','Discord':'💬','Spotify':'🎵',
+  'Arc':'🌐',
 };
 
 function appFmtTime(secs){

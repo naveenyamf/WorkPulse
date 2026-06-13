@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WorkPulse Agent</title>
+<style>
+  :root {
+    --bg: #0d1117; --bg2: #141a22; --bg3: #1a2030;
+    --border: #232d3a; --text: #ccd6e0; --text2: #7f93a8; --text3: #536478;
+    --accent: #00c8e0; --accent-bg: rgba(0,200,224,0.08);
+    --green: #10b981; --red: #ef4444; --yellow: #f59e0b;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    width: 320px; background: var(--bg); color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif; font-size: 12px;
+  }
+
+  .header {
+    background: var(--bg2); border-bottom: 1px solid var(--border);
+    padding: 14px 16px; display: flex; align-items: center; gap: 10px;
+  }
+  .logo { font-size: 18px; font-weight: 900; letter-spacing: -0.5px; }
+  .logo span { color: var(--accent); }
+  .version { font-size: 9px; color: var(--text3); letter-spacing: 2px; text-transform: uppercase; }
+
+  .body { padding: 14px 16px; }
+
+  /* Status bar */
+  .status-bar {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px; margin-bottom: 14px;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot.online  { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+  .dot.offline { background: var(--red); }
+  .dot.setup   { background: var(--yellow); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .status-text { flex: 1; }
+  .status-label { font-weight: 700; font-size: 11px; }
+  .status-sub { color: var(--text3); font-size: 10px; margin-top: 1px; }
+
+  /* Info rows */
+  .info-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 7px 0; border-bottom: 1px solid var(--border);
+    font-size: 11px;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-key { color: var(--text3); font-weight: 600; }
+  .info-val { color: var(--text); font-weight: 600; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+  .info-val.accent { color: var(--accent); }
+
+  /* Config form */
+  .section-title {
+    font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase;
+    color: var(--text3); font-weight: 800; margin-bottom: 10px;
+  }
+  label { display: block; font-size: 10px; font-weight: 700; color: var(--text3); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+  input {
+    width: 100%; background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text); padding: 8px 10px; border-radius: 6px;
+    font-size: 11px; font-family: inherit; margin-bottom: 10px;
+    outline: none; transition: border-color 0.2s;
+  }
+  input:focus { border-color: var(--accent); }
+  input::placeholder { color: var(--text3); }
+
+  .btn-row { display: flex; gap: 8px; margin-top: 4px; }
+  button {
+    flex: 1; padding: 9px; border-radius: 7px; cursor: pointer;
+    font-size: 11px; font-family: inherit; font-weight: 700;
+    border: 1px solid var(--border); background: var(--bg3);
+    color: var(--text2); transition: all 0.18s;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary {
+    background: var(--accent); color: #0a0c10; border-color: var(--accent);
+  }
+  button.primary:hover { opacity: 0.85; }
+  button.danger { border-color: rgba(239,68,68,0.4); color: var(--red); }
+  button.danger:hover { background: rgba(239,68,68,0.08); }
+
+  .msg { font-size: 10px; padding: 7px 10px; border-radius: 6px; margin-top: 10px; display: none; }
+  .msg.ok  { background: rgba(16,185,129,0.1); color: var(--green); border: 1px solid rgba(16,185,129,0.25); }
+  .msg.err { background: rgba(239,68,68,0.1);  color: var(--red);   border: 1px solid rgba(239,68,68,0.25); }
+
+  .divider { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+
+  #configSection { display: none; }
+  #statusSection { display: none; }
+
+  .log-box {
+    margin-top: 12px; background: #0a0c10; border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px; max-height: 160px; overflow-y: auto;
+    font-family: monospace; font-size: 9px; color: #7f93a8; line-height: 1.6;
+  }
+  .log-box .hb  { color: #00c8e0; }
+  .log-box .ss  { color: #10b981; }
+  .log-box .err { color: #ef4444; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="logo">Work<span>Pulse</span></div>
+    <div class="version">Chromebook Agent</div>
+  </div>
+</div>
+
+<div class="body">
+
+  <!-- Status Section (shown when configured) -->
+  <div id="statusSection">
+    <div class="status-bar">
+      <div class="dot online" id="statusDot"></div>
+      <div class="status-text">
+        <div class="status-label" id="statusLabel">Monitoring Active</div>
+        <div class="status-sub" id="statusSub">Connected to WorkPulse</div>
+      </div>
+    </div>
+
+    <div id="infoRows">
+      <div class="info-row">
+        <span class="info-key">Active App</span>
+        <span class="info-val accent" id="infoApp">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-key">Idle</span>
+        <span class="info-val" id="infoIdle">No</span>
+      </div>
+      <div class="info-row">
+        <span class="info-key">Queue</span>
+        <span class="info-val" id="infoQueue">0 items</span>
+      </div>
+      <div class="info-row">
+        <span class="info-key">Server</span>
+        <span class="info-val" id="infoServer">—</span>
+      </div>
+    </div>
+
+    <hr class="divider">
+    <div class="btn-row">
+      <button id="btnHeartbeat">Send Heartbeat</button>
+
+    </div>
+    <div class="msg" id="hbMsg"></div>
+
+    <hr class="divider">
+    <div class="section-title">Agent Logs</div>
+    <div class="log-box" id="logBox">Loading logs...</div>
+    <div style="display:flex;justify-content:space-between;margin-top:6px;">
+      <span style="font-size:9px;color:var(--text3)">Last 200 entries</span>
+      <span style="font-size:9px;color:var(--accent);cursor:pointer;" id="btnClearLogs">Clear logs</span>
+    </div>
+  </div>
+
+  <!-- Config Section (shown when not configured) -->
+  <div id="configSection">
+    <div class="section-title">Connect to WorkPulse</div>
+
+    <label for="serverUrl">Server URL</label>
+    <input type="text" id="serverUrl" placeholder="http://10.10.11.251" autocomplete="off" spellcheck="false">
+
+    <label for="empEmail">Employee Email</label>
+    <input type="text" id="empEmail" placeholder="employee@company.com" autocomplete="off">
+
+    <div class="btn-row">
+      <button class="primary" id="btnConnect">Connect</button>
+    </div>
+    <div class="msg" id="configMsg"></div>
+  </div>
+
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>
