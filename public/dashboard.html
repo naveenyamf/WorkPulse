@@ -1355,6 +1355,15 @@ tr.emp-row:hover{background:var(--card-hover)}
     <div class="panel-header"><div class="panel-title">📋 Active Configuration</div></div>
     <div id="sysSettingsSummary" style="padding:20px 22px;display:grid;grid-template-columns:repeat(4,1fr);gap:14px"></div>
   </div>
+
+  <!-- SERVER INFO PANEL -->
+  <div class="panel admin-only" style="margin-top:18px">
+    <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center">
+      <div class="panel-title">🖥️ Server Info</div>
+      <button class="btn" onclick="loadServerInfo()" style="padding:6px 12px;font-size:11px">↻ Refresh</button>
+    </div>
+    <div id="serverInfoBody" style="padding:20px 22px;font-size:13px;color:var(--text2)">Loading…</div>
+  </div>
 </div>
 
 <!-- DEPARTMENTS PAGE -->
@@ -1903,7 +1912,7 @@ function showPage(name,el,isBack){
   if(name==='roster'){loadRosters();loadRosterAssign();}
   if(name==='sysactivity'){populateDropdown('sys-emp');initSysCalendar();loadSysActivity();}
   if(name==='auditlog'){loadAuditLog();}
-  if(name==='syssettings'){loadSysSettings();loadAllMfaSettings();loadSsServerFiles();}
+  if(name==='syssettings'){loadSysSettings();loadAllMfaSettings();loadSsServerFiles();loadServerInfo();}
   if(name==='departments'){loadDepartments();}
   if(name==='backup'){loadBackupHistory();loadSsServerFiles();}
   if(name==='reports'){loadReportsPage();initReportCal();loadReportJobs();loadReportSchedules();populateDropdown('report-emp');populateDropdown('sched-emp');}
@@ -5916,6 +5925,79 @@ function applyPreset(provider){
   toast('✓ '+provider.charAt(0).toUpperCase()+provider.slice(1)+' preset applied','#10b981');
 }
 
+
+// ---- SERVER INFO ----
+function _siFmtBytes(b){
+  if(b==null) return '—';
+  var gb = b/1073741824;
+  if(gb >= 1) return gb.toFixed(2)+' GB';
+  return (b/1048576).toFixed(1)+' MB';
+}
+function _siFmtUptime(sec){
+  sec = Math.floor(sec);
+  var d = Math.floor(sec/86400); sec%=86400;
+  var h = Math.floor(sec/3600); sec%=3600;
+  var m = Math.floor(sec/60);
+  var parts=[];
+  if(d) parts.push(d+'d');
+  if(h||d) parts.push(h+'h');
+  parts.push(m+'m');
+  return parts.join(' ');
+}
+function _siRow(icon,label,value,extra){
+  return '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)">'
+    +'<span style="color:var(--text3);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">'+icon+' '+label+'</span>'
+    +'<span style="font-weight:700;color:var(--text)">'+value+(extra?' <span style="color:var(--text3);font-weight:500">'+extra+'</span>':'')+'</span>'
+    +'</div>';
+}
+function _siBar(pct){
+  pct = Math.max(0,Math.min(100,pct));
+  var color = pct>90 ? '#ef4444' : (pct>75 ? '#f59e0b' : '#22c55e');
+  return '<div style="width:100%;height:6px;border-radius:3px;background:var(--bg3);overflow:hidden;margin-top:4px">'
+    +'<div style="width:'+pct+'%;height:100%;background:'+color+'"></div></div>';
+}
+async function loadServerInfo(){
+  var el = document.getElementById('serverInfoBody');
+  if(!el) return;
+  try{
+    var d = await fetch('/api/server-info').then(function(r){
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    });
+    var ramPct = d.ram.totalBytes ? (d.ram.usedBytes/d.ram.totalBytes*100) : 0;
+    var diskPct = (d.disk && d.disk.totalBytes) ? (d.disk.usedBytes/d.disk.totalBytes*100) : 0;
+
+    var html = '';
+    html += _siRow('💻','Host', d.host+' <span style="color:var(--text3);font-weight:500">('+d.platform+')</span>');
+    html += _siRow('⏱','Server Uptime', _siFmtUptime(d.serverUptimeSeconds));
+    html += _siRow('📟','App Process Uptime', _siFmtUptime(d.appUptimeSeconds));
+    html += _siRow('⬢','Node.js Version', d.nodeVersion);
+    html += _siRow('⚙️','CPU', d.cpuModel+' ('+d.cpuCores+' cores)');
+    html += _siRow('📈','Load Avg (1/5/15 min)', d.loadAvg.map(function(n){return n.toFixed(2);}).join(' / '));
+    html += '<div style="padding:9px 0;border-bottom:1px solid var(--border)">'
+      +'<div style="display:flex;justify-content:space-between"><span style="color:var(--text3);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">💾 RAM</span>'
+      +'<span style="font-weight:700;color:var(--text)">'+_siFmtBytes(d.ram.usedBytes)+' / '+_siFmtBytes(d.ram.totalBytes)+' used ('+ramPct.toFixed(1)+'%)</span></div>'
+      +_siBar(ramPct)+'</div>';
+    if(d.disk){
+      html += '<div style="padding:9px 0;border-bottom:1px solid var(--border)">'
+        +'<div style="display:flex;justify-content:space-between"><span style="color:var(--text3);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">💿 Disk</span>'
+        +'<span style="font-weight:700;color:var(--text)">'+_siFmtBytes(d.disk.usedBytes)+' / '+_siFmtBytes(d.disk.totalBytes)+' used ('+diskPct.toFixed(1)+'%) <span style="color:var(--text3);font-weight:500">on '+d.disk.mount+'</span></span></div>'
+        +_siBar(diskPct)+'</div>';
+    }
+    html += _siRow('📦','App Process Memory (RSS)', _siFmtBytes(d.appProcessRssBytes));
+    html += _siRow('🗄','PostgreSQL DB Size', _siFmtBytes(d.dbSizeBytes)+' total');
+    var counts = Object.keys(d.rowCounts||{}).map(function(k){
+      var v = d.rowCounts[k];
+      return k+': '+(v==null?'n/a':v);
+    }).join(' · ');
+    html += _siRow('📊','Row Counts', '<span style="font-weight:500;font-size:12px">'+counts+'</span>');
+    html += '<div style="margin-top:10px;font-size:10px;color:var(--text3)">Last refreshed: '+new Date().toLocaleTimeString()+'</div>';
+    el.innerHTML = html;
+  }catch(e){
+    el.innerHTML = '<div style="color:#ef4444">Failed to load server info: '+e.message+'</div>';
+    console.error('loadServerInfo error:', e);
+  }
+}
 
 // ---- SYSTEM SETTINGS ----
 var _sysSettings = { timezone: 'Asia/Kolkata', company_name: 'WorkPulse', date_format: 'DD/MM/YYYY', default_theme: 'system' };

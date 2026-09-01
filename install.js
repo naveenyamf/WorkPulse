@@ -125,7 +125,7 @@ router.post('/run', async (req, res) => {
       { name: 'otp_tokens',           sql: `CREATE TABLE IF NOT EXISTS otp_tokens (id SERIAL PRIMARY KEY, email VARCHAR(200) NOT NULL, otp VARCHAR(10) NOT NULL, purpose VARCHAR(20) DEFAULT 'mfa', expires_at TIMESTAMPTZ NOT NULL, used BOOLEAN DEFAULT false, created_at TIMESTAMPTZ DEFAULT NOW())` },
       { name: 'settings',             sql: `CREATE TABLE IF NOT EXISTS settings (id SERIAL PRIMARY KEY, key VARCHAR(100) UNIQUE NOT NULL, value TEXT, updated_at TIMESTAMPTZ DEFAULT NOW())` },
       { name: 'temp_shift_overrides', sql: `CREATE TABLE IF NOT EXISTS temp_shift_overrides (id SERIAL PRIMARY KEY, employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE, override_date DATE NOT NULL, roster_id INTEGER REFERENCES duty_rosters(id) ON DELETE SET NULL, is_day_off BOOLEAN DEFAULT false, created_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(employee_id, override_date))` },
-      { name: 'report_jobs',          sql: `CREATE TABLE IF NOT EXISTS report_jobs (id SERIAL PRIMARY KEY, admin_id INTEGER, report_type VARCHAR(50), parameters JSONB, status VARCHAR(20) DEFAULT 'pending', result_path VARCHAR(500), created_at TIMESTAMPTZ DEFAULT NOW(), completed_at TIMESTAMPTZ)` },
+      { name: 'report_jobs',          sql: `CREATE TABLE IF NOT EXISTS report_jobs (id SERIAL PRIMARY KEY, admin_id INTEGER, admin_name VARCHAR(200), employee_id INTEGER, employee_name VARCHAR(200), from_date DATE, to_date DATE, report_type VARCHAR(50), parameters JSONB, status VARCHAR(20) DEFAULT 'pending', progress INTEGER DEFAULT 0, filename VARCHAR(255), file_path VARCHAR(500), result_path VARCHAR(500), error_msg TEXT, created_at TIMESTAMPTZ DEFAULT NOW(), completed_at TIMESTAMPTZ)` },
       { name: 'report_schedules',     sql: `CREATE TABLE IF NOT EXISTS report_schedules (id SERIAL PRIMARY KEY, admin_id INTEGER, report_type VARCHAR(50), frequency VARCHAR(20), recipients TEXT, parameters JSONB, enabled BOOLEAN DEFAULT true, active BOOLEAN DEFAULT true, last_run TIMESTAMPTZ, next_run TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW())` },
       { name: 'alert_rules',          sql: `CREATE TABLE IF NOT EXISTS alert_rules (id SERIAL PRIMARY KEY, admin_id INTEGER, admin_name VARCHAR(200), name VARCHAR(200) NOT NULL, category VARCHAR(50) NOT NULL, condition VARCHAR(50) NOT NULL, value VARCHAR(200), employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL, employee_name VARCHAR(200), severity VARCHAR(20) DEFAULT 'medium', active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW())` },
       { name: 'site_categories',      sql: `CREATE TABLE IF NOT EXISTS site_categories (id SERIAL PRIMARY KEY, admin_id INTEGER, domain VARCHAR(255) NOT NULL, category VARCHAR(50) NOT NULL DEFAULT 'Neutral', created_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(admin_id, domain))` },
@@ -144,6 +144,24 @@ router.post('/run', async (req, res) => {
       send(`  ✓ ${t.name}`, 'ok');
       await sleep(50);
     }
+
+    // Migrate report_jobs in case it already existed from an older installer version
+    // (adds columns the app needs but earlier schema versions were missing)
+    send('Checking report_jobs schema…', 'info', 57, 'Migrating…');
+    for (const col of [
+      `ADD COLUMN IF NOT EXISTS admin_name VARCHAR(200)`,
+      `ADD COLUMN IF NOT EXISTS employee_id INTEGER`,
+      `ADD COLUMN IF NOT EXISTS employee_name VARCHAR(200)`,
+      `ADD COLUMN IF NOT EXISTS from_date DATE`,
+      `ADD COLUMN IF NOT EXISTS to_date DATE`,
+      `ADD COLUMN IF NOT EXISTS progress INTEGER DEFAULT 0`,
+      `ADD COLUMN IF NOT EXISTS filename VARCHAR(255)`,
+      `ADD COLUMN IF NOT EXISTS file_path VARCHAR(500)`,
+      `ADD COLUMN IF NOT EXISTS error_msg TEXT`,
+    ]) {
+      await client.query(`ALTER TABLE report_jobs ${col}`);
+    }
+    send('✓ report_jobs schema up to date', 'ok', 58);
 
     // Indexes
     send('Creating indexes…', 'info', 59, 'Indexes…');
@@ -167,6 +185,19 @@ router.post('/run', async (req, res) => {
     send('Setting database timezone…', 'info', 67, 'Timezone…');
     await client.query(`ALTER DATABASE ${db.name} SET timezone TO 'Asia/Kolkata'`);
     send('✓ DB timezone set to Asia/Kolkata', 'ok', 68, 'Timezone done');
+
+    // Ensure db.user owns every table/sequence, regardless of how each object
+    // was originally created (fixes "permission denied for sequence ..." errors
+    // that occur if a table gets created/altered by a different Postgres role,
+    // e.g. via manual `sudo -u postgres psql` during troubleshooting)
+    send('Verifying table ownership & permissions…', 'info', 69, 'Permissions…');
+    const ownRes = await client.query(`SELECT tablename FROM pg_tables WHERE schemaname='public'`);
+    for (const row of ownRes.rows) {
+      await client.query(`ALTER TABLE ${row.tablename} OWNER TO ${db.user}`);
+    }
+    await client.query(`GRANT ALL ON ALL TABLES IN SCHEMA public TO ${db.user}`);
+    await client.query(`GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO ${db.user}`);
+    send(`✓ Ownership verified for ${ownRes.rows.length} tables`, 'ok', 70, 'Permissions set');
 
     // Seed sys_settings default row
     const sc = await client.query('SELECT COUNT(*) FROM sys_settings');

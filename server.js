@@ -9,6 +9,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const cookieParser = require('cookie-parser');
+const os = require('os');
 const pool = require('./db');
 
 const app = express();
@@ -1551,6 +1552,67 @@ app.get('/api/audit-log', requireLogin, requireAdmin, async (req, res) => {
     );
     res.json({ rows: result.rows, total, page, pages: Math.ceil(total/limit) });
   } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Server Info (System Settings page widget)
+app.get('/api/server-info', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const cpus = os.cpus();
+    const totalMem = os.totalmem();
+    const freeMem = os.freemem();
+    const usedMem = totalMem - freeMem;
+
+    const dbSizeRes = await pool.query(
+      "SELECT pg_database_size(current_database()) AS bytes"
+    );
+    const dbSizeBytes = parseInt(dbSizeRes.rows[0].bytes);
+
+    const countTables = ['employees', 'screenshots', 'web_activity', 'audit_log', 'alerts'];
+    const counts = {};
+    for (const t of countTables) {
+      try {
+        const r = await pool.query(`SELECT COUNT(*) FROM ${t}`);
+        counts[t] = parseInt(r.rows[0].count);
+      } catch (e) {
+        counts[t] = null; // table might not exist on older installs
+      }
+    }
+
+    const getDiskUsage = () => new Promise((resolve) => {
+      execFile('df', ['-kP', '/'], (err, stdout) => {
+        if (err || !stdout) return resolve(null);
+        const lines = stdout.trim().split('\n');
+        if (lines.length < 2) return resolve(null);
+        const parts = lines[1].trim().split(/\s+/);
+        // Filesystem 1024-blocks Used Available Capacity Mounted-on
+        resolve({
+          totalBytes: parseInt(parts[1]) * 1024,
+          usedBytes: parseInt(parts[2]) * 1024,
+          mount: parts[5] || '/'
+        });
+      });
+    });
+
+    const disk = await getDiskUsage();
+
+    res.json({
+      host: os.hostname(),
+      platform: `${os.platform()} ${os.release()}, ${os.arch()}`,
+      serverUptimeSeconds: os.uptime(),
+      appUptimeSeconds: process.uptime(),
+      nodeVersion: process.version,
+      cpuModel: cpus.length ? cpus[0].model : 'Unknown',
+      cpuCores: cpus.length,
+      loadAvg: os.loadavg(), // [1min, 5min, 15min]
+      ram: { totalBytes: totalMem, usedBytes: usedMem },
+      disk,
+      appProcessRssBytes: process.memoryUsage().rss,
+      dbSizeBytes,
+      rowCounts: counts
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Departments
