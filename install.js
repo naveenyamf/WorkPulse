@@ -126,7 +126,7 @@ router.post('/run', async (req, res) => {
       { name: 'settings',             sql: `CREATE TABLE IF NOT EXISTS settings (id SERIAL PRIMARY KEY, key VARCHAR(100) UNIQUE NOT NULL, value TEXT, updated_at TIMESTAMPTZ DEFAULT NOW())` },
       { name: 'temp_shift_overrides', sql: `CREATE TABLE IF NOT EXISTS temp_shift_overrides (id SERIAL PRIMARY KEY, employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE, override_date DATE NOT NULL, roster_id INTEGER REFERENCES duty_rosters(id) ON DELETE SET NULL, is_day_off BOOLEAN DEFAULT false, created_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(employee_id, override_date))` },
       { name: 'report_jobs',          sql: `CREATE TABLE IF NOT EXISTS report_jobs (id SERIAL PRIMARY KEY, admin_id INTEGER, admin_name VARCHAR(200), employee_id INTEGER, employee_name VARCHAR(200), from_date DATE, to_date DATE, report_type VARCHAR(50), parameters JSONB, status VARCHAR(20) DEFAULT 'pending', progress INTEGER DEFAULT 0, filename VARCHAR(255), file_path VARCHAR(500), result_path VARCHAR(500), error_msg TEXT, created_at TIMESTAMPTZ DEFAULT NOW(), completed_at TIMESTAMPTZ)` },
-      { name: 'report_schedules',     sql: `CREATE TABLE IF NOT EXISTS report_schedules (id SERIAL PRIMARY KEY, admin_id INTEGER, report_type VARCHAR(50), frequency VARCHAR(20), recipients TEXT, parameters JSONB, enabled BOOLEAN DEFAULT true, active BOOLEAN DEFAULT true, last_run TIMESTAMPTZ, next_run TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW())` },
+      { name: 'report_schedules',     sql: `CREATE TABLE IF NOT EXISTS report_schedules (id SERIAL PRIMARY KEY, admin_id INTEGER, admin_name VARCHAR(200), employee_id INTEGER, employee_name VARCHAR(200), report_type VARCHAR(50), frequency VARCHAR(20), day_of_week INTEGER, day_of_month INTEGER, email VARCHAR(255), send_hour INTEGER DEFAULT 8, send_minute INTEGER DEFAULT 0, report_range VARCHAR(20) DEFAULT 'yesterday', recipients TEXT, parameters JSONB, enabled BOOLEAN DEFAULT true, active BOOLEAN DEFAULT true, last_run TIMESTAMPTZ, next_run TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW())` },
       { name: 'alert_rules',          sql: `CREATE TABLE IF NOT EXISTS alert_rules (id SERIAL PRIMARY KEY, admin_id INTEGER, admin_name VARCHAR(200), name VARCHAR(200) NOT NULL, category VARCHAR(50) NOT NULL, condition VARCHAR(50) NOT NULL, value VARCHAR(200), employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL, employee_name VARCHAR(200), severity VARCHAR(20) DEFAULT 'medium', active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW())` },
       { name: 'site_categories',      sql: `CREATE TABLE IF NOT EXISTS site_categories (id SERIAL PRIMARY KEY, admin_id INTEGER, domain VARCHAR(255) NOT NULL, category VARCHAR(50) NOT NULL DEFAULT 'Neutral', created_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(admin_id, domain))` },
       { name: 'remembered_devices',   sql: `CREATE TABLE IF NOT EXISTS remembered_devices (id SERIAL PRIMARY KEY, admin_id INTEGER NOT NULL, token VARCHAR(200) UNIQUE NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(), expires_at TIMESTAMPTZ NOT NULL)` },
@@ -162,6 +162,24 @@ router.post('/run', async (req, res) => {
       await client.query(`ALTER TABLE report_jobs ${col}`);
     }
     send('✓ report_jobs schema up to date', 'ok', 58);
+
+    // Same treatment for report_schedules — columns the app needs that older installer
+    // versions never created
+    send('Checking report_schedules schema…', 'info', 59, 'Migrating…');
+    for (const col of [
+      `ADD COLUMN IF NOT EXISTS admin_name VARCHAR(200)`,
+      `ADD COLUMN IF NOT EXISTS employee_id INTEGER`,
+      `ADD COLUMN IF NOT EXISTS employee_name VARCHAR(200)`,
+      `ADD COLUMN IF NOT EXISTS day_of_week INTEGER`,
+      `ADD COLUMN IF NOT EXISTS day_of_month INTEGER`,
+      `ADD COLUMN IF NOT EXISTS email VARCHAR(255)`,
+      `ADD COLUMN IF NOT EXISTS send_hour INTEGER DEFAULT 8`,
+      `ADD COLUMN IF NOT EXISTS send_minute INTEGER DEFAULT 0`,
+      `ADD COLUMN IF NOT EXISTS report_range VARCHAR(20) DEFAULT 'yesterday'`,
+    ]) {
+      await client.query(`ALTER TABLE report_schedules ${col}`);
+    }
+    send('✓ report_schedules schema up to date', 'ok', 60);
 
     // Indexes
     send('Creating indexes…', 'info', 59, 'Indexes…');

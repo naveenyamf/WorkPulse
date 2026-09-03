@@ -142,6 +142,11 @@ tr.emp-row:hover{background:var(--card-hover)}
 .avatar{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0}
 .filter-select{background:var(--input-bg);border:1px solid var(--border);color:var(--text);font-size:11px;padding:6px 10px;border-radius:8px;outline:none;font-family:inherit;transition:all 0.18s}
 .filter-select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent)22}
+.emp-picker-panel{position:absolute;top:calc(100% + 6px);left:0;width:320px;max-width:90vw;background:var(--bg2);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.5);z-index:300}
+.emp-picker-row:hover,.emp-picker-dept > label:hover{background:var(--bg3);border-radius:6px}
+.col-filter-row th{padding:6px 8px !important}
+.col-filter-input{width:100%;box-sizing:border-box;background:var(--input-bg);border:1px solid var(--border);color:var(--text);font-size:11px;padding:5px 8px;border-radius:6px;outline:none;font-family:inherit}
+.col-filter-input:focus{border-color:var(--accent)}
 /* PRESET CHIPS */
 .preset-chip{padding:5px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:20px;font-size:10px;color:var(--text2);cursor:pointer;transition:all 0.15s;font-weight:500}
 .preset-chip:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-bg);transform:translateY(-1px)}
@@ -941,10 +946,14 @@ tr.emp-row:hover{background:var(--card-hover)}
       <!-- Row 1: Employee + Date Range + Buttons -->
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto auto;gap:12px;align-items:flex-end;margin-bottom:16px">
         <div>
-          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Employee</label>
-          <select id="report-emp" class="filter-select" style="width:100%;padding:9px 12px">
-            <option value="">All Employees</option>
-          </select>
+          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Employee / Department</label>
+          <div style="position:relative">
+            <button class="btn filter-select" id="report-emp-btn" onclick="toggleEmpPicker('report',event)" style="width:100%;padding:9px 12px;text-align:left;justify-content:flex-start">
+              <span id="report-emp-label">All Employees</span>
+            </button>
+            <div id="report-emp-panel" class="emp-picker-panel" style="display:none"></div>
+          </div>
+          <input type="hidden" id="report-emp">
         </div>
         <div>
           <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Date From</label>
@@ -1022,10 +1031,14 @@ tr.emp-row:hover{background:var(--card-hover)}
     <div style="padding:20px 24px">
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr auto;gap:10px;align-items:flex-end;margin-bottom:16px">
         <div>
-          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Employee</label>
-          <select id="sched-emp" class="filter-select" style="width:100%;padding:9px 12px">
-            <option value="">All Employees</option>
-          </select>
+          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Employee / Department</label>
+          <div style="position:relative">
+            <button class="btn filter-select" id="sched-emp-btn" onclick="toggleEmpPicker('sched',event)" style="width:100%;padding:9px 12px;text-align:left;justify-content:flex-start">
+              <span id="sched-emp-label">All Employees</span>
+            </button>
+            <div id="sched-emp-panel" class="emp-picker-panel" style="display:none"></div>
+          </div>
+          <input type="hidden" id="sched-emp">
         </div>
         <div>
           <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Frequency</label>
@@ -1049,9 +1062,11 @@ tr.emp-row:hover{background:var(--card-hover)}
         </div>
         <div>
           <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Send Time</label>
-          <select id="sched-hour" class="filter-select" style="width:100%;padding:9px 12px">
+          <select id="sched-hour" class="filter-select" style="width:100%;padding:9px 12px" onchange="onSchedHourChange()">
             <option value="6">6:00 AM</option><option value="7">7:00 AM</option><option value="8" selected>8:00 AM</option><option value="9">9:00 AM</option><option value="10">10:00 AM</option><option value="12">12:00 PM</option><option value="15">3:00 PM</option><option value="16">4:00 PM</option><option value="18">6:00 PM</option><option value="20">8:00 PM</option>
+            <option value="custom">Custom…</option>
           </select>
+          <input type="time" id="sched-hour-custom" class="filter-select" style="width:100%;padding:9px 12px;margin-top:6px;display:none" value="08:00">
         </div>
         <div>
           <label style="display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Report Covers</label>
@@ -1915,7 +1930,7 @@ function showPage(name,el,isBack){
   if(name==='syssettings'){loadSysSettings();loadAllMfaSettings();loadSsServerFiles();loadServerInfo();}
   if(name==='departments'){loadDepartments();}
   if(name==='backup'){loadBackupHistory();loadSsServerFiles();}
-  if(name==='reports'){loadReportsPage();initReportCal();loadReportJobs();loadReportSchedules();populateDropdown('report-emp');populateDropdown('sched-emp');}
+  if(name==='reports'){loadReportsPage();initReportCal();loadReportJobs();loadReportSchedules();initEmpPicker('report');initEmpPicker('sched');}
   if(name==='emailconfig'){loadEmailConfig();}
 }
 
@@ -1952,6 +1967,146 @@ async function populateDropdown(id){
     }).join('');
   }catch(e){}
 }
+
+// ---- EMPLOYEE / DEPARTMENT MULTI-PICKER (used by Queue Report + Schedule Report) ----
+var _empPickerData = null; // {employees:[...], departments:[...]}
+var _empPickerState = {};  // prefix -> {mode:'all'|'department'|'employees', department:null, ids:[]}
+
+async function initEmpPicker(prefix){
+  if(!_empPickerData){
+    try{
+      var emps = await fetch('/api/employees').then(function(r){return r.json();});
+      var depts = await fetch('/api/departments').then(function(r){return r.json();});
+      _empPickerData = { employees: emps||[], departments: depts||[] };
+    }catch(e){ _empPickerData = { employees: [], departments: [] }; }
+  }
+  if(!_empPickerState[prefix]) _empPickerState[prefix] = {mode:'all', department:null, ids:[]};
+  renderEmpPickerPanel(prefix);
+  updateEmpPickerLabel(prefix);
+}
+
+function renderEmpPickerPanel(prefix){
+  var panel = document.getElementById(prefix+'-emp-panel');
+  if(!panel) return;
+  var emps = (_empPickerData && _empPickerData.employees) || [];
+  var state = _empPickerState[prefix];
+  var deptGroups = {};
+  emps.forEach(function(e){
+    var d = e.department || 'No Department';
+    if(!deptGroups[d]) deptGroups[d]=[];
+    deptGroups[d].push(e);
+  });
+  var deptNames = Object.keys(deptGroups).sort();
+  var html = '<div style="padding:10px">';
+  html += '<input type="text" placeholder="Search employees…" oninput="empPickerSearch(\''+prefix+'\',this.value)" style="width:100%;box-sizing:border-box;padding:7px 10px;margin-bottom:8px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;outline:none">';
+  html += '<label style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;border-bottom:1px solid var(--border);margin-bottom:6px">'+
+    '<input type="radio" name="'+prefix+'-picker-mode" '+(state.mode==='all'?'checked':'')+' onchange="empPickerSetAll(\''+prefix+'\')" style="accent-color:var(--accent)"> '+
+    '<span style="font-size:12px;font-weight:700;color:var(--text)">All Employees</span></label>';
+  html += '<div id="'+prefix+'-emp-list" style="max-height:260px;overflow:auto">';
+  deptNames.forEach(function(dept){
+    var members = deptGroups[dept];
+    var deptChecked = state.mode==='department' && state.department===dept;
+    var deptSafe = dept.replace(/'/g,"\\'");
+    html += '<div class="emp-picker-dept" data-dept="'+dept.toLowerCase()+'">';
+    html += '<label style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer">'+
+      '<input type="checkbox" '+(deptChecked?'checked':'')+' onchange="empPickerToggleDept(\''+prefix+'\',\''+deptSafe+'\',this.checked)" style="accent-color:var(--accent)"> '+
+      '<span style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px">🏢 '+dept+' ('+members.length+')</span></label>';
+    html += '<div style="padding-left:24px">';
+    members.forEach(function(e){
+      var checked = state.mode==='employees' && state.ids.indexOf(e.id)!==-1;
+      html += '<label class="emp-picker-row" data-name="'+e.name.toLowerCase()+'" style="display:flex;align-items:center;gap:8px;padding:4px">'+
+        '<input type="checkbox" '+(checked?'checked':'')+' onchange="empPickerToggleEmp(\''+prefix+'\','+e.id+',this.checked)" style="accent-color:var(--accent)"> '+
+        '<span style="font-size:12px;color:var(--text2)">'+e.name+'</span></label>';
+    });
+    html += '</div></div>';
+  });
+  html += '</div>';
+  html += '<div style="display:flex;justify-content:flex-end;margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">'+
+    '<button class="btn btn-accent" style="font-size:11px;padding:5px 14px" onclick="closeEmpPicker(\''+prefix+'\')">Done</button></div>';
+  html += '</div>';
+  panel.innerHTML = html;
+}
+
+function empPickerSetAll(prefix){
+  _empPickerState[prefix] = {mode:'all', department:null, ids:[]};
+  renderEmpPickerPanel(prefix);
+  updateEmpPickerLabel(prefix);
+}
+
+function empPickerToggleDept(prefix, dept, checked){
+  if(checked){ _empPickerState[prefix] = {mode:'department', department:dept, ids:[]}; }
+  else { _empPickerState[prefix] = {mode:'all', department:null, ids:[]}; }
+  renderEmpPickerPanel(prefix);
+  updateEmpPickerLabel(prefix);
+}
+
+function empPickerToggleEmp(prefix, empId, checked){
+  var state = _empPickerState[prefix];
+  var ids = (state.mode==='employees') ? state.ids.slice() : [];
+  if(checked){ if(ids.indexOf(empId)===-1) ids.push(empId); }
+  else { ids = ids.filter(function(x){ return x!==empId; }); }
+  _empPickerState[prefix] = { mode: ids.length ? 'employees' : 'all', department:null, ids:ids };
+  renderEmpPickerPanel(prefix);
+  updateEmpPickerLabel(prefix);
+}
+
+function updateEmpPickerLabel(prefix){
+  var state = _empPickerState[prefix];
+  var label = document.getElementById(prefix+'-emp-label');
+  var hidden = document.getElementById(prefix+'-emp');
+  if(!label || !hidden) return;
+  if(state.mode==='department'){
+    label.textContent = '🏢 ' + state.department;
+    hidden.value = JSON.stringify({mode:'department', department:state.department});
+  } else if(state.mode==='employees' && state.ids.length){
+    var emps = (_empPickerData && _empPickerData.employees) || [];
+    var names = emps.filter(function(e){ return state.ids.indexOf(e.id)!==-1; }).map(function(e){ return e.name; });
+    label.textContent = state.ids.length===1 ? names[0] : (state.ids.length+' employees selected');
+    hidden.value = JSON.stringify({mode:'employees', ids:state.ids});
+  } else {
+    label.textContent = 'All Employees';
+    hidden.value = JSON.stringify({mode:'all'});
+  }
+}
+
+function empPickerSearch(prefix, q){
+  q = q.toLowerCase();
+  var panel = document.getElementById(prefix+'-emp-panel');
+  if(!panel) return;
+  panel.querySelectorAll('.emp-picker-row').forEach(function(row){
+    row.style.display = row.dataset.name.indexOf(q)!==-1 ? 'flex' : 'none';
+  });
+  panel.querySelectorAll('.emp-picker-dept').forEach(function(deptDiv){
+    var anyVisible = Array.prototype.some.call(deptDiv.querySelectorAll('.emp-picker-row'), function(r){ return r.style.display!=='none'; });
+    deptDiv.style.display = (q===''||anyVisible) ? 'block' : 'none';
+  });
+}
+
+function toggleEmpPicker(prefix, ev){
+  if(ev) ev.stopPropagation();
+  var panel = document.getElementById(prefix+'-emp-panel');
+  if(!panel) return;
+  var isOpen = panel.style.display==='block';
+  document.querySelectorAll('.emp-picker-panel').forEach(function(p){ p.style.display='none'; });
+  if(!isOpen) panel.style.display='block';
+}
+
+function closeEmpPicker(prefix){
+  var panel = document.getElementById(prefix+'-emp-panel');
+  if(panel) panel.style.display='none';
+}
+
+document.addEventListener('click', function(ev){
+  if(!ev.target.closest('.emp-picker-panel') && !ev.target.closest('[id$="-emp-btn"]')){
+    document.querySelectorAll('.emp-picker-panel').forEach(function(p){ p.style.display='none'; });
+  }
+});
+
+function getEmpPickerSelection(prefix){
+  var hidden = document.getElementById(prefix+'-emp');
+  try{ return JSON.parse((hidden && hidden.value) || '{"mode":"all"}'); }catch(e){ return {mode:'all'}; }
+}
+// ---- END EMPLOYEE / DEPARTMENT MULTI-PICKER ----
 
 async function doLogout(){
   await fetch('/api/logout',{method:'POST'});
@@ -2028,45 +2183,123 @@ function avatarHTML(name){
   return '<div class="avatar" style="background:#00e5ff22;color:#00e5ff">'+initials+'</div>';
 }
 
+var _empRowsDashboard = [];
 async function loadEmployees(){
   var wrap=document.getElementById('empTableWrap');
   wrap.innerHTML='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:16px">'+'<div style="height:120px;border-radius:10px;background:linear-gradient(90deg,var(--bg3) 25%,var(--border) 50%,var(--bg3) 75%);background-size:400px 100%;animation:shimmer 1.2s infinite"></div>'.repeat(8)+'</div>';
   try{
     var rows=await fetch('/api/employees').then(function(r){return r.json();});
+    _empRowsDashboard = rows||[];
     if(!rows.length){wrap.innerHTML='<div class="empty">No employees yet.</div>';return;}
-    wrap.innerHTML='<table><thead><tr><th>Employee</th><th>Department</th><th>Status</th><th>Current App</th><th>Last Seen</th></tr></thead><tbody>'+
-      rows.map(function(e){return '<tr class="emp-row"><td><div style="display:flex;align-items:center;gap:10px">'+avatarHTML(e.name)+
-        '<div><div style="color:#fff;cursor:pointer;text-decoration:underline dotted" onclick="openEmpProfile('+e.id+',this.dataset.n)" data-n="'+e.name+'">'+e.name+'</div></div></div></td>'+
-        '<td style="color:#64748b">'+( e.department||'—')+'</td><td>'+empStatus(e)+'</td>'+
-        '<td style="color:#e2e8f0">'+(e.current_app||'—')+'</td>'+
-        '<td style="color:#64748b">'+(e.last_seen?new Date(e.last_seen).toLocaleTimeString():'Never')+'</td></tr>';
-      }).join('')+'</tbody></table>';
+    var depts = Array.from(new Set(rows.map(function(e){return e.department||'';}).filter(Boolean))).sort();
+    wrap.innerHTML='<table><thead><tr><th>Employee</th><th>Department</th><th>Status</th><th>Current App</th><th>Last Seen</th></tr>'+
+      '<tr class="col-filter-row">'+
+        '<th><input class="col-filter-input" placeholder="Filter name…" oninput="applyEmpDashboardFilters()" id="colf-dash-name"></th>'+
+        '<th><select class="col-filter-input" onchange="applyEmpDashboardFilters()" id="colf-dash-dept"><option value="">All</option>'+depts.map(function(d){return '<option value="'+d+'">'+d+'</option>';}).join('')+'</select></th>'+
+        '<th><select class="col-filter-input" onchange="applyEmpDashboardFilters()" id="colf-dash-status"><option value="">All</option><option value="active">Active</option><option value="idle">Idle</option><option value="offline">Offline</option></select></th>'+
+        '<th><input class="col-filter-input" placeholder="Filter app…" oninput="applyEmpDashboardFilters()" id="colf-dash-app"></th>'+
+        '<th><input class="col-filter-input" placeholder="Filter time…" oninput="applyEmpDashboardFilters()" id="colf-dash-lastseen"></th>'+
+      '</tr></thead><tbody id="empTableDashboardBody"></tbody></table>';
+    renderEmpDashboardRows(rows);
   }catch(e){wrap.innerHTML='<div class="empty">Error loading employees.</div>';}
 }
 
+function empStatusKey(e){
+  if(!e.last_seen) return 'offline';
+  var diff=(Date.now()-new Date(e.last_seen))/1000/60;
+  if(diff<5) return e.is_idle?'idle':'active';
+  return 'offline';
+}
+
+function renderEmpDashboardRows(rows){
+  var body=document.getElementById('empTableDashboardBody');
+  if(!body) return;
+  if(!rows.length){ body.innerHTML='<tr><td colspan="5" class="empty">No employees match these filters.</td></tr>'; return; }
+  body.innerHTML = rows.map(function(e){return '<tr class="emp-row"><td><div style="display:flex;align-items:center;gap:10px">'+avatarHTML(e.name)+
+    '<div><div style="color:#fff;cursor:pointer;text-decoration:underline dotted" onclick="openEmpProfile('+e.id+',this.dataset.n)" data-n="'+e.name+'">'+e.name+'</div></div></div></td>'+
+    '<td style="color:#64748b">'+( e.department||'—')+'</td><td>'+empStatus(e)+'</td>'+
+    '<td style="color:#e2e8f0">'+(e.current_app||'—')+'</td>'+
+    '<td style="color:#64748b">'+(e.last_seen?new Date(e.last_seen).toLocaleTimeString():'Never')+'</td></tr>';
+  }).join('');
+}
+
+function applyEmpDashboardFilters(){
+  var name=(document.getElementById('colf-dash-name').value||'').toLowerCase();
+  var dept=document.getElementById('colf-dash-dept').value;
+  var status=document.getElementById('colf-dash-status').value;
+  var app=(document.getElementById('colf-dash-app').value||'').toLowerCase();
+  var lastSeen=(document.getElementById('colf-dash-lastseen').value||'').toLowerCase();
+  var filtered=_empRowsDashboard.filter(function(e){
+    if(name && e.name.toLowerCase().indexOf(name)===-1) return false;
+    if(dept && (e.department||'')!==dept) return false;
+    if(status && empStatusKey(e)!==status) return false;
+    if(app && (e.current_app||'').toLowerCase().indexOf(app)===-1) return false;
+    if(lastSeen){
+      var lsText = e.last_seen ? new Date(e.last_seen).toLocaleTimeString().toLowerCase() : 'never';
+      if(lsText.indexOf(lastSeen)===-1) return false;
+    }
+    return true;
+  });
+  renderEmpDashboardRows(filtered);
+}
+
+var _empRowsFull = [];
 async function loadEmployeesFull(){
   var wrap=document.getElementById('empTableFull');
   wrap.innerHTML='<div class="empty">Loading...</div>';
   try{
     var rows=await fetch('/api/employees').then(function(r){return r.json();});
+    _empRowsFull = rows||[];
     if(!rows.length){wrap.innerHTML='<div class="empty">No employees yet.</div>';return;}
+    var depts = Array.from(new Set(rows.map(function(e){return e.department||'';}).filter(Boolean))).sort();
     wrap.innerHTML='<table style="width:100%"><thead><tr>'+
       '<th style="width:35%">Employee</th><th style="width:15%">Department</th>'+
       '<th style="width:12%">Status</th><th style="width:22%">Agent Token / Version</th><th style="width:16%">Action</th>'+
-      '</tr></thead><tbody>'+
-      rows.map(function(e){return '<tr class="emp-row"><td><div style="display:flex;align-items:center;gap:10px">'+avatarHTML(e.name)+
-        '<div><div style="color:var(--text);font-weight:600">'+e.name+'</div><div style="font-size:10px;color:var(--text3)">'+e.email+'</div></div></div></td>'+
-        '<td style="color:var(--text2)">'+(e.department||'—')+'</td><td>'+empStatus(e)+'</td>'+
-        '<td>'+
-  '<span style="font-family:monospace;font-size:10px;color:var(--accent)">'+e.agent_token.slice(0,16)+'...</span>'+
-  (e.agent_version?'<span style="margin-left:8px;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:rgba(16,185,129,0.1);color:#10b981">v'+e.agent_version+'</span>':'<span style="margin-left:8px;font-size:10px;color:#64748b">no agent</span>')+
-'</td>'+
-        '<td><div style="display:flex;gap:6px">'+
-        '<button class="btn" style="font-size:10px;padding:5px 10px" onclick="openSettings('+e.id+',\''+e.name+'\','+(e.screenshot_interval||5)+','+(e.data_retention_days||0)+','+(e.roster_id||'null')+',\''+encodeURIComponent(e.department||'')+'\')">⚙ Settings</button>'+
-        '<button class="btn btn-danger" style="font-size:10px;padding:5px 10px" onclick="removeEmployee('+e.id+',\''+e.name+'\')" >Remove</button>'+
-        '</div></td></tr>';
-      }).join('')+'</tbody></table>';
+      '</tr><tr class="col-filter-row">'+
+        '<th><input class="col-filter-input" placeholder="Filter name/email…" oninput="applyEmpFullFilters()" id="colf-full-name"></th>'+
+        '<th><select class="col-filter-input" onchange="applyEmpFullFilters()" id="colf-full-dept"><option value="">All</option>'+depts.map(function(d){return '<option value="'+d+'">'+d+'</option>';}).join('')+'</select></th>'+
+        '<th><select class="col-filter-input" onchange="applyEmpFullFilters()" id="colf-full-status"><option value="">All</option><option value="active">Active</option><option value="idle">Idle</option><option value="offline">Offline</option></select></th>'+
+        '<th><input class="col-filter-input" placeholder="Filter token/version…" oninput="applyEmpFullFilters()" id="colf-full-agent"></th>'+
+        '<th></th>'+
+      '</tr></thead><tbody id="empTableFullBody"></tbody></table>';
+    renderEmpFullRows(rows);
   }catch(e){wrap.innerHTML='<div class="empty">Error loading.</div>';}
+}
+
+function renderEmpFullRows(rows){
+  var body=document.getElementById('empTableFullBody');
+  if(!body) return;
+  if(!rows.length){ body.innerHTML='<tr><td colspan="5" class="empty">No employees match these filters.</td></tr>'; return; }
+  body.innerHTML = rows.map(function(e){return '<tr class="emp-row"><td><div style="display:flex;align-items:center;gap:10px">'+avatarHTML(e.name)+
+    '<div><div style="color:var(--text);font-weight:600">'+e.name+'</div><div style="font-size:10px;color:var(--text3)">'+e.email+'</div></div></div></td>'+
+    '<td style="color:var(--text2)">'+(e.department||'—')+'</td><td>'+empStatus(e)+'</td>'+
+    '<td>'+
+'<span style="font-family:monospace;font-size:10px;color:var(--accent)">'+e.agent_token.slice(0,16)+'...</span>'+
+(e.agent_version?'<span style="margin-left:8px;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:rgba(16,185,129,0.1);color:#10b981">v'+e.agent_version+'</span>':'<span style="margin-left:8px;font-size:10px;color:#64748b">no agent</span>')+
+'</td>'+
+    '<td><div style="display:flex;gap:6px">'+
+    '<button class="btn" style="font-size:10px;padding:5px 10px" onclick="openSettings('+e.id+',\''+e.name+'\','+(e.screenshot_interval||5)+','+(e.data_retention_days||0)+','+(e.roster_id||'null')+',\''+encodeURIComponent(e.department||'')+'\')">⚙ Settings</button>'+
+    '<button class="btn btn-danger" style="font-size:10px;padding:5px 10px" onclick="removeEmployee('+e.id+',\''+e.name+'\')" >Remove</button>'+
+    '</div></td></tr>';
+  }).join('');
+}
+
+function applyEmpFullFilters(){
+  var name=(document.getElementById('colf-full-name').value||'').toLowerCase();
+  var dept=document.getElementById('colf-full-dept').value;
+  var status=document.getElementById('colf-full-status').value;
+  var agent=(document.getElementById('colf-full-agent').value||'').toLowerCase();
+  var filtered=_empRowsFull.filter(function(e){
+    if(name && e.name.toLowerCase().indexOf(name)===-1 && (e.email||'').toLowerCase().indexOf(name)===-1) return false;
+    if(dept && (e.department||'')!==dept) return false;
+    if(status && empStatusKey(e)!==status) return false;
+    if(agent){
+      var agentText = (e.agent_token||'').toLowerCase() + ' ' + (e.agent_version?('v'+e.agent_version):'no agent');
+      if(agentText.indexOf(agent)===-1) return false;
+    }
+    return true;
+  });
+  renderEmpFullRows(filtered);
 }
 
 async function addEmployee(){
@@ -5774,13 +6007,6 @@ async function doScreenshotRestore(){
 // ---- REPORTS ----
 async function loadReportsPage(){
   try{
-    var rows = await fetch('/api/employees').then(function(r){return r.json();});
-    var sels = document.querySelectorAll('#report-emp');
-    sels.forEach(function(sel){
-      sel.innerHTML = '<option value="">All Employees</option>' + rows.map(function(e){
-        return '<option value="'+e.id+'">'+e.name+'</option>';
-      }).join('');
-    });
     // Default to last 30 days
     var to = new Date(); var from = new Date(); from.setDate(from.getDate()-30);
     var froms = document.querySelectorAll('#report-from');
@@ -6467,13 +6693,16 @@ var reportJobInterval = null;
 async function queueReport(){
   var from = document.getElementById('report-from').value;
   var to   = document.getElementById('report-to').value;
-  var empId = document.getElementById('report-emp') ? document.getElementById('report-emp').value : '';
+  var sel = getEmpPickerSelection('report');
   if(!from||!to){ toast('Please select a date range','#ef4444'); return; }
+  var body = {from:from, to:to};
+  if(sel.mode==='employees') body.employee_ids = sel.ids;
+  else if(sel.mode==='department') body.department = sel.department;
   try{
-    var res = await fetch('/api/admin/report-job',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({employee_id:empId||null,from:from,to:to})});
+    var res = await fetch('/api/admin/report-job',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     var data = await res.json();
     if(data.success){
-      toast('✓ Report queued! Job #'+data.job_id,'#10b981');
+      toast(data.count>1 ? ('✓ '+data.count+' reports queued!') : '✓ Report queued! Job #'+data.job_id,'#10b981');
       loadReportJobs();
       startJobPolling();
     } else { toast('Error: '+(data.error||'Failed'),'#ef4444'); }
@@ -6570,18 +6799,36 @@ function onSchedFreqChange(){
   document.getElementById('sched-dom-wrap').style.display=freq==='monthly'?'block':'none';
 }
 
+function onSchedHourChange(){
+  var sel=document.getElementById('sched-hour').value;
+  document.getElementById('sched-hour-custom').style.display = sel==='custom' ? 'block' : 'none';
+}
+
+function getSchedTime(){
+  var sel=document.getElementById('sched-hour').value;
+  if(sel==='custom'){
+    var t=document.getElementById('sched-hour-custom').value || '08:00'; // "HH:MM"
+    var parts=t.split(':');
+    return { hour: parseInt(parts[0],10), minute: parseInt(parts[1],10)||0 };
+  }
+  return { hour: parseInt(sel,10), minute: 0 };
+}
+
 async function createSchedule(){
-  var empId=document.getElementById('sched-emp').value;
+  var sel = getEmpPickerSelection('sched');
   var freq=document.getElementById('sched-freq').value;
   var dow=document.getElementById('sched-dow')?document.getElementById('sched-dow').value:null;
   var dom=document.getElementById('sched-dom')?document.getElementById('sched-dom').value:null;
   var email=document.getElementById('sched-email').value.trim();
-  var hour=document.getElementById('sched-hour')?parseInt(document.getElementById('sched-hour').value):8;
+  var t=getSchedTime();
   var range=document.getElementById('sched-range')?document.getElementById('sched-range').value:'yesterday';
+  var body = {frequency:freq, day_of_week:dow||null, day_of_month:dom||null, email:email||null, send_hour:t.hour, send_minute:t.minute, report_range:range};
+  if(sel.mode==='employees') body.employee_ids = sel.ids;
+  else if(sel.mode==='department') body.department = sel.department;
   try{
-    var res=await fetch('/api/admin/report-schedules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({employee_id:empId||null,frequency:freq,day_of_week:dow||null,day_of_month:dom||null,email:email||null,send_hour:hour,report_range:range})});
+    var res=await fetch('/api/admin/report-schedules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     var data=await res.json();
-    if(data.success){ toast('✓ Schedule created','#10b981'); loadReportSchedules(); }
+    if(data.success){ toast(data.count>1?('✓ '+data.count+' schedules created'):'✓ Schedule created','#10b981'); loadReportSchedules(); }
     else { toast('Error: '+(data.error||'Failed'),'#ef4444'); }
   }catch(e){ toast('Error: '+e.message,'#ef4444'); }
 }
@@ -6597,11 +6844,14 @@ async function loadReportSchedules(){
       var freqLabel=s.frequency==='daily'?'Daily':s.frequency==='weekly'?'Weekly ('+days[s.day_of_week||1]+')':'Monthly (day '+s.day_of_month+')';
       var rangeMap={'yesterday':'Yesterday','7days':'Last 7 Days','30days':'Last 30 Days','3months':'Last 3 Months','6months':'Last 6 Months','1year':'1 Year'};
       var rangeLabel=rangeMap[s.report_range||'yesterday']||'Yesterday';
+      var hh=(s.send_hour==null?8:s.send_hour), mm=(s.send_minute||0);
+      var ampm=hh>=12?'PM':'AM', hh12=hh%12; if(hh12===0) hh12=12;
+      var timeLabel=hh12+':'+String(mm).padStart(2,'0')+' '+ampm;
       var nextRun=s.next_run?new Date(s.next_run).toLocaleString():'—';
       var lastRun=s.last_run?new Date(s.last_run).toLocaleString():'Never';
       return '<div style="padding:12px 14px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'+
         '<div>'+
-          '<div style="font-size:12px;font-weight:600;color:var(--text)">'+s.employee_name+' &nbsp;·&nbsp; <span style="color:var(--accent)">'+freqLabel+'</span> &nbsp;·&nbsp; <span style="color:#10b981;font-size:11px">📅 '+rangeLabel+'</span></div>'+
+          '<div style="font-size:12px;font-weight:600;color:var(--text)">'+s.employee_name+' &nbsp;·&nbsp; <span style="color:var(--accent)">'+freqLabel+'</span> &nbsp;·&nbsp; <span style="color:#f59e0b;font-size:11px">🕐 '+timeLabel+'</span> &nbsp;·&nbsp; <span style="color:#10b981;font-size:11px">📅 '+rangeLabel+'</span></div>'+
           '<div style="font-size:10px;color:var(--text3);margin-top:3px">Next: '+nextRun+' &nbsp;·&nbsp; Last: '+lastRun+(s.email?' &nbsp;·&nbsp; Email: '+s.email:'')+'</div>'+
         '</div>'+
         '<div style="display:flex;align-items:center;gap:8px">'+

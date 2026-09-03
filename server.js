@@ -2564,22 +2564,45 @@ app.post('/api/admin/sys-settings', requireLogin, requireAdmin, async (req, res)
 const reportsDir = path.join(__dirname, 'reports');
 if (!fs.existsSync(reportsDir)) fs.mkdirSync(reportsDir, { recursive: true });
 
-// Submit a report job
+// Submit a report job — supports a single employee, multiple employees, a whole
+// department, or "all employees" (when employee_id/employee_ids/department are all empty)
 app.post('/api/admin/report-job', requireLogin, async (req, res) => {
-  const { employee_id, from, to } = req.body;
+  const { employee_id, employee_ids, department, from, to } = req.body;
   if (!from || !to) return res.status(400).json({ error: 'Date range required' });
   try {
-    // Get employee name
-    let empName = 'All Employees';
-    if (employee_id) {
-      const er = await pool.query('SELECT name FROM employees WHERE id=$1', [employee_id]);
-      if (er.rows.length) empName = er.rows[0].name;
+    // Resolve the final list of employee IDs to queue jobs for
+    let ids = [];
+    if (Array.isArray(employee_ids) && employee_ids.length) {
+      ids = employee_ids.map(Number).filter(Boolean);
+    } else if (employee_id) {
+      ids = [Number(employee_id)];
+    } else if (department) {
+      const deptEmps = await pool.query('SELECT id FROM employees WHERE department=$1 AND active=true', [department]);
+      ids = deptEmps.rows.map(r => r.id);
+      if (!ids.length) return res.status(400).json({ error: 'No employees found in that department' });
     }
-    const job = await pool.query(
-      "INSERT INTO report_jobs (admin_id, admin_name, employee_id, employee_name, from_date, to_date, status, progress) VALUES ($1,$2,$3,$4,$5,$6,'queued',0) RETURNING id",
-      [req.session.adminId, req.session.adminName, employee_id||null, empName, from, to]
-    );
-    res.json({ success: true, job_id: job.rows[0].id });
+
+    const jobIds = [];
+    if (!ids.length) {
+      // No specific selection -> one combined "All Employees" job, same as before
+      const job = await pool.query(
+        "INSERT INTO report_jobs (admin_id, admin_name, employee_id, employee_name, from_date, to_date, status, progress) VALUES ($1,$2,$3,$4,$5,$6,'queued',0) RETURNING id",
+        [req.session.adminId, req.session.adminName, null, 'All Employees', from, to]
+      );
+      jobIds.push(job.rows[0].id);
+    } else {
+      for (const id of ids) {
+        const er = await pool.query('SELECT name FROM employees WHERE id=$1', [id]);
+        const empName = er.rows.length ? er.rows[0].name : ('Employee #' + id);
+        const job = await pool.query(
+          "INSERT INTO report_jobs (admin_id, admin_name, employee_id, employee_name, from_date, to_date, status, progress) VALUES ($1,$2,$3,$4,$5,$6,'queued',0) RETURNING id",
+          [req.session.adminId, req.session.adminName, id, empName, from, to]
+        );
+        jobIds.push(job.rows[0].id);
+      }
+    }
+
+    res.json({ success: true, job_id: jobIds[0], job_ids: jobIds, count: jobIds.length });
     // Trigger worker
     processNextJob();
   } catch(err) { res.status(500).json({ error: err.message }); }
@@ -3080,11 +3103,11 @@ async function processNextJob() {
 // ---- END SCHEDULED REPORTS ----
 
 
-function calcNextRun(frequency, dayOfWeek, dayOfMonth, sendHour) {
+function calcNextRun(frequency, dayOfWeek, dayOfMonth, sendHour, sendMinute) {
   const tz = global.sysTimezone || 'Asia/Kolkata';
   const nowInTz = new Date(new Date().toLocaleString('en-US', { timeZone: tz }));
   const next = new Date(nowInTz);
-  next.setHours(sendHour||8, 0, 0, 0);
+  next.setHours(sendHour==null?8:sendHour, sendMinute||0, 0, 0);
   if (frequency === 'daily') {
     if (next <= nowInTz) next.setDate(next.getDate() + 1);
   } else if (frequency === 'weekly') {
@@ -3107,21 +3130,39 @@ app.get('/api/admin/report-schedules', requireLogin, async (req, res) => {
 });
 
 app.post('/api/admin/report-schedules', requireLogin, async (req, res) => {
-  const { employee_id, frequency, day_of_week, day_of_month, email, send_hour } = req.body;
+  const { employee_id, employee_ids, department, frequency, day_of_week, day_of_month, email, send_hour, send_minute } = req.body;
   try {
-    let empName = 'All Employees';
-    if (employee_id) {
-      const er = await pool.query('SELECT name FROM employees WHERE id=$1', [employee_id]);
-      if (er.rows.length) empName = er.rows[0].name;
+    // Resolve the final list of employee IDs to create schedules for (same pattern as report-job)
+    let ids = [];
+    if (Array.isArray(employee_ids) && employee_ids.length) {
+      ids = employee_ids.map(Number).filter(Boolean);
+    } else if (employee_id) {
+      ids = [Number(employee_id)];
+    } else if (department) {
+      const deptEmps = await pool.query('SELECT id FROM employees WHERE department=$1 AND active=true', [department]);
+      ids = deptEmps.rows.map(r => r.id);
+      if (!ids.length) return res.status(400).json({ error: 'No employees found in that department' });
     }
-    const nextRun = calcNextRun(frequency, day_of_week, day_of_month, send_hour||8);
+
     const report_range = req.body.report_range || 'yesterday';
-    await pool.query(
-      'INSERT INTO report_schedules (admin_id, admin_name, employee_id, employee_name, frequency, day_of_week, day_of_month, email, next_run, report_range) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
-      [req.session.adminId, req.session.adminName, employee_id||null, empName, frequency, day_of_week||null, day_of_month||null, email||null, nextRun, report_range]
-    );
-    await auditLog(req, 'Report Schedule Created', empName + ' - ' + frequency);
-    res.json({ success: true });
+    const targets = ids.length ? ids : [null]; // null = single "All Employees" schedule row
+
+    let created = 0;
+    for (const id of targets) {
+      let empName = 'All Employees';
+      if (id) {
+        const er = await pool.query('SELECT name FROM employees WHERE id=$1', [id]);
+        if (er.rows.length) empName = er.rows[0].name;
+      }
+      const nextRun = calcNextRun(frequency, day_of_week, day_of_month, send_hour==null?8:send_hour, send_minute||0);
+      await pool.query(
+        'INSERT INTO report_schedules (admin_id, admin_name, employee_id, employee_name, frequency, day_of_week, day_of_month, email, send_hour, send_minute, next_run, report_range) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
+        [req.session.adminId, req.session.adminName, id, empName, frequency, day_of_week||null, day_of_month||null, email||null, send_hour==null?8:send_hour, send_minute||0, nextRun, report_range]
+      );
+      await auditLog(req, 'Report Schedule Created', empName + ' - ' + frequency);
+      created++;
+    }
+    res.json({ success: true, count: created });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -3181,7 +3222,7 @@ schedule.scheduleJob('*/5 * * * *', async function() {
           "INSERT INTO report_jobs (admin_id, admin_name, employee_id, employee_name, from_date, to_date, status, progress, override_email) VALUES ($1,$2,$3,$4,$5,$6,'queued',0,$7)",
           [sched.admin_id, sched.admin_name, sched.employee_id, sched.employee_name, fromDate, toDate, sched.email||null]
         );
-        const nextRun = calcNextRun(sched.frequency, sched.day_of_week, sched.day_of_month, sched.send_hour||8);
+        const nextRun = calcNextRun(sched.frequency, sched.day_of_week, sched.day_of_month, sched.send_hour==null?8:sched.send_hour, sched.send_minute||0);
         await pool.query('UPDATE report_schedules SET last_run=NOW(), next_run=$1 WHERE id=$2', [nextRun, sched.id]);
         console.log('[Scheduled Report] Queued for:', sched.employee_name, sched.frequency);
         processNextJob();
