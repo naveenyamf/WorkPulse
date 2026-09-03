@@ -158,6 +158,7 @@ router.post('/run', async (req, res) => {
       `ADD COLUMN IF NOT EXISTS filename VARCHAR(255)`,
       `ADD COLUMN IF NOT EXISTS file_path VARCHAR(500)`,
       `ADD COLUMN IF NOT EXISTS error_msg TEXT`,
+      `ADD COLUMN IF NOT EXISTS override_email VARCHAR(255)`,
     ]) {
       await client.query(`ALTER TABLE report_jobs ${col}`);
     }
