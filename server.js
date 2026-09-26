@@ -2570,6 +2570,8 @@ app.post('/api/admin/report-job', requireLogin, async (req, res) => {
   const { employee_id, employee_ids, department, from, to } = req.body;
   if (!from || !to) return res.status(400).json({ error: 'Date range required' });
   try {
+    const allowed = getAllowedEmployees(req); // null = unrestricted admin, array = restricted user's scope
+
     // Resolve the final list of employee IDs to queue jobs for
     let ids = [];
     if (Array.isArray(employee_ids) && employee_ids.length) {
@@ -2577,9 +2579,23 @@ app.post('/api/admin/report-job', requireLogin, async (req, res) => {
     } else if (employee_id) {
       ids = [Number(employee_id)];
     } else if (department) {
-      const deptEmps = await pool.query('SELECT id FROM employees WHERE department=$1 AND active=true', [department]);
+      const deptParams = [department];
+      let deptQuery = 'SELECT id FROM employees WHERE department=$1 AND active=true';
+      if (allowed) { deptQuery += ' AND id = ANY($2::int[])'; deptParams.push(allowed); }
+      const deptEmps = await pool.query(deptQuery, deptParams);
       ids = deptEmps.rows.map(r => r.id);
       if (!ids.length) return res.status(400).json({ error: 'No employees found in that department' });
+    }
+
+    // Enforce access scope for restricted users
+    if (allowed) {
+      if (ids.length) {
+        ids = ids.filter(id => allowed.includes(id));
+        if (!ids.length) return res.status(403).json({ error: 'You do not have access to the selected employee(s)' });
+      } else {
+        ids = allowed; // no explicit selection -> default to everything this user can see, never "all employees"
+        if (!ids.length) return res.status(403).json({ error: 'No employees assigned to your account' });
+      }
     }
 
     const jobIds = [];
@@ -3020,62 +3036,6 @@ setTimeout(processNextJob, 5000);
 
 // Create reports directory
 
-// Submit a report job
-app.post('/api/admin/report-job', requireLogin, async (req, res) => {
-  const { employee_id, from, to } = req.body;
-  if (!from || !to) return res.status(400).json({ error: 'Date range required' });
-  try {
-    // Get employee name
-    let empName = 'All Employees';
-    if (employee_id) {
-      const er = await pool.query('SELECT name FROM employees WHERE id=$1', [employee_id]);
-      if (er.rows.length) empName = er.rows[0].name;
-    }
-    const job = await pool.query(
-      "INSERT INTO report_jobs (admin_id, admin_name, employee_id, employee_name, from_date, to_date, status, progress) VALUES ($1,$2,$3,$4,$5,$6,'queued',0) RETURNING id",
-      [req.session.adminId, req.session.adminName, employee_id||null, empName, from, to]
-    );
-    res.json({ success: true, job_id: job.rows[0].id });
-    // Trigger worker
-    processNextJob();
-  } catch(err) { res.status(500).json({ error: err.message }); }
-});
-
-// Get all jobs for current admin
-app.get('/api/admin/report-jobs', requireLogin, async (req, res) => {
-  try {
-    const jobs = await pool.query(
-      'SELECT id, admin_name, employee_name, from_date::text, to_date::text, status, progress, filename, error_msg, created_at, completed_at FROM report_jobs WHERE admin_id=$1 ORDER BY created_at DESC LIMIT 20',
-      [req.session.adminId]
-    );
-    res.json(jobs.rows);
-  } catch(err) { res.status(500).json({ error: err.message }); }
-});
-
-// Download a completed report
-app.get('/api/admin/report-download/:id', requireLogin, async (req, res) => {
-  try {
-    const job = await pool.query('SELECT * FROM report_jobs WHERE id=$1 AND admin_id=$2', [req.params.id, req.session.adminId]);
-    if (!job.rows.length) return res.status(404).json({ error: 'Job not found' });
-    const j = job.rows[0];
-    if (j.status !== 'done') return res.status(400).json({ error: 'Report not ready' });
-    if (!fs.existsSync(j.file_path)) return res.status(404).json({ error: 'File not found' });
-    res.download(j.file_path, j.filename);
-  } catch(err) { res.status(500).json({ error: err.message }); }
-});
-
-// Delete a job
-app.delete('/api/admin/report-job/:id', requireLogin, async (req, res) => {
-  try {
-    const job = await pool.query('SELECT * FROM report_jobs WHERE id=$1 AND admin_id=$2', [req.params.id, req.session.adminId]);
-    if (job.rows.length && job.rows[0].file_path && fs.existsSync(job.rows[0].file_path)) {
-      fs.unlinkSync(job.rows[0].file_path);
-    }
-    await pool.query('DELETE FROM report_jobs WHERE id=$1 AND admin_id=$2', [req.params.id, req.session.adminId]);
-    res.json({ success: true });
-  } catch(err) { res.status(500).json({ error: err.message }); }
-});
-
 // Background worker
 var jobWorkerRunning = false;
 async function processNextJob() {
@@ -3132,6 +3092,8 @@ app.get('/api/admin/report-schedules', requireLogin, async (req, res) => {
 app.post('/api/admin/report-schedules', requireLogin, async (req, res) => {
   const { employee_id, employee_ids, department, frequency, day_of_week, day_of_month, email, send_hour, send_minute } = req.body;
   try {
+    const allowed = getAllowedEmployees(req); // null = unrestricted admin, array = restricted user's scope
+
     // Resolve the final list of employee IDs to create schedules for (same pattern as report-job)
     let ids = [];
     if (Array.isArray(employee_ids) && employee_ids.length) {
@@ -3139,9 +3101,23 @@ app.post('/api/admin/report-schedules', requireLogin, async (req, res) => {
     } else if (employee_id) {
       ids = [Number(employee_id)];
     } else if (department) {
-      const deptEmps = await pool.query('SELECT id FROM employees WHERE department=$1 AND active=true', [department]);
+      const deptParams = [department];
+      let deptQuery = 'SELECT id FROM employees WHERE department=$1 AND active=true';
+      if (allowed) { deptQuery += ' AND id = ANY($2::int[])'; deptParams.push(allowed); }
+      const deptEmps = await pool.query(deptQuery, deptParams);
       ids = deptEmps.rows.map(r => r.id);
       if (!ids.length) return res.status(400).json({ error: 'No employees found in that department' });
+    }
+
+    // Enforce access scope for restricted users
+    if (allowed) {
+      if (ids.length) {
+        ids = ids.filter(id => allowed.includes(id));
+        if (!ids.length) return res.status(403).json({ error: 'You do not have access to the selected employee(s)' });
+      } else {
+        ids = allowed; // no explicit selection -> schedule per allowed employee, never "all employees"
+        if (!ids.length) return res.status(403).json({ error: 'No employees assigned to your account' });
+      }
     }
 
     const report_range = req.body.report_range || 'yesterday';
