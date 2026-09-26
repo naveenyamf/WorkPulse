@@ -33,6 +33,17 @@ pool.query(`CREATE TABLE IF NOT EXISTS remembered_devices (
   created_at TIMESTAMPTZ DEFAULT NOW()
 )`).catch(e => console.error('[RememberDevice] Table init error:', e.message));
 
+// ── Report Jobs / Schedules: owner-type migration ─────────────────────────────
+// Fixes admin_id collisions between the `admins` and `dashboard_users` tables
+// (both id sequences start at 1, so job/schedule rows need to record which
+// table the owner came from, not just the numeric id).
+(async function initReportOwnerType() {
+  try {
+    await pool.query(`ALTER TABLE report_jobs ADD COLUMN IF NOT EXISTS admin_type VARCHAR(10) NOT NULL DEFAULT 'admin'`);
+    await pool.query(`ALTER TABLE report_schedules ADD COLUMN IF NOT EXISTS admin_type VARCHAR(10) NOT NULL DEFAULT 'admin'`);
+  } catch (e) { console.error('[ReportOwnerType] Migration error:', e.message); }
+})();
+
 async function setRememberCookie(res, loginData) {
   const token = require('crypto').randomBytes(48).toString('hex');
   const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -118,6 +129,14 @@ function getAllowedEmployees(req) {
     return req.session.allowedEmployees;
   }
   return null; // null means all employees (admin)
+}
+
+// admins and dashboard_users are separate tables, each with their own SERIAL id
+// starting at 1 - so req.session.adminId alone can collide between an admin and
+// a monitoring user (e.g. both id=1). Always pair it with ownerType() when
+// scoping report_jobs / report_schedules rows to "the current logged-in owner".
+function ownerType(req) {
+  return req.session.isUser ? 'user' : 'admin';
 }
 
 async function auditLog(req, action, details) {
@@ -2602,8 +2621,8 @@ app.post('/api/admin/report-job', requireLogin, async (req, res) => {
     if (!ids.length) {
       // No specific selection -> one combined "All Employees" job, same as before
       const job = await pool.query(
-        "INSERT INTO report_jobs (admin_id, admin_name, employee_id, employee_name, from_date, to_date, status, progress) VALUES ($1,$2,$3,$4,$5,$6,'queued',0) RETURNING id",
-        [req.session.adminId, req.session.adminName, null, 'All Employees', from, to]
+        "INSERT INTO report_jobs (admin_id, admin_name, admin_type, employee_id, employee_name, from_date, to_date, status, progress) VALUES ($1,$2,$3,$4,$5,$6,$7,'queued',0) RETURNING id",
+        [req.session.adminId, req.session.adminName, ownerType(req), null, 'All Employees', from, to]
       );
       jobIds.push(job.rows[0].id);
     } else {
@@ -2611,8 +2630,8 @@ app.post('/api/admin/report-job', requireLogin, async (req, res) => {
         const er = await pool.query('SELECT name FROM employees WHERE id=$1', [id]);
         const empName = er.rows.length ? er.rows[0].name : ('Employee #' + id);
         const job = await pool.query(
-          "INSERT INTO report_jobs (admin_id, admin_name, employee_id, employee_name, from_date, to_date, status, progress) VALUES ($1,$2,$3,$4,$5,$6,'queued',0) RETURNING id",
-          [req.session.adminId, req.session.adminName, id, empName, from, to]
+          "INSERT INTO report_jobs (admin_id, admin_name, admin_type, employee_id, employee_name, from_date, to_date, status, progress) VALUES ($1,$2,$3,$4,$5,$6,$7,'queued',0) RETURNING id",
+          [req.session.adminId, req.session.adminName, ownerType(req), id, empName, from, to]
         );
         jobIds.push(job.rows[0].id);
       }
@@ -2628,8 +2647,8 @@ app.post('/api/admin/report-job', requireLogin, async (req, res) => {
 app.get('/api/admin/report-jobs', requireLogin, async (req, res) => {
   try {
     const jobs = await pool.query(
-      'SELECT id, admin_name, employee_name, from_date::text, to_date::text, status, progress, filename, error_msg, created_at, completed_at FROM report_jobs WHERE admin_id=$1 ORDER BY created_at DESC LIMIT 20',
-      [req.session.adminId]
+      'SELECT id, admin_name, employee_name, from_date::text, to_date::text, status, progress, filename, error_msg, created_at, completed_at FROM report_jobs WHERE admin_id=$1 AND admin_type=$2 ORDER BY created_at DESC LIMIT 20',
+      [req.session.adminId, ownerType(req)]
     );
     res.json(jobs.rows);
   } catch(err) { res.status(500).json({ error: err.message }); }
@@ -2638,7 +2657,7 @@ app.get('/api/admin/report-jobs', requireLogin, async (req, res) => {
 // Download a completed report
 app.get('/api/admin/report-download/:id', requireLogin, async (req, res) => {
   try {
-    const job = await pool.query('SELECT * FROM report_jobs WHERE id=$1 AND admin_id=$2', [req.params.id, req.session.adminId]);
+    const job = await pool.query('SELECT * FROM report_jobs WHERE id=$1 AND admin_id=$2 AND admin_type=$3', [req.params.id, req.session.adminId, ownerType(req)]);
     if (!job.rows.length) return res.status(404).json({ error: 'Job not found' });
     const j = job.rows[0];
     if (j.status !== 'done') return res.status(400).json({ error: 'Report not ready' });
@@ -2650,11 +2669,11 @@ app.get('/api/admin/report-download/:id', requireLogin, async (req, res) => {
 // Delete a job
 app.delete('/api/admin/report-job/:id', requireLogin, async (req, res) => {
   try {
-    const job = await pool.query('SELECT * FROM report_jobs WHERE id=$1 AND admin_id=$2', [req.params.id, req.session.adminId]);
+    const job = await pool.query('SELECT * FROM report_jobs WHERE id=$1 AND admin_id=$2 AND admin_type=$3', [req.params.id, req.session.adminId, ownerType(req)]);
     if (job.rows.length && job.rows[0].file_path && fs.existsSync(job.rows[0].file_path)) {
       fs.unlinkSync(job.rows[0].file_path);
     }
-    await pool.query('DELETE FROM report_jobs WHERE id=$1 AND admin_id=$2', [req.params.id, req.session.adminId]);
+    await pool.query('DELETE FROM report_jobs WHERE id=$1 AND admin_id=$2 AND admin_type=$3', [req.params.id, req.session.adminId, ownerType(req)]);
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -3084,7 +3103,7 @@ function calcNextRun(frequency, dayOfWeek, dayOfMonth, sendHour, sendMinute) {
 // ---- REPORT SCHEDULE ROUTES ----
 app.get('/api/admin/report-schedules', requireLogin, async (req, res) => {
   try {
-    const rows = await pool.query('SELECT * FROM report_schedules WHERE admin_id=$1 ORDER BY created_at DESC', [req.session.adminId]);
+    const rows = await pool.query('SELECT * FROM report_schedules WHERE admin_id=$1 AND admin_type=$2 ORDER BY created_at DESC', [req.session.adminId, ownerType(req)]);
     res.json(rows.rows);
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -3132,8 +3151,8 @@ app.post('/api/admin/report-schedules', requireLogin, async (req, res) => {
       }
       const nextRun = calcNextRun(frequency, day_of_week, day_of_month, send_hour==null?8:send_hour, send_minute||0);
       await pool.query(
-        'INSERT INTO report_schedules (admin_id, admin_name, employee_id, employee_name, frequency, day_of_week, day_of_month, email, send_hour, send_minute, next_run, report_range) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
-        [req.session.adminId, req.session.adminName, id, empName, frequency, day_of_week||null, day_of_month||null, email||null, send_hour==null?8:send_hour, send_minute||0, nextRun, report_range]
+        'INSERT INTO report_schedules (admin_id, admin_name, admin_type, employee_id, employee_name, frequency, day_of_week, day_of_month, email, send_hour, send_minute, next_run, report_range) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
+        [req.session.adminId, req.session.adminName, ownerType(req), id, empName, frequency, day_of_week||null, day_of_month||null, email||null, send_hour==null?8:send_hour, send_minute||0, nextRun, report_range]
       );
       await auditLog(req, 'Report Schedule Created', empName + ' - ' + frequency);
       created++;
@@ -3144,14 +3163,14 @@ app.post('/api/admin/report-schedules', requireLogin, async (req, res) => {
 
 app.patch('/api/admin/report-schedules/:id', requireLogin, async (req, res) => {
   try {
-    await pool.query('UPDATE report_schedules SET active=$1 WHERE id=$2 AND admin_id=$3', [req.body.active, req.params.id, req.session.adminId]);
+    await pool.query('UPDATE report_schedules SET active=$1 WHERE id=$2 AND admin_id=$3 AND admin_type=$4', [req.body.active, req.params.id, req.session.adminId, ownerType(req)]);
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 app.delete('/api/admin/report-schedules/:id', requireLogin, async (req, res) => {
   try {
-    await pool.query('DELETE FROM report_schedules WHERE id=$1 AND admin_id=$2', [req.params.id, req.session.adminId]);
+    await pool.query('DELETE FROM report_schedules WHERE id=$1 AND admin_id=$2 AND admin_type=$3', [req.params.id, req.session.adminId, ownerType(req)]);
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -3195,8 +3214,8 @@ schedule.scheduleJob('*/5 * * * *', async function() {
           fromDate = fmtLocal(yesterday);
         }
         await pool.query(
-          "INSERT INTO report_jobs (admin_id, admin_name, employee_id, employee_name, from_date, to_date, status, progress, override_email) VALUES ($1,$2,$3,$4,$5,$6,'queued',0,$7)",
-          [sched.admin_id, sched.admin_name, sched.employee_id, sched.employee_name, fromDate, toDate, sched.email||null]
+          "INSERT INTO report_jobs (admin_id, admin_name, admin_type, employee_id, employee_name, from_date, to_date, status, progress, override_email) VALUES ($1,$2,$3,$4,$5,$6,$7,'queued',0,$8)",
+          [sched.admin_id, sched.admin_name, sched.admin_type, sched.employee_id, sched.employee_name, fromDate, toDate, sched.email||null]
         );
         const nextRun = calcNextRun(sched.frequency, sched.day_of_week, sched.day_of_month, sched.send_hour==null?8:sched.send_hour, sched.send_minute||0);
         await pool.query('UPDATE report_schedules SET last_run=NOW(), next_run=$1 WHERE id=$2', [nextRun, sched.id]);
